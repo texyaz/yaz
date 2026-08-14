@@ -23,6 +23,10 @@ default = []
 # picker would report Tectonic as missing from a build that actually has it.
 tectonic-engine = ["yaz-compile/tectonic-engine"]
 
+# Typst. Pure Rust, so unlike tectonic-engine this needs no vcpkg and builds
+# anywhere — but it compiles a different document language, not .tex.
+typst-engine = ["yaz-compile/typst-engine"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

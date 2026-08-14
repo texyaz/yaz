@@ -3113,10 +3113,17 @@ ${entryText}`,
                 value: engine.id,
                 // Unavailable engines stay listed but unselectable. Hiding one
                 // leaves somebody hunting for an engine the docs promised.
-                label: engine.available
-                  ? engine.label
-                  : `${engine.label} — ${t("engine-unavailable-suffix")}`,
-                disabled: !engine.available,
+                //
+                // So does an engine for the other document language: Typst
+                // cannot compile a `.tex` and the LaTeX engines cannot compile
+                // a `.typ`. Saying which language it is for explains the grey;
+                // omitting it explains nothing.
+                label: !engine.available
+                  ? `${engine.label} — ${t("engine-unavailable-suffix")}`
+                  : engine.language !== projectLanguage
+                    ? `${engine.label} — ${t(`engine-language-${engine.language}`)}`
+                    : engine.label,
+                disabled: !engine.available || engine.language !== projectLanguage,
               })),
               onchange: (value) => void chooseEngine(value),
               warningKey:
@@ -3491,6 +3498,19 @@ ${entryText}`,
     pdfFile = null;
     void ipc.pluginSetProject(null);
   }
+
+  /**
+   * Which language this project is written in, inferred from its entry.
+   *
+   * Typst is not a third interchangeable engine: Tectonic and the system
+   * engines are two ways to typeset the same `.tex`, and Typst is a different
+   * document language whose projects are `.typ`. So the engines for the other
+   * language are shown and disabled rather than hidden — hiding them explains
+   * nothing, and offering them yields a parse error nobody can act on.
+   */
+  const projectLanguage = $derived<"latex" | "typst">(
+    project?.entry.endsWith(".typ") ? "typst" : "latex",
+  );
 
   const errorCount = $derived(
     result?.diagnostics.filter((d) => d.severity === "error").length ?? 0,

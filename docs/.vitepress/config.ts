@@ -119,6 +119,7 @@ export default defineConfig({
 
     nav: [
       { text: "Guide", link: "/guide/getting-started" },
+      { text: "Roadmap", link: "/roadmap" },
       { text: "Plugins", link: "/reference/generated/plugins/" },
       { text: "Reference", link: "/reference/generated/capabilities" },
       { text: "Decisions", link: "/reference/generated/adr-index" },
@@ -136,6 +137,12 @@ export default defineConfig({
         },
       ],
       "/plugins/": [officialPlugins(), authoring()],
+      "/roadmap": [
+        {
+          text: "Where this is going",
+          items: [{ text: "Roadmap", link: "/roadmap" }],
+        },
+      ],
       "/contributing/": [
         {
           text: "Contributing",
