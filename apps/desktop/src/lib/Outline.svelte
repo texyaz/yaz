@@ -13,6 +13,7 @@
 <script lang="ts">
   import { t } from "./i18n";
   import { headings, plainText, type Heading } from "./editor/structure";
+  import { sectionNumbers } from "./editor/semantics";
 
   interface Props {
     /** The buffer contents. */
@@ -27,6 +28,20 @@
   let { doc, file, cursor, onnavigate }: Props = $props();
 
   const found = $derived(headings(doc));
+
+  /**
+   * The number LaTeX would print in front of each heading.
+   *
+   * Here because this is the document's contents list now: the preview draws a
+   * card where `	ableofcontents` stands rather than trying to paginate one,
+   * and the card opens this. A contents list without numbers is a list of
+   * titles, which is not what a reader is looking at the front of a thesis for.
+   *
+   * No page numbers, and there will not be any: a page number comes from
+   * typesetting, and a wrong one in the one place a reader trusts numbers is
+   * worse than none.
+   */
+  const numbers = $derived(sectionNumbers(found));
 
   /**
    * The heading the caret is inside: the last one that starts before it.
@@ -60,7 +75,9 @@
             onclick={() => onnavigate(heading)}
           >
             <span class="text" class:starred={heading.starred}>
-              {plainText(heading.title) || t("outline-untitled")}
+              {#if numbers.get(heading.from)}<span class="number"
+                  >{numbers.get(heading.from)}</span
+                >{/if}{plainText(heading.title) || t("outline-untitled")}
             </span>
           </button>
         </li>
@@ -122,5 +139,18 @@
   /* Unnumbered sections read differently in the document, so they do here. */
   .starred {
     font-style: italic;
+  }
+
+  /*
+   * The section number, set apart from the title.
+   *
+   * Tabular figures so that "9.1" and "10.1" occupy the same width and the
+   * titles beside them line up, which is the whole reason a printed contents
+   * list is legible at a glance.
+   */
+  .number {
+    color: var(--yaz-text-muted);
+    font-variant-numeric: tabular-nums;
+    margin-inline-end: 0.6em;
   }
 </style>

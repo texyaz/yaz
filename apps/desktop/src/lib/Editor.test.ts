@@ -42,7 +42,7 @@ function mount(doc = "hello", docId = "a.tex") {
       vimMode: false,
       rich: false,
       numbering: "absolute" as const,
-      pageView: false,
+      documentView: "plain" as const,
       page: { width: 210, height: 297 },
       zoom: 100,
       wrap: true,

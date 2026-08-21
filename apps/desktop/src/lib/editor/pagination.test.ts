@@ -159,16 +159,22 @@ describe("the breaks a document asks for", () => {
     expect(lines).toContain(5);
   });
 
-  it("gives a generated list a page of its own, and one after it", () => {
+  it("does not open a page for a generated list", () => {
+    // It used to, because the list was drawn on the paper and ran to pages of
+    // its own. It is a card now — one line's worth — and a page opened around
+    // a card is a blank page in the middle of the document, which is exactly
+    // what the blank pages either side of the glossary were.
     const doc = [
       `${B}begin{document}`,
       `${B}tableofcontents`,
       "The first paragraph.",
       `${B}end{document}`,
     ].join(NEWLINE);
-    const lines = breakLines(doc);
-    expect(lines).toContain(2);
-    expect(lines).toContain(3);
+    // Compared against the same document with a paragraph in that place, so
+    // what is measured is the listing's own effect and not the break the
+    // matter puts at the top of the document either way.
+    const prose = doc.replace(`${B}tableofcontents`, "A paragraph.");
+    expect(breakLines(doc)).toEqual(breakLines(prose));
   });
 
   it("turns the page for a turned environment, and turns it back", () => {

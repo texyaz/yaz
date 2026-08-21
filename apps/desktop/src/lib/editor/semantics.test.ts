@@ -20,6 +20,7 @@ import {
   silentCommands,
   spacings,
   targets,
+  graphicWidth,
   includedGraphics,
 } from "./semantics";
 import {
@@ -306,8 +307,55 @@ describe("includedGraphics", () => {
   });
 
   it("copes without an option", () => {
+    expect(
+      includedGraphics(`${B}includegraphics{logo.png}`)[0]?.width,
+    ).toBeNull();
     expect(includedGraphics(`${B}includegraphics{logo.png}`)[0]?.path).toBe(
       "logo.png",
     );
+  });
+});
+
+/**
+ * How wide a graphic is drawn.
+ *
+ * This was skipped on the grounds that the editor does not typeset. It was the
+ * wrong call in the one place it mattered: a title page whose logo is set to
+ * half the text width and drawn at the file's natural size is a title page
+ * that does not fit on its own sheet, and everything after it then starts on
+ * the wrong page.
+ */
+describe("the width a graphic asks for", () => {
+  const B2 = String.fromCharCode(92);
+
+  it("reads a fraction of the measure as a percentage", () => {
+    // A percentage rather than a pixel count, so it is half of whatever the
+    // content box turns out to be — the sheet in the page view, the pane
+    // without one — and is right in both.
+    expect(graphicWidth(`width=0.5${B2}textwidth`)).toBe("50%");
+    expect(graphicWidth(`width=0.9${B2}linewidth`)).toBe("90%");
+    expect(graphicWidth(`width=${B2}columnwidth`)).toBe("100%");
+  });
+
+  it("never asks for more than the measure", () => {
+    expect(graphicWidth(`width=1.5${B2}textwidth`)).toBe("100%");
+  });
+
+  it("reads an absolute length as ems, so it scales with the zoom", () => {
+    // Pixels would stay put while everything around them grew, which is the
+    // one thing a figure on a page must not do.
+    expect(graphicWidth("width=6cm")).toBe("14.23em");
+    expect(graphicWidth("width=12pt")).toBe("1em");
+  });
+
+  it("says nothing where the document said nothing", () => {
+    expect(graphicWidth("")).toBeNull();
+    expect(graphicWidth("height=3cm")).toBeNull();
+    expect(graphicWidth("scale=0.5")).toBeNull();
+  });
+
+  it("ignores a width that makes no sense", () => {
+    expect(graphicWidth("width=0cm")).toBeNull();
+    expect(graphicWidth(`width=-1${B2}textwidth`)).toBeNull();
   });
 });

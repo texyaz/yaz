@@ -331,17 +331,58 @@ export interface WorkspaceApi {
    *
    * The factory is handed a plain `HTMLElement` to render into — deliberately,
    * so that the plugin contract does not depend on the shell's framework.
+   *
+   * Registering does not open anything. The view becomes a tab the user can
+   * open, and where it is the home of a generated list the preview offers it
+   * as one; a plugin cannot put itself on screen.
    */
   registerView(
     type: string,
     factory: (container: HTMLElement) => ViewHandle,
+    options?: ViewOptions,
   ): void;
 }
+
+/** How a contributed view is presented. @since 0.3.0 */
+export interface ViewOptions {
+  /**
+   * Message key for the tab's title.
+   *
+   * A key rather than a string, like every other label in yaz (ADR-0011), so
+   * the tab is named in the reader's language rather than the author's.
+   */
+  titleKey: string;
+  /**
+   * The generated list this view is the home of, where it is one.
+   *
+   * `\printglossaries` produces its pages during typesetting, so the preview
+   * draws a card in its place rather than guessing at the pages. Naming a kind
+   * here makes that card a way in: click it and this view opens.
+   *
+   * The kinds are LaTeX's, which is what the rest of the preview contract is
+   * built on — see {@link Plugin.registerLatexVocabulary}.
+   */
+  listing?: ListingKind;
+}
+
+/** A list LaTeX generates rather than the author writing it. @since 0.3.0 */
+export type ListingKind =
+  "contents" | "figures" | "tables" | "glossary" | "bibliography" | "index";
 
 /** Handle returned by a view factory. @since 0.1.0 */
 export interface ViewHandle {
   /** Called when the view is destroyed. */
   destroy(): void;
+  /**
+   * The document changed; draw it again.
+   *
+   * Optional, because a view that shows something other than the buffer has
+   * nothing to do here. A view built from the document — a glossary, an index
+   * — needs it, and polling for changes would be the alternative.
+   *
+   * @since 0.3.0
+   */
+  update?(): void;
 }
 
 /** The open project. @since 0.1.0 */

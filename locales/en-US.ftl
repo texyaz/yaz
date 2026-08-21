@@ -423,7 +423,9 @@ keys-press = Press the keys…
 keys-unbound = Not bound
 keys-reset = Put it back
 keys-conflict = Another shortcut uses these keys.
-menu-view-page = Page view
+menu-view-plain = Plain
+menu-view-continuous = Continuous
+menu-view-page = Page
 
 ## More heading colours
 
@@ -478,7 +480,7 @@ status-page = Page { $page } of { $pages }
 status-words = { $words } words (estimated)
 status-zoom = Zoom
 status-zoom-set = Set the zoom level
-status-page-view = Page
+status-view = How the text is set
 status-language-unset = No language set
 
 menu-view-wrap = Wrap long lines
@@ -549,13 +551,13 @@ listing-tables = Tables
 listing-glossary = Glossary
 listing-bibliography = Bibliography
 listing-index = Index
-listing-continued = continued
-listing-empty-contents = No headings in this file. Join the document's files to list the whole contents.
-listing-empty-figures = No captioned figures in this file.
-listing-empty-tables = No captioned tables in this file.
-listing-empty-glossary = No glossary entries in this file.
-listing-empty-bibliography = Built from the bibliography file when compiled.
-listing-empty-index = Built when the document is compiled.
+listing-compiled = Produced when the document is compiled.
+listing-open-contents = Show the contents in the outline
+listing-open-figures = Show the figures
+listing-open-tables = Show the tables
+listing-open-glossary = Show the glossary
+listing-open-bibliography = Show the bibliography
+listing-open-index = Show the index
 pagebreak-clearpage = Page break
 pagebreak-cleardoublepage = Page break, to a right-hand page
 pagebreak-newpage = Page break
@@ -645,3 +647,9 @@ table-column-width = Drag to set this column's width
 table-row-add = Add a row below this one
 table-row-remove = Remove this row
 table-row-height = Drag to set the space after this row
+
+## The LaTeX packages plugin's glossary tab.
+
+latex-packages-glossary-title = Glossary
+latex-packages-glossary-empty = This document defines no glossary entries.
+latex-packages-glossary-no-document = Open a document to see its glossary.

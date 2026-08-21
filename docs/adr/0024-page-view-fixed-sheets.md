@@ -3,6 +3,8 @@
 - **Status:** Accepted
 - **Date:** 2026-08-21
 - **Supersedes:** —
+- **Amended by:** [0025](0025-generated-lists-are-tabs.md), which withdraws the
+  listing exception below
 - **Superseded by:** —
 
 ## Context
@@ -85,9 +87,12 @@ oversized image sticking off the paper.
   much of it was hidden and how many rows each widget stood for ran on every
   replacement in the document on every keystroke. Removing it took the
   decoration pass on a joined thesis from 14.9 ms to 13.0 ms.
-- **A generated listing still divides itself**, because a gap cannot be put
-  inside a widget. It is the only thing that still needs a row count, and it
-  gets one measured rather than guessed.
+- ~~**A generated listing still divides itself**, because a gap cannot be put
+  inside a widget.~~ Withdrawn by
+  [ADR-0025](0025-generated-lists-are-tabs.md): nothing in the buffer decides
+  how long a contents list is, so the preview draws a card standing in for one
+  and the list itself lives in a tab. Nothing divides itself into sheets now,
+  and the row count is gone.
 - **The front matter no longer has a short sheet of its own.** Every sheet is
   the same height, so it takes a whole one. That is the price of the property
   above and it is worth paying.

@@ -355,6 +355,8 @@ class FigureWidget extends WidgetType {
     readonly number: string,
     readonly kind: "figure" | "table",
     readonly resolve: ((path: string) => Promise<string | null>) | null,
+    /** What `[width=...]` asked for, as a CSS length, or null for natural. */
+    readonly width: string | null = null,
   ) {
     super();
   }
@@ -363,7 +365,8 @@ class FigureWidget extends WidgetType {
     return (
       other.path === this.path &&
       other.caption === this.caption &&
-      other.number === this.number
+      other.number === this.number &&
+      other.width === this.width
     );
   }
 
@@ -381,6 +384,9 @@ class FigureWidget extends WidgetType {
         if (!url) return;
         const image = document.createElement("img");
         image.className = "cm-yaz-figure-image";
+        // What the document asked for. Capped at the measure by the stylesheet,
+        // so a figure set wider than the page still stays on the paper.
+        if (this.width) image.style.inlineSize = this.width;
         image.src = url;
         image.alt = this.caption;
         frame.replaceWith(image);
@@ -695,7 +701,7 @@ export function semanticMarkup(pass: Pass): Meaning {
       pass,
       graphic.from,
       graphic.to,
-      new FigureWidget(graphic.path, "", "", "figure", resolve),
+      new FigureWidget(graphic.path, "", "", "figure", resolve, graphic.width),
     );
   }
 
@@ -782,6 +788,7 @@ function drawFigures(
         number,
         "figure",
         resolve,
+        graphics[0]!.width,
       ),
     );
   }

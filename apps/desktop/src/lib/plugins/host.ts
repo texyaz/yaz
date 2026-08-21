@@ -31,10 +31,12 @@ import type {
   App,
   Command,
   EditorApi,
+  ListingKind,
   PickerItem,
   PickerOptions,
   Plugin,
   ProjectApi,
+  ViewHandle,
 } from "@yaz/api";
 
 import { listen } from "@tauri-apps/api/event";
@@ -120,6 +122,23 @@ export interface RegisteredFormat {
   load: () => Promise<unknown>;
 }
 
+/**
+ * A view a plugin can render, as the shell lists it.
+ *
+ * Held rather than opened. Registering makes a view available as a tab; which
+ * tabs are on screen is the user's arrangement, and a plugin that could put
+ * itself there would be deciding something that is not its to decide.
+ */
+export interface RegisteredView {
+  pluginId: string;
+  /** Namespaced, so two plugins may both offer a "glossary". */
+  tab: string;
+  titleKey: string;
+  /** The generated list this view is the home of, where it is one. */
+  listing: ListingKind | null;
+  mount: (container: HTMLElement) => ViewHandle;
+}
+
 /** A LaTeX vocabulary a plugin contributed, and who contributed it. */
 export interface RegisteredVocabulary {
   pluginId: string;
@@ -156,6 +175,13 @@ export class PluginRuntime {
    * not get to make itself reachable from outside the application.
    */
   readonly tools: RegisteredTool[] = [];
+  /**
+   * Views plugins have offered as tabs.
+   *
+   * Held rather than applied, like everything else a plugin contributes: the
+   * workspace decides what is on screen.
+   */
+  readonly views: RegisteredView[] = [];
   private readonly loaded = new Map<string, Plugin>();
   /** Stops a second `start()` adding a second listener for the same events. */
   private listening = false;
@@ -343,6 +369,7 @@ export class PluginRuntime {
 
   private createApp(pluginId: string): App {
     const context = this.context;
+    const runtime = this;
 
     const project = (): ProjectApi | null => {
       const open = context.project();
@@ -377,10 +404,25 @@ export class PluginRuntime {
       },
 
       workspace: {
-        registerView() {
-          // Plugin-contributed views arrive with the workspace work. Throwing is
-          // deliberate: silently doing nothing would look like a plugin bug.
-          throw new Error("registerView is not implemented yet");
+        registerView(type, factory, options) {
+          // Namespaced by plugin, so two plugins offering a "glossary" get two
+          // tabs rather than one of them quietly winning.
+          const tab = `${pluginId}:${type}`;
+          if (runtime.views.some((view) => view.tab === tab)) {
+            console.warn(
+              `[yaz] ${pluginId} registered the view "${type}" twice`,
+            );
+            return;
+          }
+          runtime.views.push({
+            pluginId,
+            tab,
+            // A view with no title would be a tab with no name. Falling back to
+            // the type at least says which one it is.
+            titleKey: options?.titleKey ?? type,
+            listing: options?.listing ?? null,
+            mount: factory,
+          });
         },
       },
 

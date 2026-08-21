@@ -579,21 +579,70 @@ export function silentCommands(text: string): Silent[] {
 }
 
 /**
- * Whether an `\includegraphics` names a file, and which.
+ * How wide a graphic is drawn, as a CSS length.
  *
- * The optional `[width=...]` is skipped rather than read: how wide a figure is
- * printed is the typesetter's business, and a figure drawn to the measure of
- * the pane is closer to the truth than one drawn to a fraction of a page width
- * the editor is not laying out.
+ * `width=0.5	extwidth` is half the measure, and the measure is a thing the
+ * page view knows: the sheet minus its margins. So it becomes `50%`, which is
+ * half of whatever the content box turns out to be — the sheet in the page
+ * view, the pane without one — and is right in both.
+ *
+ * An absolute length becomes `em` rather than `px` so that it grows with the
+ * magnification, which is how the rest of the page is scaled.
+ *
+ * This used to be skipped on the grounds that the editor is not typesetting.
+ * That was wrong in the one place it mattered: a title page whose logo is set
+ * to half the text width and drawn at the file's natural size instead is a
+ * title page that does not fit on its own sheet, and everything after it then
+ * starts on the wrong page.
+ */
+export function graphicWidth(options: string): string | null {
+  const relative = /width\s*=\s*(-?[\d.]*)\s*\\(?:text|line|column)width/.exec(
+    options,
+  );
+  if (relative) {
+    const fraction = relative[1] === "" ? 1 : Number(relative[1]);
+    if (!Number.isFinite(fraction) || fraction <= 0) return null;
+    return `${Math.min(100, fraction * 100)}%`;
+  }
+
+  const absolute = /width\s*=\s*(-?[\d.]+)\s*(cm|mm|in|pt|em|ex|bp|pc)/.exec(
+    options,
+  );
+  if (!absolute) return null;
+  const value = Number(absolute[1]);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  // One em is about 12pt at a document's usual size.
+  const POINTS_PER_EM = 12;
+  const points: Record<string, number> = {
+    pt: 1,
+    bp: 1.00375,
+    pc: 12,
+    mm: 2.845,
+    cm: 28.45,
+    in: 72.27,
+    em: POINTS_PER_EM,
+    ex: POINTS_PER_EM / 2,
+  };
+  const ems = (value * (points[absolute[2]!] ?? 1)) / POINTS_PER_EM;
+  return `${Math.round(ems * 100) / 100}em`;
+}
+
+/**
+ * Whether an `\includegraphics` names a file, which, and how wide.
  */
 export function includedGraphics(
   text: string,
-): { from: number; to: number; path: string }[] {
-  const found: { from: number; to: number; path: string }[] = [];
+): { from: number; to: number; path: string; width: string | null }[] {
+  const found: {
+    from: number;
+    to: number;
+    path: string;
+    width: string | null;
+  }[] = [];
   const comments = commentRanges(text);
 
   for (const match of text.matchAll(
-    /\\includegraphics\s*(?:\[[^\]]*\])?\s*\{/g,
+    /\\includegraphics\s*(?:\[([^\]]*)\])?\s*\{/g,
   )) {
     const at = match.index;
     // A binary search, not a scan: a document with many comments and many
@@ -606,6 +655,7 @@ export function includedGraphics(
       from: at,
       to: end,
       path: text.slice(open + 1, end - 1).trim(),
+      width: graphicWidth(match[1] ?? ""),
     });
   }
 

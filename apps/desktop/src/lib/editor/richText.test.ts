@@ -11,6 +11,7 @@
  */
 
 import { EditorSelection, EditorState } from "@codemirror/state";
+import type { Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
@@ -27,6 +28,7 @@ import {
   PACKAGE_ENVIRONMENTS,
 } from "../../../../../plugins/latex-packages/src/vocabulary";
 import { setContributions } from "./vocabulary";
+import { listingTabs } from "./listingLink";
 
 const B = String.fromCharCode(92);
 
@@ -47,9 +49,9 @@ afterEach(() => {
 });
 
 /** A view over `doc`, with rich text on unless told otherwise. */
-function mount(doc: string, rich = true): EditorView {
+function mount(doc: string, rich = true, extra: Extension[] = []): EditorView {
   const view = new EditorView({
-    state: EditorState.create({ doc, extensions: [richText()] }),
+    state: EditorState.create({ doc, extensions: [richText(), ...extra] }),
     parent: document.body,
   });
   views.push(view);
@@ -607,18 +609,44 @@ describe("the parts LaTeX generates", () => {
     expect(reading().state.doc.toString()).toBe(doc);
   });
 
-  it("says so when there is nothing to list", () => {
-    // A `main.tex` on its own holds no headings at all, and a box that explains
-    // itself beats one that looks broken.
-    const alone = [
-      "\\" + "begin{document}",
-      "\\" + "tableofcontents",
-      "Ein Satz, damit der Cursor woanders steht.",
-      "\\" + "end{document}",
-    ].join("\n");
+  /** A document whose only generated part is a contents list. */
+  const alone = [
+    `${B}begin{document}`,
+    `${B}tableofcontents`,
+    "Ein Satz, damit der Cursor woanders steht.",
+    `${B}end{document}`,
+  ].join(nothing);
+
+  it("says the compiler makes it when nothing can show it", () => {
+    // Which is the honest answer, and better than offering a way in to a tab
+    // that is not there.
     const view = mount(alone);
     caret(view, alone.indexOf("Ein Satz") + 4);
-    expect(visible(view)).toContain("No headings in this file");
+    expect(visible(view)).toContain("Produced when the document is compiled.");
+  });
+
+  it("offers a way in where the shell has somewhere to show it", () => {
+    const view = mount(alone, true, [
+      listingTabs.of({ has: () => true, open: () => {} }),
+    ]);
+    caret(view, alone.indexOf("Ein Satz") + 4);
+    expect(visible(view)).toContain("Show the contents in the outline");
+  });
+
+  it("opens the tab when the card is clicked", () => {
+    // The whole point of the card: it is not a picture of a list, it is the
+    // way to one.
+    const opened: string[] = [];
+    const view = mount(alone, true, [
+      listingTabs.of({ has: () => true, open: (kind) => opened.push(kind) }),
+    ]);
+    caret(view, alone.indexOf("Ein Satz") + 4);
+    const card = view.contentDOM.querySelector(".cm-yaz-listing-open");
+    expect(card).not.toBeNull();
+    (card as HTMLButtonElement).dispatchEvent(
+      new MouseEvent("mousedown", { bubbles: true }),
+    );
+    expect(opened).toEqual(["contents"]);
   });
 
   it("does nothing at all in source view", () => {

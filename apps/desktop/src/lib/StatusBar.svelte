@@ -17,6 +17,7 @@
 -->
 <script lang="ts">
   import { t } from "./i18n";
+  import type { DocumentView } from "./editor/documentView";
 
   interface Props {
     /**
@@ -46,8 +47,10 @@
     languages: { value: string; label: string }[];
     onlanguage: (value: string) => void;
     /** Whether the text is set on a page. */
-    pageView: boolean;
-    onpageview: () => void;
+    /** How the text is set: plain, a centred column, or on paper. */
+    view: DocumentView;
+    /** Move to the next way of setting it. */
+    onview: () => void;
     /** Whether rich text is showing rather than the source. */
     rich: boolean;
     onsource: () => void;
@@ -69,8 +72,8 @@
     language,
     languages,
     onlanguage,
-    pageView,
-    onpageview,
+    view,
+    onview,
     rich,
     onsource,
     zoom,
@@ -147,15 +150,16 @@
     <span class="item">{t("status-page", { page: page ?? 1, pages })}</span>
   {/if}
 
+  <!-- Three ways of setting the text, so this names the one in force rather
+       than being a switch that is on or off. -->
   <button
     type="button"
     class="mode"
-    class:on={pageView}
-    title={t("status-page-view")}
-    aria-pressed={pageView}
-    onclick={onpageview}
+    class:on={view !== "plain"}
+    title={t("status-view")}
+    onclick={onview}
   >
-    {t("status-page-view")}
+    {t(`menu-view-${view}`)}
   </button>
   <button
     type="button"

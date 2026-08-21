@@ -82,11 +82,11 @@ import { escapeHtml, inlineHtml } from "./inline";
 import { renderMath, renderMathEnvironment } from "./math";
 import { renderTable, tooComplexToDraw } from "./tabular";
 import { fillMetadata, metadata } from "./typography";
-import { charactersPerRow, paper, rowsPerPage } from "./geometry";
-import { entriesFor, generatedIn, hasGenerated } from "./generated";
+import { generatedIn, hasGenerated } from "./generated";
+import { listingTabs } from "./listingLink";
 import { readProperties } from "./properties";
 import { TableWidget, cellAt, tableTabKeymap } from "./tableWidget";
-import type { BreakKind, Entry, ListingKind } from "./generated";
+import type { BreakKind, ListingKind } from "./generated";
 import {
   commandsOfKind,
   environmentRenderingOf,
@@ -135,9 +135,6 @@ function inlineClasses(): Map<string, string> {
 
 /** Bullets by nesting depth, as LaTeX itself sets them. */
 const BULLETS = ["•", "◦", "▪", "·"];
-
-/** What the heading over a generated list costs, in rows. */
-const LISTING_HEADING_ROWS = 2;
 
 // Re-exported so a caller reaches for one module to switch any part of the
 // view on or off, rather than having to know which file each flag lives in.
@@ -252,141 +249,67 @@ class RenderedWidget extends WidgetType {
 }
 
 /**
- * A generated list — the contents, the figures, the glossary — drawn out.
+ * A generated list, standing in for itself.
  *
- * Built from the buffer rather than from a build, so it is what the document
- * says about itself and not what LaTeX will paginate. That is why there are no
- * page numbers: a number here would be a guess, and a wrong page number is
- * worse than none in the one place a reader trusts numbers.
+ * Not the list. `\tableofcontents` produces its pages during typesetting, and
+ * the preview does not typeset — so what is drawn here is a card saying which
+ * list belongs at this point in the document, and a way to go and read it.
  *
- * Each line goes to the thing it names, which is what makes this a way of
- * moving around the document rather than a picture of one.
+ * # Why not draw the entries
+ *
+ * It did, and for four rounds it tried to spread them over sheets of paper. A
+ * contents list is the one construct in a document whose length nothing in the
+ * buffer decides: it depends on where the compiler breaks its pages, which
+ * depends in turn on how long the contents list is. An approximation of that
+ * on the paper put the wrong number of pages into the middle of the document,
+ * and everything after it started in the wrong place.
+ *
+ * A tab has no such problem, because a tab is not a sheet of paper. So the
+ * list goes in a tab and the paper gets a card — which is also nearer to what
+ * the author has in front of them in the source, where this really is one line.
  */
-class ListingWidget extends WidgetType {
+class ListingCard extends WidgetType {
   constructor(
     readonly kind: ListingKind,
-    readonly entries: Entry[],
-    /** Which sheet of the listing this is, counting from one. */
-    readonly sheet = 1,
-    /** How many sheets the whole listing runs to. */
-    readonly sheets = 1,
-    /**
-     * The sheet this stands on, when the page view is drawing sheets.
-     *
-     * `null` in a continuous view, where the list is simply as long as it is.
-     * With a page, every sheet of a listing is exactly one page and the gap
-     * after it — which is what lets a divided list tile the paper on its own.
-     */
-    readonly page: { pitch: number; margin: number } | null = null,
+    /** Whether anything can show this list, which makes the card a way in. */
+    readonly linked: boolean,
   ) {
     super();
   }
 
-  /**
-   * As tall as it has entries, plus the heading over them.
-   *
-   * The page view needs this because a listing is the one thing in the
-   * preview that produces pages of content from a single line of source: a
-   * glossary of two hundred terms is `\printglossaries`, and a sheet told it
-   * was one line long would stretch to two hundred rows to hold it.
-   */
-  get rows(): number {
-    return this.entries.length + LISTING_HEADING_ROWS;
-  }
-
-  /**
-   * Compared by content, so a keystroke elsewhere does not rebuild the list.
-   *
-   * A contents list of a hundred lines is a hundred DOM nodes, and rebuilding
-   * them on every character would be the most expensive thing on the keystroke
-   * path by a wide margin.
-   */
-  override eq(other: ListingWidget): boolean {
-    return (
-      other.kind === this.kind &&
-      other.sheet === this.sheet &&
-      other.sheets === this.sheets &&
-      other.page?.pitch === this.page?.pitch &&
-      other.page?.margin === this.page?.margin &&
-      other.entries.length === this.entries.length &&
-      other.entries.every(
-        (entry, index) =>
-          entry.label === this.entries[index]?.label &&
-          entry.detail === this.entries[index]?.detail &&
-          entry.level === this.entries[index]?.level,
-      )
-    );
+  override eq(other: ListingCard): boolean {
+    return other.kind === this.kind && other.linked === this.linked;
   }
 
   override toDOM(view: EditorView): HTMLElement {
     const box = document.createElement("div");
     box.className = "cm-yaz-listing";
 
-    if (this.page) {
-      // Exactly one sheet, including the gap after it, with the paper's own
-      // margins inside. Exactly, not at least: a sheet that grew would put
-      // every sheet below it out of step with the paper behind them.
-      box.classList.add("cm-yaz-listing-sheet");
-      box.style.blockSize = `${this.page.pitch}px`;
-      box.style.paddingBlock = `${this.page.margin}px`;
-    }
+    const title = document.createElement("div");
+    title.className = "cm-yaz-listing-title";
+    title.textContent = t(`listing-${this.kind}`);
+    box.append(title);
 
-    // Only the first sheet carries the heading, the way a contents list in a
-    // book says "Contents" once and then keeps going.
-    if (this.sheet === 1) {
-      const title = document.createElement("div");
-      title.className = "cm-yaz-listing-title";
-      title.textContent = t(`listing-${this.kind}`);
-      box.append(title);
-    } else {
-      const carried = document.createElement("div");
-      carried.className = "cm-yaz-listing-continued";
-      carried.textContent = t("listing-continued");
-      box.append(carried);
-    }
-
-    if (this.entries.length === 0) {
-      const empty = document.createElement("p");
-      empty.className = "cm-yaz-listing-empty";
-      // Which is the true answer, and in a document split across files it is
-      // also an invitation: joined, the headings are there to be listed.
-      empty.textContent = t(`listing-empty-${this.kind}`);
-      box.append(empty);
+    if (!this.linked) {
+      const note = document.createElement("p");
+      note.className = "cm-yaz-listing-note";
+      note.textContent = t("listing-compiled");
+      box.append(note);
       return box;
     }
 
-    const list = document.createElement("ol");
-    list.className = "cm-yaz-listing-entries";
-    for (const entry of this.entries) {
-      const row = document.createElement("li");
-      row.className = `cm-yaz-listing-entry cm-yaz-listing-level-${entry.level}`;
-
-      const link = document.createElement("button");
-      link.type = "button";
-      link.className = "cm-yaz-listing-link";
-      link.textContent = entry.label;
-      link.addEventListener("mousedown", (event) => {
-        event.preventDefault();
-        // Not `posAtDOM`: the point of a contents line is to go somewhere else.
-        view.dispatch({
-          selection: EditorSelection.cursor(
-            Math.min(entry.at, view.state.doc.length),
-          ),
-          scrollIntoView: true,
-        });
-        view.focus();
-      });
-      row.append(link);
-
-      if (entry.detail) {
-        const detail = document.createElement("span");
-        detail.className = "cm-yaz-listing-detail";
-        detail.textContent = entry.detail;
-        row.append(detail);
-      }
-      list.append(row);
-    }
-    box.append(list);
+    const open = document.createElement("button");
+    open.type = "button";
+    open.className = "cm-yaz-listing-open";
+    open.textContent = t(`listing-open-${this.kind}`);
+    open.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      // Read at the moment of the click rather than captured: the shell's tabs
+      // outlive any one drawing of this card, and a held opener would go stale
+      // the first time the card was rebuilt.
+      view.state.facet(listingTabs)?.open(this.kind);
+    });
+    box.append(open);
     return box;
   }
 
@@ -967,112 +890,34 @@ function generated(pass: Pass): void {
 }
 
 /**
- * Draw a generated list, divided into sheets if it runs to more than one.
+ * Draw a generated list as a card standing in for it.
  *
- * The one place in the preview where a single line of source produces pages of
- * content. `\printglossaries` is one command and a hundred and forty terms,
- * and a page view that could not divide it would draw one sheet a hundred and
- * forty rows long — which is what it did.
+ * A block replacement of the whole line, because that is what the command is:
+ * `\tableofcontents` on a line of its own is a paragraph-level instruction,
+ * and a card sitting inside a line of text would read as part of a sentence.
  *
- * A sheet break cannot be put inside a line, so the division is made here
- * instead: each sheet's worth of entries is its own block widget, and each
- * block widget is a child of the content box, which is what a sheet is.
- *
- * When the page view is off there is no sheet to fill and `perSheet` is zero,
- * so the whole list is drawn as one — which is what a continuous view wants.
+ * Whether the card is a way in depends on whether anything can show the list —
+ * the outline answers for the contents, and a plugin answers for the glossary
+ * ([`listingLink.ts`](./listingLink.ts)). Where nothing does, the card says
+ * the compiler makes this and leaves it at that, which is true and is more
+ * than the bare command said.
  */
 function listed(pass: Pass, from: number, to: number, kind: ListingKind): void {
-  const entries = entriesFor(kind, pass.text);
-  const perPage = pass.state.field(rowsPerPage, false) ?? 0;
-  const measure = pass.state.field(charactersPerRow, false) ?? 0;
-  const sheet = pass.state.facet(paper);
-  const sheets = intoSheets(entries, perPage - LISTING_HEADING_ROWS, measure);
-
-  // Off the page view there is no sheet to fill, so the whole list is one —
-  // which is what a continuous view wants.
-  if (!sheet || sheets.length <= 1) {
-    replace(pass, from, to, new ListingWidget(kind, entries));
-    return;
-  }
-
-  // Each sheet of the listing is *exactly* a sheet: one page and the gap after
-  // it. That is what lets a divided list tile the paper without any help — the
-  // gaps that carry ordinary text from one page to the next are keyed by
-  // document offset, and every sheet of a listing after the first stands at the
-  // same offset, so no gap could tell one from another.
-  const page = { pitch: sheet.height + sheet.gap, margin: sheet.margin };
+  const tabs = pass.state.facet(listingTabs);
+  const card = new ListingCard(kind, tabs?.has(kind) === true);
   const line = pass.state.doc.lineAt(from);
 
-  // A block replacement, so the first sheet is a sheet rather than something
-  // sitting inside a line of text.
+  // A line holding nothing but the command becomes the card. A command with
+  // text around it is replaced in place, so the author's words stay put.
+  const alone = line.from === from && line.to === to;
+  if (!alone) {
+    replace(pass, from, to, card);
+    return;
+  }
   if (!pass.covered.claim(line.from, line.to)) return;
   pass.ranges.push(
-    Decoration.replace({
-      widget: new ListingWidget(kind, sheets[0]!, 1, sheets.length, page),
-      block: true,
-    }).range(line.from, line.to),
+    Decoration.replace({ widget: card, block: true }).range(line.from, line.to),
   );
-
-  // The rest stand after it, in order. `side` keeps them in that order: two
-  // block widgets at one position are otherwise drawn in an order CodeMirror
-  // is free to choose.
-  for (let index = 2; index <= sheets.length; index += 1) {
-    pass.ranges.push(
-      Decoration.widget({
-        widget: new ListingWidget(
-          kind,
-          sheets[index - 1]!,
-          index,
-          sheets.length,
-          page,
-        ),
-        block: true,
-        side: index,
-      }).range(line.to),
-    );
-  }
-}
-
-/**
- * Divide a listing into sheets, by how tall its entries are.
- *
- * By height and not by count, which is what it did. A glossary entry is a term
- * and a definition — "AIA Auftraggeber-Informationsanforderungen — Anforderungen
- * des Auftraggebers an die zu liefernden Informationen und Modelle im Rahmen
- * eines BIM-Projekts" — and that is three rows of paper, not one. Cutting every
- * sheet after the same *number* of them made the first sheet three times the
- * height of the page and the ones after it whatever was left, which is what a
- * glossary spread over pages of four different lengths looks like.
- *
- * The measure is an estimate, and this is the one place it has to stay one:
- * the widget is being built, so there is nothing on screen to measure yet.
- */
-function intoSheets(
-  entries: readonly Entry[],
-  perSheet: number,
-  measure: number,
-): Entry[][] {
-  if (perSheet <= 0) return [[...entries]];
-
-  const sheets: Entry[][] = [];
-  let current: Entry[] = [];
-  let used = 0;
-
-  for (const entry of entries) {
-    const written = entry.label.length + (entry.detail?.length ?? 0) + 2;
-    const rows = measure > 0 ? Math.max(1, Math.ceil(written / measure)) : 1;
-
-    // A single entry taller than the sheet still starts one rather than none.
-    if (used > 0 && used + rows > perSheet) {
-      sheets.push(current);
-      current = [];
-      used = 0;
-    }
-    current.push(entry);
-    used += rows;
-  }
-  if (current.length > 0) sheets.push(current);
-  return sheets;
 }
 
 /**
@@ -1644,9 +1489,15 @@ const rendered = StateField.define<Rendered>({
         effect.is(setShowComments) ||
         effect.is(setShowLineBreaks),
     );
+    // Where a generated list can be read changes what its card says, and a
+    // card that still offered a tab the shell had dropped would be a dead end.
+    const retabbed =
+      transaction.startState.facet(listingTabs) !==
+      transaction.state.facet(listingTabs);
     if (
       transaction.docChanged ||
       toggled ||
+      retabbed ||
       !transaction.state.selection.eq(transaction.startState.selection)
     ) {
       return build(transaction.state);
@@ -1923,23 +1774,6 @@ const theme = EditorView.baseTheme({
     inlineSize: "auto",
     cursor: "row-resize",
   },
-  /*
-   * A sheet of a divided listing is a sheet: exactly one page tall, with the
-   * paper's own margins inside it, and no decoration of its own — the paper
-   * behind it is already drawn by the page view.
-   */
-  ".cm-yaz-listing-sheet": {
-    boxSizing: "border-box",
-    overflow: "hidden",
-  },
-  ".cm-yaz-listing-continued": {
-    display: "block",
-    marginBlockEnd: "var(--yaz-space-3)",
-    fontSize: "0.85em",
-    fontStyle: "italic",
-    color: "var(--yaz-text-muted)",
-    textAlign: "end",
-  },
   ".cm-yaz-listing-title": {
     fontSize: "0.8em",
     textTransform: "uppercase",
@@ -1947,41 +1781,27 @@ const theme = EditorView.baseTheme({
     color: "var(--yaz-text-muted)",
     marginBlockEnd: "var(--yaz-space-2)",
   },
-  ".cm-yaz-listing-empty": {
+  // What the card says when nothing can show the list: the compiler makes it.
+  ".cm-yaz-listing-note": {
     margin: "0",
     fontSize: "0.9em",
     color: "var(--yaz-text-muted)",
     fontStyle: "italic",
   },
-  ".cm-yaz-listing-entries": {
-    listStyle: "none",
-    margin: "0",
-    padding: "0",
-  },
-  ".cm-yaz-listing-entry": {
-    lineHeight: "1.5",
-    paddingBlock: "0.05em",
-  },
-  ".cm-yaz-listing-level-1": { paddingInlineStart: "1.2em" },
-  ".cm-yaz-listing-level-2": { paddingInlineStart: "2.4em" },
-  ".cm-yaz-listing-level-3": { paddingInlineStart: "3.6em" },
-  ".cm-yaz-listing-link": {
+  // The way in. Set as text rather than as a button, because what it stands
+  // for is a piece of the document rather than an action on it.
+  ".cm-yaz-listing-open": {
     font: "inherit",
-    color: "var(--yaz-text-primary)",
+    fontSize: "0.9em",
+    color: "var(--yaz-accent)",
     background: "none",
     border: "none",
     padding: "0",
     cursor: "pointer",
     textAlign: "start",
   },
-  ".cm-yaz-listing-link:hover": {
-    color: "var(--yaz-accent)",
+  ".cm-yaz-listing-open:hover": {
     textDecoration: "underline",
-  },
-  ".cm-yaz-listing-detail": {
-    color: "var(--yaz-text-muted)",
-    fontSize: "0.9em",
-    marginInlineStart: "0.5em",
   },
   // The break the author asked for, drawn as a break.
   ".cm-yaz-pagebreak": {

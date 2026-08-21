@@ -36,6 +36,10 @@ The load-bearing ones:
 - **0024** — The page view's sheet is a **fixed box painted behind the text**,
   never built from the content. Do not go back to counting rows to decide where
   a page ends: a page made of content can stretch, and four attempts proved it.
+- **0025** — A generated list (`\tableofcontents`, `\printglossaries`) is a
+  **card on the paper and a tab beside it**, never pages. Nothing in the buffer
+  decides how long a contents list is. The glossary tab is the packages
+  plugin's, through the public `workspace.registerView`.
 
 ## Environment (this machine)
 

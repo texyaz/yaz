@@ -424,7 +424,9 @@ keys-press = Tasten drücken…
 keys-unbound = Nicht belegt
 keys-reset = Zurücksetzen
 keys-conflict = Ein anderes Tastenkürzel belegt diese Tasten.
-menu-view-page = Seitenansicht
+menu-view-plain = Einfach
+menu-view-continuous = Fortlaufend
+menu-view-page = Seite
 
 ## Weitere Überschriftenfarben
 
@@ -479,7 +481,7 @@ status-page = Seite { $page } von { $pages }
 status-words = { $words } Wörter (geschätzt)
 status-zoom = Zoom
 status-zoom-set = Zoomstufe festlegen
-status-page-view = Seite
+status-view = Textsatz
 status-language-unset = Keine Sprache gesetzt
 
 menu-view-wrap = Lange Zeilen umbrechen
@@ -550,13 +552,13 @@ listing-tables = Tabellen
 listing-glossary = Glossar
 listing-bibliography = Literatur
 listing-index = Index
-listing-continued = Fortsetzung
-listing-empty-contents = Keine Überschriften in dieser Datei. Die Dateien des Dokuments verbinden, um das ganze Inhaltsverzeichnis zu sehen.
-listing-empty-figures = Keine beschrifteten Abbildungen in dieser Datei.
-listing-empty-tables = Keine beschrifteten Tabellen in dieser Datei.
-listing-empty-glossary = Keine Glossareinträge in dieser Datei.
-listing-empty-bibliography = Wird beim Übersetzen aus der Literaturdatei erzeugt.
-listing-empty-index = Wird beim Übersetzen erzeugt.
+listing-compiled = Wird beim Übersetzen erzeugt.
+listing-open-contents = Inhalt in der Gliederung anzeigen
+listing-open-figures = Abbildungen anzeigen
+listing-open-tables = Tabellen anzeigen
+listing-open-glossary = Glossar anzeigen
+listing-open-bibliography = Literatur anzeigen
+listing-open-index = Index anzeigen
 pagebreak-clearpage = Seitenumbruch
 pagebreak-cleardoublepage = Seitenumbruch, auf eine rechte Seite
 pagebreak-newpage = Seitenumbruch
@@ -646,3 +648,9 @@ table-column-width = Ziehen, um die Spaltenbreite zu setzen
 table-row-add = Zeile darunter einfügen
 table-row-remove = Diese Zeile entfernen
 table-row-height = Ziehen, um den Abstand nach dieser Zeile zu setzen
+
+## Das Glossar-Tab des LaTeX-Pakete-Plugins.
+
+latex-packages-glossary-title = Glossar
+latex-packages-glossary-empty = Dieses Dokument definiert keine Glossareinträge.
+latex-packages-glossary-no-document = Ein Dokument öffnen, um sein Glossar zu sehen.

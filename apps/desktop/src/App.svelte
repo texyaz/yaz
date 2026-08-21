@@ -29,6 +29,7 @@
   import type { Health } from "./lib/StatusLight.svelte";
   import History from "./lib/History.svelte";
   import Outline from "./lib/Outline.svelte";
+  import PluginView from "./lib/PluginView.svelte";
   import type { Heading } from "./lib/editor/structure";
   import { LINE_NUMBERING } from "./lib/editor/lineNumbers";
   import {
@@ -80,7 +81,18 @@
   import PdfView from "./lib/PdfView.svelte";
   import Picker from "./lib/Picker.svelte";
   import * as ipc from "./lib/ipc";
-  import { PluginRuntime, type PickerRequest } from "./lib/plugins/host";
+  import {
+    PluginRuntime,
+    type PickerRequest,
+    type RegisteredView,
+  } from "./lib/plugins/host";
+  import type { ListingKind } from "@yaz/api";
+  import {
+    canPaginate,
+    DOCUMENT_VIEWS,
+    viewFor,
+  } from "./lib/editor/documentView";
+  import type { DocumentView } from "./lib/editor/documentView";
   import ZoteroPlugin from "../../../plugins/zotero/src/main";
   import ObsidianPlugin from "../../../plugins/obsidian/src/main";
   import FormatsPlugin from "../../../plugins/formats/src/main";
@@ -231,8 +243,16 @@
     joined && project ? `joined:${project.entry}` : (currentFile ?? ""),
   );
 
-  /** Whether the editor sets the text on a page rather than filling the pane. */
-  let pageView = $state(false);
+  /**
+   * How the text is set: plain, a centred column, or on paper.
+   *
+   * What the author chose, which is not always what is drawn: a Markdown file
+   * has no paper size, so the page view falls back to the column for it and
+   * comes back when a `.tex` is opened again. Keeping the choice rather than
+   * silently rewriting it is what makes switching between two files not lose
+   * the setting.
+   */
+  let chosenView = $state<DocumentView>("continuous");
   /** How large the text is drawn, as a percentage. */
   let zoom = $state(100);
   /** Whether a line too long for the pane comes back round. */
@@ -382,6 +402,14 @@
     joined ? "latex" : formatOf(currentFile ?? ""),
   );
   let language = $state<Extension | null>(null);
+
+  /**
+   * The view actually drawn, which is the chosen one unless it cannot apply.
+   *
+   * @see {@link viewFor}
+   */
+  const shownView = $derived(viewFor(chosenView, currentFormat));
+
 
   $effect(() => {
     const wanted = currentFormat;
@@ -737,7 +765,13 @@
         richText = false;
         return;
       case "view.togglePageView":
-        pageView = !pageView;
+        // Round the three rather than to a fixed one, for the same reason the
+        // line-number shortcut does: a shortcut that always lands on the same
+        // setting is half a shortcut.
+        chosenView =
+          DOCUMENT_VIEWS[
+            (DOCUMENT_VIEWS.indexOf(chosenView) + 1) % DOCUMENT_VIEWS.length
+          ] ?? "continuous";
         return;
       case "view.toggleFiles":
         filesPinned = !filesPinned;
@@ -821,13 +855,65 @@
    */
   let layout = $state<LayoutNode>(layoutTree.defaultLayout());
 
+  /**
+   * Tabs plugins have contributed, once they have loaded.
+   *
+   * Copied out of the runtime rather than read from it, because the runtime is
+   * a plain object and this has to be reactive: a glossary tab that appeared
+   * only after the next unrelated state change would look like a bug in the
+   * plugin.
+   */
+  let pluginViews = $state<RegisteredView[]>([]);
+
   /** Tab names. A filename is data, so it is not a message key. */
   const tabTitles = $derived<Record<TabId, string>>({
     editor: currentFile ?? t("workspace-tab-editor"),
     outline: t("workspace-tab-outline"),
     pdf: t("workspace-tab-pdf"),
     history: t("workspace-tab-history"),
+    ...Object.fromEntries(
+      pluginViews.map((view) => [view.tab, t(view.titleKey)]),
+    ),
   });
+
+  /**
+   * Which generated lists have somewhere to be read.
+   *
+   * The contents is the outline's, always — it is the document's own headings
+   * and core draws them. Everything else arrives from a plugin, because
+   * everything else comes from a package (ADR-0023).
+   */
+  const listingHomes = $derived<ListingKind[]>([
+    "contents",
+    ...pluginViews.flatMap((view) => (view.listing ? [view.listing] : [])),
+  ]);
+
+  /** The contributed view a tab id names, or null for one of the shell's own. */
+  function pluginTab(tab: TabId): RegisteredView | null {
+    return pluginViews.find((view) => view.tab === tab) ?? null;
+  }
+
+  /** Which tab shows a given generated list. */
+  function listingTab(kind: ListingKind): TabId | null {
+    if (kind === "contents") return "outline";
+    return pluginViews.find((view) => view.listing === kind)?.tab ?? null;
+  }
+
+  /**
+   * Open the tab that shows a generated list, and bring it to the front.
+   *
+   * Opened *and* focused: the card in the preview is a way in, and a way in
+   * that put the tab behind another one would have done nothing a reader could
+   * see. One update rather than two, so the arrangement is saved once.
+   */
+  function openListing(kind: ListingKind): void {
+    const tab = listingTab(kind);
+    if (!tab) return;
+    const opened = layoutTree.isOpen(layout, tab)
+      ? layout
+      : layoutTree.openTab(layout, tab);
+    updateLayout(layoutTree.focusTab(opened, tab));
+  }
 
   /**
    * Persist the arrangement with the project.
@@ -1025,15 +1111,19 @@
     {
       labelKey: "menu-view",
       items: [
-        {
-          labelKey: "menu-view-page",
+        // One entry per way of setting the text, rather than one switch: they
+        // are three choices and not two states, and a checkbox cannot say that.
+        ...DOCUMENT_VIEWS.map((mode) => ({
+          labelKey: `menu-view-${mode}`,
           icon: "page" as const,
           group: "group-views",
-          checked: pageView,
+          checked: chosenView === mode,
+          // The page needs a paper size, and only a `.tex` declares one.
+          disabled: mode === "page" && !canPaginate(currentFormat),
           action: () => {
-            pageView = !pageView;
+            chosenView = mode;
           },
-        },
+        })),
         {
           labelKey: "ribbon-compact",
           icon: "layout" as const,
@@ -1222,8 +1312,19 @@
                 ribbonOpen = !ribbonOpen;
               },
             },
-            ...(["editor", "pdf", "outline", "history"] as TabId[]).map((tab) => ({
-            labelKey: `workspace-tab-${tab}`,
+            // The shell's own tabs, then whatever the plugins added. A
+            // contributed view names itself with its own message key, which is
+            // why the two halves cannot share one template.
+            ...[
+              ...(["editor", "pdf", "outline", "history"] as TabId[]).map(
+                (tab) => ({ tab, labelKey: `workspace-tab-${tab}` }),
+              ),
+              ...pluginViews.map((view) => ({
+                tab: view.tab,
+                labelKey: view.titleKey,
+              })),
+            ].map(({ tab, labelKey }) => ({
+            labelKey,
             checked: layoutTree.isOpen(layout, tab),
             action: () => {
               updateLayout(
@@ -2133,6 +2234,10 @@
             load: async () => (await entry.load()) as never,
           })),
         );
+        // The tabs the plugins added. A copy, because the runtime's array is
+        // not reactive and a glossary tab that only appeared after the next
+        // unrelated change would look like the plugin had failed.
+        pluginViews = [...runtime.views];
         refreshCommands();
       })
       .catch((error) => {
@@ -2514,7 +2619,7 @@
         rich={richText && currentFormat === "latex"}
         {numbering}
         {shortcuts}
-        {pageView}
+        documentView={shownView}
         page={paperSize}
         {zoom}
         {wrap}
@@ -2526,6 +2631,8 @@
         {paperLight}
         {justified}
         {resolveImage}
+        listings={listingHomes}
+        onOpenListing={openListing}
         onCursor={(offset) => (cursor = offset)}
         onZoom={(percent) => (zoom = percent)}
         onReady={(api) => {
@@ -2556,6 +2663,8 @@
         editorApi?.revealRange(heading.titleFrom, heading.titleTo);
       }}
     />
+  {:else if pluginTab(tab)}
+    <PluginView view={pluginTab(tab)!} doc={docText} />
   {:else if tab === "history"}
     <History
       status={vcs}
@@ -2750,8 +2859,13 @@
       label: t(language.labelKey),
     }))}
     onlanguage={(value) => changeProperty("language", value)}
-    {pageView}
-    onpageview={() => (pageView = !pageView)}
+    view={shownView}
+    onview={() => {
+      chosenView =
+        DOCUMENT_VIEWS[
+          (DOCUMENT_VIEWS.indexOf(chosenView) + 1) % DOCUMENT_VIEWS.length
+        ] ?? "continuous";
+    }}
     rich={richText}
     onsource={() => (richText = !richText)}
     {zoom}

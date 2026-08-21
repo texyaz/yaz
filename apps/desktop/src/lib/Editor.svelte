@@ -41,9 +41,12 @@
     setShowMachinery,
   } from "./editor/richText";
   import { imageSource } from "./editor/semanticView";
+  import { listingTabs } from "./editor/listingLink";
+  import type { ListingKind } from "./editor/generated";
   import { changesIn, setSegments, stitched } from "./editor/stitched";
   import type { Change, Segment } from "./editor/stitch";
   import { includeLinks } from "./editor/includeLinks";
+  import type { DocumentView } from "./editor/documentView";
   import { lineNumbering } from "./editor/lineNumbers";
   import type { LineNumbering } from "./editor/lineNumbers";
   import {
@@ -91,7 +94,13 @@
      * preview — the lines do not break where LaTeX will break them, and
      * claiming otherwise would be worse than not showing a page at all.
      */
-    pageView: boolean;
+    /**
+     * How the text is set: plain, a centred column, or on paper.
+     *
+     * Already resolved by the shell — a Markdown file cannot be on paper, and
+     * deciding that here would mean the editor knowing what a format is.
+     */
+    documentView: DocumentView;
     /** The page's proportions, in millimetres. */
     page: { width: number; height: number };
     /** How large the text is drawn, as a percentage. */
@@ -195,6 +204,18 @@
      * an editor that reached for the filesystem would be going round it.
      */
     resolveImage?: ((path: string) => Promise<string | null>) | undefined;
+    /**
+     * Which generated lists the shell can show in a tab.
+     *
+     * The preview no longer draws a contents list or a glossary on the paper —
+     * it draws a card standing in for one — and the card is only a way in where
+     * something is there to open. Which kinds those are is the shell's to say:
+     * the outline answers for the contents and a plugin answers for the
+     * glossary, and the editor knows neither.
+     */
+    listings?: readonly ListingKind[] | undefined;
+    /** A generated list's card was clicked. */
+    onOpenListing?: ((kind: ListingKind) => void) | undefined;
     /** Caret moved, as an offset into the source. */
     onCursor?: ((offset: number) => void) | undefined;
     /**
@@ -225,7 +246,7 @@
     rich,
     numbering,
     language = null,
-    pageView,
+    documentView,
     page,
     zoom,
     wrap,
@@ -238,12 +259,17 @@
     shortcuts,
     segments = null,
     resolveImage,
+    listings = [],
+    onOpenListing,
     onRefused,
     onOpenInclude,
     onCursor,
     onZoom,
     onReady,
   }: Props = $props();
+
+  /** Whether the text is set on paper. */
+  const paged = $derived(documentView === "page");
 
   /** The map currently installed, so a re-stitch can be told from a keystroke. */
   let loadedSegments: Segment[] | null = null;
@@ -346,6 +372,7 @@
   const keyCompartment = new Compartment();
   const wrapCompartment = new Compartment();
   const pageCompartment = new Compartment();
+  const listingCompartment = new Compartment();
   const languageCompartment = new Compartment();
 
   /*
@@ -449,6 +476,7 @@
       // of the view: the resolver is a function, not a value that changes.
       imageSource.of((path) => resolveImage?.(path) ?? Promise.resolve(null)),
       pagination(),
+      listingCompartment.of(listingHomes(listings)),
       pageCompartment.of([
         paginated.of(false),
         paper.of(null),
@@ -646,7 +674,7 @@
     // with the new zoom. How tall the *content* turned out is still measured,
     // in `pagination.ts`, which is where a measurement belongs.
     const magnified = zoom / 100;
-    const sheet = pageView
+    const sheet = paged
       ? {
           height: page.height * PIXELS_PER_MM * magnified,
           width: page.width * PIXELS_PER_MM * magnified,
@@ -658,9 +686,32 @@
 
     instance.dispatch({
       effects: pageCompartment.reconfigure([
-        paginated.of(pageView),
+        paginated.of(paged),
         paper.of(sheet),
       ]),
+    });
+  });
+
+  /**
+   * Where a generated list can be read, as the preview sees it.
+   *
+   * A fresh object each time on purpose: the decorations rebuild when the facet
+   * changes, and identity is what "changed" means for a facet holding a pair of
+   * functions.
+   */
+  function listingHomes(kinds: readonly ListingKind[]) {
+    const known = new Set(kinds);
+    return listingTabs.of({
+      has: (kind) => known.has(kind),
+      open: (kind) => onOpenListing?.(kind),
+    });
+  }
+
+  // A plugin registering the glossary tab arrives after the view exists, so the
+  // cards have to be told rather than being right once at startup.
+  $effect(() => {
+    view?.dispatch({
+      effects: listingCompartment.reconfigure(listingHomes(listings)),
     });
   });
 
@@ -686,7 +737,8 @@
 -->
 <div
   class="editor"
-  class:paged={pageView}
+  class:paged
+  class:flowing={documentView === "continuous"}
   class:paper={paperLight}
   class:justified
   style:--yaz-page-width="{page.width}mm"
@@ -740,6 +792,52 @@
     --yaz-editor-active-line: #f4f4f5;
     --yaz-editor-gutter-bg: #fafafa;
     --yaz-editor-gutter-text: #a1a1aa;
+  }
+
+  /* The continuous view: a column of a sensible measure, centred in the pane.
+
+     The measure is in `em`, and the content box's font size is already scaled
+     by the zoom — so the column grows and shrinks with the text and the number
+     of characters across it stays the same, which is the thing that actually
+     makes a measure comfortable to read.
+
+     No paper, no page breaks and no paper size, which is why this is offered
+     for every text format while the page view is not. */
+  .editor.flowing {
+    overflow: hidden;
+    --yaz-measure: 42em;
+  }
+
+  .editor.flowing :global(.cm-scroller) {
+    justify-content: center;
+  }
+
+  .editor.flowing :global(.cm-content) {
+    box-sizing: border-box;
+    inline-size: var(--yaz-measure);
+    max-inline-size: 100%;
+    padding-inline: var(--yaz-space-4);
+    padding-block: var(--yaz-space-6);
+  }
+
+  .editor.flowing :global(.cm-gutters) {
+    background: transparent;
+    border: none;
+  }
+
+  /* A long line with wrapping off runs past the column and is reached by
+     scrolling sideways — but without a bar under the text.
+
+     A horizontal bar across a reading column is a piece of interface sitting
+     in the middle of the page, and it would be there permanently for the sake
+     of the one line in the document that is too long. The scrolling still
+     works: a tilt wheel, a trackpad swipe and Shift with the wheel all reach
+     it, because the element is still an overflowing one — it just does not
+     draw the bar. The vertical bar is left alone, since that one is how you
+     know where you are in the document. */
+  .editor.flowing :global(.cm-scroller::-webkit-scrollbar:horizontal) {
+    block-size: 0;
+    display: none;
   }
 
   /* The page. A sheet of the declared size, centred on the surround, with the

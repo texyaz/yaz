@@ -50,3 +50,4 @@ decision we later reversed is more valuable than a tidy directory.
 | [0022](0022-mcp-and-tool-declaration.md)             | MCP: calling out is a capability, exposing tools is a declaration     | Accepted |
 | [0023](0023-latex-vocabulary-boundary.md)            | The preview knows LaTeX; packages are plugins                         | Accepted |
 | [0024](0024-page-view-fixed-sheets.md)               | The page is a fixed box; content is pushed through it                 | Accepted |
+| [0025](0025-generated-lists-are-tabs.md)             | A generated list is a tab, not pages                                  | Accepted |
