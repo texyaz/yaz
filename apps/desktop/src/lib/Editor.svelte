@@ -805,17 +805,27 @@
      for every text format while the page view is not. */
   .editor.flowing {
     overflow: hidden;
-    --yaz-measure: 42em;
+    --yaz-measure: calc(42rem * var(--yaz-zoom, 1));
   }
 
+  /* The column is the *scroller*, not the content box.
+
+     Which looks like the wrong element until you try it the other way round.
+     With wrapping off, CodeMirror sets a `min-width` on the content box equal
+     to the longest line in the document, so that the line can be scrolled to —
+     and a `min-width` beats a `max-width`. A column set on the content box
+     therefore quietly grew to the width of the longest line, which is the one
+     thing a measure must not do.
+
+     Set on the scroller it holds, and the long line scrolls inside it. */
   .editor.flowing :global(.cm-scroller) {
-    justify-content: center;
+    inline-size: 100%;
+    max-inline-size: var(--yaz-measure);
+    margin-inline: auto;
   }
 
   .editor.flowing :global(.cm-content) {
     box-sizing: border-box;
-    inline-size: var(--yaz-measure);
-    max-inline-size: 100%;
     padding-inline: var(--yaz-space-4);
     padding-block: var(--yaz-space-6);
   }
