@@ -30,6 +30,7 @@
   import History from "./lib/History.svelte";
   import Outline from "./lib/Outline.svelte";
   import PluginView from "./lib/PluginView.svelte";
+  import BibliographyFix from "./lib/BibliographyFix.svelte";
   import type { Heading } from "./lib/editor/structure";
   import { LINE_NUMBERING } from "./lib/editor/lineNumbers";
   import {
@@ -88,6 +89,13 @@
     type RegisteredView,
   } from "./lib/plugins/host";
   import type { ListingKind } from "@yaz/api";
+  import {
+    declaredBibliographies,
+    diagnoseBibliography,
+    readBib,
+  } from "./lib/editor/bibliography";
+  import type { BibProblem } from "./lib/editor/bibliography";
+  import type { BibEntry } from "./lib/editor/semanticView";
   import {
     canPaginate,
     DOCUMENT_VIEWS,
@@ -874,6 +882,158 @@
    * unrelated state change would look like the plugin had failed.
    */
   let dropTakers = $state<RegisteredDropHandler[]>([]);
+
+  /**
+   * The `.bib` files the open document declares.
+   *
+   * Read from the buffer rather than from the project, because it is the
+   * document that decides: a project can hold three `.bib` files and load one.
+   */
+  const declaredBibs = $derived(declaredBibliographies(docText));
+
+  /**
+   * What those files say, keyed by citation key.
+   *
+   * Loaded when the declaration or the project changes, and after a citation is
+   * inserted — not on every keystroke. A `.bib` is a file on disk, and reading
+   * it as the author types would put IO on the typing path (ADR-0015).
+   */
+  let bibEntries = $state<ReadonlyMap<string, BibEntry>>(new Map());
+
+  /** Bumped to re-read the `.bib` after something has written to it. */
+  let bibGeneration = $state(0);
+
+  $effect(() => {
+    const open = project;
+    const names = declaredBibs;
+    void bibGeneration;
+    if (!open || names.length === 0) {
+      bibEntries = new Map();
+      return;
+    }
+
+    let cancelled = false;
+    void loadBibliography().then((merged) => {
+      if (!cancelled) bibEntries = merged;
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  });
+
+  /** Read every declared `.bib`, merged. */
+  async function loadBibliography(): Promise<Map<string, BibEntry>> {
+    const open = project;
+    const merged = new Map<string, BibEntry>();
+    if (!open) return merged;
+
+    for (const name of declaredBibs) {
+      try {
+        const text = await ipc.readFile(open.root, name);
+        // First declaration wins for a key defined twice, which is what
+        // biblatex does with two resources.
+        for (const [key, entry] of readBib(text)) {
+          if (!merged.has(key)) merged.set(key, entry);
+        }
+      } catch {
+        // A declared file that is not there is not an error to report here —
+        // it is what the fix modal explains when a citation is clicked.
+      }
+    }
+    return merged;
+  }
+
+  /**
+   * The unresolved citation being explained, and what is wrong.
+   *
+   * Null until one is clicked. Working this out reads the project directory,
+   * so it happens on the click and nowhere else.
+   */
+  let bibProblem = $state<{ key: string; problem: BibProblem } | null>(null);
+
+  /**
+   * Explain why a citation will not resolve.
+   *
+   * The scan is `project.files`, which the shell already has from opening the
+   * project — so "scan the directory" costs a filter rather than a walk, and
+   * the only fresh work is deciding what it means.
+   */
+  async function explainCitation(key: string) {
+    if (!project) return;
+
+    // Re-read first. Citing from Zotero writes the `.bib` behind the editor's
+    // back, so the citation the author is clicking may already be fine — and
+    // explaining a problem that has just been fixed is worse than saying
+    // nothing.
+    const fresh = await loadBibliography();
+    bibEntries = fresh;
+    if (fresh.has(key)) return;
+
+    const present = project.files
+      .map((file) => file.relativePath)
+      .filter((path) => /\.bib$/i.test(path));
+    bibProblem = { key, problem: diagnoseBibliography(declaredBibs, present) };
+  }
+
+  /**
+   * Point the document at a bibliography file.
+   *
+   * Through the editor rather than by assigning the text, for two reasons: the
+   * buffer is the document (ADR-0004), and an edit made this way lands in undo
+   * with everything else the author has been doing — so a fix they did not mean
+   * to accept is one Ctrl+Z away.
+   *
+   * The declaration replaces the one that is there, or goes in above
+   * `egin{document}` where there is none, which is where a preamble command
+   * belongs and where biblatex requires it.
+   */
+  function useBibliography(name: string) {
+    if (!editorApi) return;
+    const text = editorApi.getText();
+    const declaration = `\\addbibresource{${name}}`;
+    const existing = /\\addbibresource\s*(?:\[[^\]]*\])?\s*\{[^}]*\}/.exec(text);
+
+    if (existing) {
+      editorApi.replaceRange(
+        existing.index,
+        existing.index + existing[0].length,
+        declaration,
+      );
+    } else {
+      const begins = text.indexOf(`\\begin{document}`);
+      const at = begins === -1 ? text.length : begins;
+      editorApi.replaceRange(at, at, `${declaration}\n\n`);
+    }
+
+    bibProblem = null;
+    bibGeneration += 1;
+  }
+
+  /** Create an empty bibliography, and make sure the document loads it. */
+  async function createBibliography(name: string) {
+    if (!project) return;
+    try {
+      // Only if it is not already there: writing over a `.bib` that exists
+      // would delete somebody's references to fix a declaration.
+      const present = project.files.some(
+        (file) => file.relativePath.toLowerCase() === name.toLowerCase(),
+      );
+      if (!present) {
+        await ipc.writeFile(project.root, name, "");
+        project = await ipc.openProject(project.root);
+      }
+      if (!declaredBibs.includes(name)) {
+        useBibliography(name);
+      } else {
+        bibProblem = null;
+        bibGeneration += 1;
+      }
+      showNotice(t("bib-fix-created", { file: name }));
+    } catch (error) {
+      failure = String(error);
+    }
+  }
 
   /** Tab names. A filename is data, so it is not a message key. */
   const tabTitles = $derived<Record<TabId, string>>({
@@ -2643,6 +2803,8 @@
         {justified}
         {resolveImage}
         {dropTakers}
+        bibliography={bibEntries}
+        onUnresolvedCitation={(key) => void explainCitation(key)}
         listings={listingHomes}
         onOpenListing={openListing}
         onCursor={(offset) => (cursor = offset)}
@@ -2690,6 +2852,16 @@
     />
   {/if}
 {/snippet}
+
+{#if bibProblem}
+  <BibliographyFix
+    citationKey={bibProblem.key}
+    problem={bibProblem.problem}
+    onuse={useBibliography}
+    oncreate={(name) => void createBibliography(name)}
+    onclose={() => (bibProblem = null)}
+  />
+{/if}
 
 {#if buildingTheme}
   <ThemeBuilder

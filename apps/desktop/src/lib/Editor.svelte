@@ -40,7 +40,12 @@
     setLockTables,
     setShowMachinery,
   } from "./editor/richText";
-  import { imageSource } from "./editor/semanticView";
+  import {
+    bibliography,
+    followCitation,
+    imageSource,
+  } from "./editor/semanticView";
+  import type { BibEntry } from "./editor/semanticView";
   import { listingTabs } from "./editor/listingLink";
   import type { ListingKind } from "./editor/generated";
   import { changesIn, setSegments, stitched } from "./editor/stitched";
@@ -219,6 +224,23 @@
     /** A generated list's card was clicked. */
     onOpenListing?: ((kind: ListingKind) => void) | undefined;
     /**
+     * What the project's bibliography says, keyed by citation key.
+     *
+     * Supplied by the shell because a `.bib` is a different file — and in
+     * single-file mode not even the one that is open. Empty is a fine value: a
+     * citation then draws its key, which is what the author typed.
+     */
+    bibliography?: ReadonlyMap<string, BibEntry> | undefined;
+    /**
+     * A citation whose key nothing defines was clicked.
+     *
+     * The shell answers this by looking at the project directory, which is why
+     * it is a click and not a watcher: reading the filesystem on every
+     * keystroke to warn about something most documents never hit would be the
+     * wrong trade (ADR-0015).
+     */
+    onUnresolvedCitation?: ((key: string) => void) | undefined;
+    /**
      * What plugins offered to make of something dropped on the editor.
      *
      * Passed in rather than reached for: which plugins are loaded is the
@@ -270,6 +292,8 @@
     resolveImage,
     listings = [],
     onOpenListing,
+    bibliography: bibEntries = new Map<string, BibEntry>(),
+    onUnresolvedCitation,
     dropTakers: takers = [],
     onRefused,
     onOpenInclude,
@@ -384,6 +408,7 @@
   const pageCompartment = new Compartment();
   const listingCompartment = new Compartment();
   const dropCompartment = new Compartment();
+  const bibCompartment = new Compartment();
   const languageCompartment = new Compartment();
 
   /*
@@ -488,6 +513,13 @@
       imageSource.of((path) => resolveImage?.(path) ?? Promise.resolve(null)),
       pagination(),
       listingCompartment.of(listingHomes(listings)),
+      bibCompartment.of(bibliography.of(bibEntries)),
+      // Clicking a citation whose key nothing defines. A resolved one does
+      // nothing here — going to a `.bib` entry is a different feature, and one
+      // that silently did nothing would read as broken.
+      followCitation.of((key) => {
+        if (!bibEntries.has(key)) onUnresolvedCitation?.(key);
+      }),
       pluginDrops(),
       dropCompartment.of(dropTakers.of(takers)),
       pageCompartment.of([
@@ -736,6 +768,15 @@
     });
   });
 
+  // The bibliography arrives after the file is read, and changes when the
+  // author writes to the `.bib` — so it is reconfigured rather than fixed at
+  // creation.
+  $effect(() => {
+    view?.dispatch({
+      effects: bibCompartment.reconfigure(bibliography.of(bibEntries)),
+    });
+  });
+
   /** What separates one sheet from the next. */
   const PAGE_GAP_MM = 8;
 
@@ -829,25 +870,29 @@
     --yaz-measure: calc(52rem * var(--yaz-zoom, 1));
   }
 
-  /* The column is the *scroller*, not the content box.
+  /* The column is the scroller's *padding*, not its width.
 
-     Which looks like the wrong element until you try it the other way round.
-     With wrapping off, CodeMirror sets a `min-width` on the content box equal
-     to the longest line in the document, so that the line can be scrolled to —
-     and a `min-width` beats a `max-width`. A column set on the content box
-     therefore quietly grew to the width of the longest line, which is the one
-     thing a measure must not do.
+     Three attempts live in this rule. Setting a `max-width` on the content box
+     does not work: with wrapping off CodeMirror puts a `min-width` on it equal
+     to the longest line so that line can be scrolled to, and `min-width` beats
+     `max-width` — so the column quietly grew to the longest line, which is the
+     one thing a measure must not do. Narrowing the scroller instead does hold
+     the measure, but the scrollbar belongs to the scroller, so it came inboard
+     and sat against the text rather than at the edge of the pane.
 
-     Set on the scroller it holds, and the long line scrolls inside it. */
+     Padding a full-width scroller gets both: the bar stays at the pane's right
+     edge where a scrollbar belongs, and the text is inset to the measure. The
+     `max()` is what stops the padding going negative in a pane narrower than
+     the column. */
   .editor.flowing :global(.cm-scroller) {
-    inline-size: 100%;
-    max-inline-size: var(--yaz-measure);
-    margin-inline: auto;
+    padding-inline: max(
+      var(--yaz-space-4),
+      calc((100% - var(--yaz-measure)) / 2)
+    );
   }
 
   .editor.flowing :global(.cm-content) {
     box-sizing: border-box;
-    padding-inline: var(--yaz-space-4);
     padding-block: var(--yaz-space-6);
   }
 

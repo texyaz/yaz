@@ -18,7 +18,10 @@ import {
   withoutLinks,
   zoteroLinks,
 } from "../../../../../plugins/zotero/src/drop";
-import { searchable } from "../../../../../plugins/zotero/src/main";
+import {
+  declaredBibliography,
+  searchable,
+} from "../../../../../plugins/zotero/src/main";
 
 /** Zotero's attributes are URI-encoded JSON. */
 function attribute(value: unknown): string {
@@ -395,5 +398,40 @@ describe("searching for a source by its formatted reference", () => {
     // `DIN 277` is the name of the standard, not a year, and cutting it would
     // turn a query that matches one item into one that matches a shelf.
     expect(searchable("DIN 277")).toBe("DIN 277");
+  });
+});
+
+/**
+ * Which `.bib` a new entry is written into.
+ *
+ * The bug that made a correctly-inserted citation render red: the bridge
+ * defaulted to `references.bib` and ignored what the preamble declared, so an
+ * entry landed in a file LaTeX never reads.
+ */
+describe("the bibliography an entry is written to", () => {
+  const B2 = String.fromCharCode(92);
+
+  it("is the one the document declares", () => {
+    expect(declaredBibliography(`${B2}addbibresource{BIMwissT.bib}`)).toBe(
+      "BIMwissT.bib",
+    );
+  });
+
+  it("adds the extension BibTeX's spelling leaves off", () => {
+    expect(declaredBibliography(`${B2}bibliography{refs}`)).toBe("refs.bib");
+  });
+
+  it("takes the first of several", () => {
+    const doc = [
+      `${B2}addbibresource{primary.bib}`,
+      `${B2}addbibresource{secondary.bib}`,
+    ].join("\n");
+    expect(declaredBibliography(doc)).toBe("primary.bib");
+  });
+
+  it("says nothing for a document that declares nothing", () => {
+    // Which leaves the bridge's own default in place, and is what the fix
+    // modal is for.
+    expect(declaredBibliography(`${B2}documentclass{article}`)).toBeUndefined();
   });
 });

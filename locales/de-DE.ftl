@@ -671,3 +671,19 @@ zotero-notice-online-later = Die Bibliothek von zotero.org zu lesen ist geplant,
 zotero-notice-launching = Zotero wird gestartet…
 zotero-notice-launch-failed = Zotero konnte nicht gestartet werden.
 zotero-notice-launch-slow = Zotero startet noch. Nach dem Start erneut verbinden.
+
+## Zitat reparieren, dessen Schlüssel keine Literaturdatei kennt.
+
+bib-fix-title = Dieses Zitat lässt sich nicht auflösen
+bib-fix-key = \cite{ "{" }{ $key }{ "}" }
+bib-fix-cancel = So lassen
+bib-fix-undeclared = Dieses Dokument lädt überhaupt keine Literaturdatei, deshalb kann kein Zitat darin aufgelöst werden.
+bib-fix-missing = Dieses Dokument lädt { $file }, was im Projekt nicht vorhanden ist.
+bib-fix-absent = { $file } wird geladen und ist vorhanden; dieser Schlüssel steht nur nicht darin.
+bib-fix-absent-detail = Die Quelle aus Zotero zitieren oder den Eintrag von Hand ergänzen.
+bib-fix-use = Stattdessen { $file } laden
+bib-fix-use-detail = Richtet \addbibresource des Dokuments auf diese Datei.
+bib-fix-create = { $file } anlegen
+bib-fix-create-declared-detail = Legt die leere Datei an, die das Dokument bereits verlangt.
+bib-fix-create-detail = Legt die Datei an und ergänzt das passende \addbibresource.
+bib-fix-created = { $file } angelegt und das Dokument darauf ausgerichtet.

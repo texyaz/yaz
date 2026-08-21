@@ -670,3 +670,19 @@ zotero-notice-online-later = Reading the library from zotero.org is planned, not
 zotero-notice-launching = Starting Zotero…
 zotero-notice-launch-failed = Zotero could not be started.
 zotero-notice-launch-slow = Zotero is still starting. Connect again once it is up.
+
+## Fixing a citation whose key no bibliography defines.
+
+bib-fix-title = This citation will not resolve
+bib-fix-key = \cite{ "{" }{ $key }{ "}" }
+bib-fix-cancel = Leave it
+bib-fix-undeclared = This document does not load a bibliography at all, so no citation in it can resolve.
+bib-fix-missing = This document loads { $file }, which is not in the project.
+bib-fix-absent = { $file } is loaded and present; this key is simply not in it.
+bib-fix-absent-detail = Cite the source from Zotero, or add the entry to the file by hand.
+bib-fix-use = Load { $file } instead
+bib-fix-use-detail = Points the document's \addbibresource at this file.
+bib-fix-create = Create { $file }
+bib-fix-create-declared-detail = Makes the empty file the document already asks for.
+bib-fix-create-detail = Makes the file and adds the \addbibresource for it.
+bib-fix-created = Created { $file } and pointed the document at it.
