@@ -176,6 +176,7 @@ zotero-error-no-library = Es wurde keine Zotero-Bibliothek gefunden.
 zotero-error-unsupported-schema = Diese Zotero-Bibliothek stammt von einem neueren Zotero, als yaz versteht, und wurde deshalb nicht gelesen.
 zotero-error-unsupported-journal = Diese Zotero-Bibliothek legt die letzten Änderungen getrennt ab; yaz hätte nur einen veralteten Stand gelesen.
 zotero-error-not-running = Zotero läuft nicht.
+zotero-error-cannot-launch = Zotero konnte nicht gestartet werden. Möglicherweise ist es nicht dort installiert, wo yaz gesucht hat.
 zotero-error-unexpected-response = Zotero hat auf eine Weise geantwortet, die yaz nicht versteht.
 zotero-error-http = Zotero war nicht erreichbar.
 zotero-error-database = Ihre Zotero-Bibliothek ließ sich nicht lesen.
@@ -655,3 +656,18 @@ table-row-height = Ziehen, um den Abstand nach dieser Zeile zu setzen
 latex-packages-glossary-title = Glossar
 latex-packages-glossary-empty = Dieses Dokument definiert keine Glossareinträge.
 latex-packages-glossary-no-document = Ein Dokument öffnen, um sein Glossar zu sehen.
+zotero-notice-drop-unresolved = Ohne Quelle zitiert: Der Drag hat nicht mitgeteilt, aus welchem Eintrag er stammt.
+
+## Verbindung zu Zotero, wenn es nicht läuft.
+
+zotero-connect-title = Zotero läuft nicht
+zotero-connect-launch = Zotero starten
+zotero-connect-launch-detail = Das Zotero auf diesem Rechner öffnen und dann verbinden.
+zotero-connect-online = Bibliothek auf zotero.org verwenden
+zotero-connect-online-detail = Noch nicht gebaut — siehe Roadmap des Plugins.
+zotero-connect-offline = Weiter aus der lokalen Kopie lesen
+zotero-connect-offline-detail = Antwortet derzeit aus { $source }.
+zotero-notice-online-later = Die Bibliothek von zotero.org zu lesen ist geplant, aber noch nicht gebaut. Solange antwortet die lokale Kopie.
+zotero-notice-launching = Zotero wird gestartet…
+zotero-notice-launch-failed = Zotero konnte nicht gestartet werden.
+zotero-notice-launch-slow = Zotero startet noch. Nach dem Start erneut verbinden.

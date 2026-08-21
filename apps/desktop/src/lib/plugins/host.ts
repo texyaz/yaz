@@ -31,6 +31,7 @@ import type {
   App,
   Command,
   EditorApi,
+  DropHandler,
   ListingKind,
   PickerItem,
   PickerOptions,
@@ -139,6 +140,13 @@ export interface RegisteredView {
   mount: (container: HTMLElement) => ViewHandle;
 }
 
+/** A drop handler a plugin registered, and who registered it. */
+export interface RegisteredDropHandler {
+  pluginId: string;
+  flavours: readonly string[];
+  handle: DropHandler["handle"];
+}
+
 /** A LaTeX vocabulary a plugin contributed, and who contributed it. */
 export interface RegisteredVocabulary {
   pluginId: string;
@@ -182,6 +190,14 @@ export class PluginRuntime {
    * workspace decides what is on screen.
    */
   readonly views: RegisteredView[] = [];
+  /**
+   * What plugins offered to make of something dropped on the editor.
+   *
+   * In registration order, and the first that returns text wins. A handler that
+   * does not recognise the drop returns `null`, so the order decides only which
+   * of two plugins that *both* understand it gets to answer.
+   */
+  readonly dropHandlers: RegisteredDropHandler[] = [];
   private readonly loaded = new Map<string, Plugin>();
   /** Stops a second `start()` adding a second listener for the same events. */
   private listening = false;
@@ -348,6 +364,14 @@ export class PluginRuntime {
       });
     };
 
+    plugin.registerDropHandler = function registerDropHandler(handler) {
+      runtime.dropHandlers.push({
+        pluginId,
+        flavours: [...handler.flavours],
+        handle: handler.handle.bind(handler),
+      });
+    };
+
     plugin.registerLatexVocabulary = function registerLatexVocabulary(
       vocabulary,
     ) {
@@ -504,6 +528,7 @@ export class PluginRuntime {
             keysAreAuthoritative: status.keysAreAuthoritative,
             dataDir: status.dataDir,
             detail: status.detail,
+            isRunning: status.zoteroRunning,
           })),
         search: (query: string, limit?: number) =>
           ipc.zoteroSearch(pluginId, query, limit),
@@ -520,6 +545,8 @@ export class PluginRuntime {
           );
         },
         refresh: () => ipc.zoteroReconnect(pluginId),
+        isInstalled: () => ipc.zoteroInstalled(pluginId),
+        launch: () => ipc.zoteroLaunch(pluginId),
       },
 
       obsidian: {

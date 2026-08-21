@@ -641,6 +641,36 @@ pub async fn plugin_zotero_reconnect(
     Ok(())
 }
 
+/// Whether Zotero is installed, wherever its installer puts it.
+///
+/// Asked before offering to start it: an offer that fails is worse than no
+/// offer, and "Zotero is not running" and "Zotero is not on this machine" want
+/// different things said about them.
+#[tauri::command]
+pub async fn plugin_zotero_installed(
+    plugin_id: String,
+    host: tauri::State<'_, PluginHost>,
+) -> Result<bool> {
+    host.authorise(&plugin_id, &Request::Zotero).await?;
+    Ok(yaz_zotero::launch::installed().is_some())
+}
+
+/// Start Zotero.
+///
+/// Takes no path, deliberately. A command that ran a program a plugin named
+/// would be a general-purpose process launcher wearing a citation manager's
+/// name; this one can only ever start the Zotero the discovery in `yaz-zotero`
+/// found (ADR-0006).
+#[tauri::command]
+pub async fn plugin_zotero_launch(
+    plugin_id: String,
+    host: tauri::State<'_, PluginHost>,
+) -> Result<()> {
+    host.authorise(&plugin_id, &Request::Zotero).await?;
+    yaz_zotero::launch::launch().map_err(zotero_error)?;
+    Ok(())
+}
+
 /// Every bundled plugin, with the capabilities its manifest declares.
 ///
 /// Note there is no command to *grant* capabilities. The frontend can ask what

@@ -84,6 +84,7 @@
   import {
     PluginRuntime,
     type PickerRequest,
+    type RegisteredDropHandler,
     type RegisteredView,
   } from "./lib/plugins/host";
   import type { ListingKind } from "@yaz/api";
@@ -864,6 +865,15 @@
    * plugin.
    */
   let pluginViews = $state<RegisteredView[]>([]);
+
+  /**
+   * What plugins offered to make of something dropped on the editor.
+   *
+   * Copied out of the runtime for the same reason the views are: the runtime is
+   * a plain object, and a handler that only became live after the next
+   * unrelated state change would look like the plugin had failed.
+   */
+  let dropTakers = $state<RegisteredDropHandler[]>([]);
 
   /** Tab names. A filename is data, so it is not a message key. */
   const tabTitles = $derived<Record<TabId, string>>({
@@ -2238,6 +2248,7 @@
         // not reactive and a glossary tab that only appeared after the next
         // unrelated change would look like the plugin had failed.
         pluginViews = [...runtime.views];
+        dropTakers = [...runtime.dropHandlers];
         refreshCommands();
       })
       .catch((error) => {
@@ -2631,6 +2642,7 @@
         {paperLight}
         {justified}
         {resolveImage}
+        {dropTakers}
         listings={listingHomes}
         onOpenListing={openListing}
         onCursor={(offset) => (cursor = offset)}

@@ -78,6 +78,21 @@ export abstract class Plugin {
   }
 
   /**
+   * Turn something dropped on the editor into text.
+   *
+   * Registering does not take the drop away from anyone: every handler is
+   * offered it in turn and the first that returns text wins, so a plugin that
+   * does not recognise what was dropped simply returns `null` and the editor
+   * falls back to inserting the plain text itself. A drop therefore always does
+   * something, whatever is or is not installed.
+   *
+   * @since 0.3.0
+   */
+  registerDropHandler(_handler: DropHandler): void {
+    throw new Error("not implemented");
+  }
+
+  /**
    * Teach the editor a text format.
    *
    * The editor opens any text file with line numbers, wrapping, Vim and
@@ -467,6 +482,32 @@ export interface ZoteroApi {
 
   /** Re-probe the sources, e.g. after the user starts Zotero. */
   refresh(): Promise<void>;
+
+  /**
+   * Whether Zotero is on this machine at all.
+   *
+   * Distinct from {@link ZoteroStatus.isRunning}: a closed Zotero can be
+   * started and an absent one cannot, and offering to start something that is
+   * not there is worse than not offering.
+   *
+   * @since 0.3.0
+   */
+  isInstalled(): Promise<boolean>;
+
+  /**
+   * Start Zotero.
+   *
+   * Takes no path. Which program is run is decided in the Rust process from its
+   * own discovery, never by the caller — a call that named a binary would be a
+   * general-purpose process launcher reachable from a plugin
+   * ({@link https://generalpawz.github.io/yaz/adr/0006-plugin-runtime-and-capabilities | ADR-0006}).
+   *
+   * Returns as soon as Zotero has been started, not when it is ready. Call
+   * {@link ZoteroApi.refresh} once it is up.
+   *
+   * @since 0.3.0
+   */
+  launch(): Promise<void>;
 }
 
 /**
@@ -496,6 +537,17 @@ export interface ZoteroStatus {
   dataDir: string | null;
   /** Diagnostic text when no source is available. */
   detail: string | null;
+  /**
+   * Whether Zotero itself is running.
+   *
+   * Deliberately separate from {@link ZoteroStatus.isLive}. Queries read a copy
+   * of the database because that is far faster and covers every library, so the
+   * *source* is offline while the *data* is current — and what makes it current
+   * is Zotero being the thing that last wrote the file the copy came from.
+   *
+   * @since 0.3.0
+   */
+  isRunning: boolean;
 }
 
 /** A Zotero library item. @since 0.1.0 */
@@ -681,6 +733,48 @@ export interface FormatContribution {
    * yaz rather than a break for every plugin.
    */
   load(): Promise<unknown>;
+}
+
+/**
+ * Something dropped on the editor, offered to a plugin.
+ *
+ * The flavours are what the drag actually carried, unchanged. That matters for
+ * the case this exists for: dragging out of a reference manager gives you a
+ * formatted string in `text/plain` and the machine-readable version of the same
+ * thing in `text/html`, and only the second one can be turned into a citation
+ * that a compiler will resolve.
+ *
+ * @since 0.3.0
+ */
+export interface DroppedData {
+  /** What the drag carried, keyed by MIME type. */
+  readonly flavours: Readonly<Record<string, string>>;
+  /** Convenience for `flavours["text/plain"]`, or the empty string. */
+  readonly text: string;
+  /** Where in the buffer it was dropped, as an offset into the raw source. */
+  readonly at: number;
+}
+
+/**
+ * Turns a drop into text, or declines it.
+ *
+ * Returning `null` — including for anything unrecognised — passes the drop on
+ * to the next handler and finally to the editor's own plain-text insertion.
+ * Declining is the normal case and costs nothing.
+ *
+ * @since 0.3.0
+ */
+export interface DropHandler {
+  /**
+   * Which MIME types this wants to be offered.
+   *
+   * A filter rather than a courtesy: a handler is only called when the drop
+   * carries one of these, so dragging a file onto the editor does not wake
+   * every citation plugin installed.
+   */
+  readonly flavours: readonly string[];
+  /** The LaTeX to insert, or `null` to decline. */
+  handle(dropped: DroppedData): Promise<string | null> | string | null;
 }
 
 /** An editor extension: a completion source, decoration, or diagnostic provider. @since 0.1.0 */

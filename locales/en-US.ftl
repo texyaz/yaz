@@ -175,6 +175,7 @@ zotero-error-no-library = No Zotero library was found.
 zotero-error-unsupported-schema = This Zotero library was made by a newer Zotero than yaz understands, so it was not read.
 zotero-error-unsupported-journal = This Zotero library stores recent changes separately, and yaz would only have read an out-of-date copy.
 zotero-error-not-running = Zotero is not running.
+zotero-error-cannot-launch = Zotero could not be started. It may not be installed where yaz looked for it.
 zotero-error-unexpected-response = Zotero answered in a way yaz did not understand.
 zotero-error-http = Could not reach Zotero.
 zotero-error-database = Your Zotero library could not be read.
@@ -654,3 +655,18 @@ table-row-height = Drag to set the space after this row
 latex-packages-glossary-title = Glossary
 latex-packages-glossary-empty = This document defines no glossary entries.
 latex-packages-glossary-no-document = Open a document to see its glossary.
+zotero-notice-drop-unresolved = Quoted without a source: the drag did not say which item it came from.
+
+## Connecting to Zotero when it is not running.
+
+zotero-connect-title = Zotero is not running
+zotero-connect-launch = Start Zotero
+zotero-connect-launch-detail = Open the Zotero on this machine, then connect to it.
+zotero-connect-online = Use the library on zotero.org
+zotero-connect-online-detail = Not built yet — see the plugin's roadmap.
+zotero-connect-offline = Keep reading the offline copy
+zotero-connect-offline-detail = Currently answering from { $source }.
+zotero-notice-online-later = Reading the library from zotero.org is planned, not built. The offline copy is answering in the meantime.
+zotero-notice-launching = Starting Zotero…
+zotero-notice-launch-failed = Zotero could not be started.
+zotero-notice-launch-slow = Zotero is still starting. Connect again once it is up.

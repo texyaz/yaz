@@ -326,6 +326,16 @@ export function zoteroReconnect(pluginId: string): Promise<void> {
   return invoke<void>("plugin_zotero_reconnect", { pluginId });
 }
 
+/** Whether Zotero is installed, wherever its installer puts it. */
+export function zoteroInstalled(pluginId: string): Promise<boolean> {
+  return invoke<boolean>("plugin_zotero_installed", { pluginId });
+}
+
+/** Start Zotero. Which program that is, is the Rust side's to decide. */
+export function zoteroLaunch(pluginId: string): Promise<void> {
+  return invoke<void>("plugin_zotero_launch", { pluginId });
+}
+
 /** A bundled core plugin, as the Rust side reports it. */
 export interface CorePlugin {
   id: string;

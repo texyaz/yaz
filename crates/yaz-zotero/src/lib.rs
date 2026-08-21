@@ -35,6 +35,7 @@
 pub mod bib;
 pub mod datadir;
 pub mod error;
+pub mod launch;
 pub mod library;
 pub mod local_api;
 pub mod model;

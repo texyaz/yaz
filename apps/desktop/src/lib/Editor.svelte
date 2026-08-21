@@ -46,6 +46,8 @@
   import { changesIn, setSegments, stitched } from "./editor/stitched";
   import type { Change, Segment } from "./editor/stitch";
   import { includeLinks } from "./editor/includeLinks";
+  import { dropTakers, pluginDrops } from "./editor/dropped";
+  import type { DropTaker } from "./editor/dropped";
   import type { DocumentView } from "./editor/documentView";
   import { lineNumbering } from "./editor/lineNumbers";
   import type { LineNumbering } from "./editor/lineNumbers";
@@ -216,6 +218,13 @@
     listings?: readonly ListingKind[] | undefined;
     /** A generated list's card was clicked. */
     onOpenListing?: ((kind: ListingKind) => void) | undefined;
+    /**
+     * What plugins offered to make of something dropped on the editor.
+     *
+     * Passed in rather than reached for: which plugins are loaded is the
+     * shell's business, and the editor's is only to offer them the drop.
+     */
+    dropTakers?: readonly DropTaker[] | undefined;
     /** Caret moved, as an offset into the source. */
     onCursor?: ((offset: number) => void) | undefined;
     /**
@@ -261,6 +270,7 @@
     resolveImage,
     listings = [],
     onOpenListing,
+    dropTakers: takers = [],
     onRefused,
     onOpenInclude,
     onCursor,
@@ -373,6 +383,7 @@
   const wrapCompartment = new Compartment();
   const pageCompartment = new Compartment();
   const listingCompartment = new Compartment();
+  const dropCompartment = new Compartment();
   const languageCompartment = new Compartment();
 
   /*
@@ -477,6 +488,8 @@
       imageSource.of((path) => resolveImage?.(path) ?? Promise.resolve(null)),
       pagination(),
       listingCompartment.of(listingHomes(listings)),
+      pluginDrops(),
+      dropCompartment.of(dropTakers.of(takers)),
       pageCompartment.of([
         paginated.of(false),
         paper.of(null),
@@ -715,6 +728,14 @@
     });
   });
 
+  // A plugin registering a drop handler arrives after the view exists, the same
+  // way a contributed tab does.
+  $effect(() => {
+    view?.dispatch({
+      effects: dropCompartment.reconfigure(dropTakers.of(takers)),
+    });
+  });
+
   /** What separates one sheet from the next. */
   const PAGE_GAP_MM = 8;
 
@@ -805,7 +826,7 @@
      for every text format while the page view is not. */
   .editor.flowing {
     overflow: hidden;
-    --yaz-measure: calc(42rem * var(--yaz-zoom, 1));
+    --yaz-measure: calc(52rem * var(--yaz-zoom, 1));
   }
 
   /* The column is the *scroller*, not the content box.

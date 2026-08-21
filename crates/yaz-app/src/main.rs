@@ -108,6 +108,8 @@ fn main() {
             commands::locate_in_source,
             commands::report_ready,
             plugin_host::plugin_zotero_status,
+            plugin_host::plugin_zotero_installed,
+            plugin_host::plugin_zotero_launch,
             plugin_host::plugin_zotero_search,
             plugin_host::plugin_zotero_annotations,
             plugin_host::plugin_zotero_ensure_in_bibliography,

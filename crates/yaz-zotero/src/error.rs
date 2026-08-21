@@ -55,6 +55,14 @@ pub enum Error {
     #[error("Zotero is not running")]
     NotRunning,
 
+    /// Zotero could not be started, because it is not installed where the
+    /// installers put it or because starting it failed.
+    #[error("could not start Zotero: {detail}")]
+    CannotLaunch {
+        /// What was tried, or the message key explaining why nothing was.
+        detail: String,
+    },
+
     /// A live source answered, but not in a shape this build understands.
     #[error("unexpected response from {source_name}")]
     UnexpectedResponse {
@@ -101,6 +109,7 @@ impl Error {
             Error::UnsupportedSchema { .. } => "zotero-error-unsupported-schema",
             Error::UnsupportedJournalMode { .. } => "zotero-error-unsupported-journal",
             Error::NotRunning => "zotero-error-not-running",
+            Error::CannotLaunch { .. } => "zotero-error-cannot-launch",
             Error::UnexpectedResponse { .. } => "zotero-error-unexpected-response",
             Error::Http { .. } => "zotero-error-http",
             Error::Database { .. } => "zotero-error-database",
@@ -178,6 +187,10 @@ mod tests {
             .message_key(),
             Error::UnsupportedJournalMode { mode: "wal".into() }.message_key(),
             Error::NotRunning.message_key(),
+            Error::CannotLaunch {
+                detail: "nowhere".into(),
+            }
+            .message_key(),
             Error::UnexpectedResponse {
                 source_name: "local-api",
             }
