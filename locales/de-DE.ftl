@@ -687,3 +687,13 @@ bib-fix-create = { $file } anlegen
 bib-fix-create-declared-detail = Legt die leere Datei an, die das Dokument bereits verlangt.
 bib-fix-create-detail = Legt die Datei an und ergänzt das passende \addbibresource.
 bib-fix-created = { $file } angelegt und das Dokument darauf ausgerichtet.
+bib-fix-declared-in = In { $file } eingetragen, wo die Präambel steht.
+
+## Das Zitate-Tab.
+
+workspace-tab-citations = Zitate
+citations-empty = Diese Datei zitiert noch nichts.
+citations-unresolved = { $count } davon lassen sich nicht auflösen. Zum Nachsehen anklicken.
+citations-no-bibliography = Es ist keine Literaturdatei geladen, deshalb kann nichts aufgelöst werden.
+citations-not-in-bibliography = Nicht in der Literaturdatei.
+citations-uses = { $count }-mal zitiert.

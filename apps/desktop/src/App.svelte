@@ -31,6 +31,7 @@
   import Outline from "./lib/Outline.svelte";
   import PluginView from "./lib/PluginView.svelte";
   import BibliographyFix from "./lib/BibliographyFix.svelte";
+  import Citations from "./lib/Citations.svelte";
   import type { Heading } from "./lib/editor/structure";
   import { LINE_NUMBERING } from "./lib/editor/lineNumbers";
   import {
@@ -91,8 +92,11 @@
   import type { ListingKind } from "@yaz/api";
   import {
     declaredBibliographies,
+    citedWorks,
     diagnoseBibliography,
+    ownsPreamble,
     readBib,
+    withBibliography,
   } from "./lib/editor/bibliography";
   import type { BibProblem } from "./lib/editor/bibliography";
   import type { BibEntry } from "./lib/editor/semanticView";
@@ -889,7 +893,52 @@
    * Read from the buffer rather than from the project, because it is the
    * document that decides: a project can hold three `.bib` files and load one.
    */
-  const declaredBibs = $derived(declaredBibliographies(docText));
+  /**
+   * The entry file's text, when it is not the file that is open.
+   *
+   * Read once per project rather than watched. What it is wanted for — the
+   * `\addbibresource` and the class — lives in the preamble, and a preamble
+   * does not change while the author is editing a section of chapter four.
+   */
+  let entryText = $state("");
+
+  $effect(() => {
+    const open = project;
+    if (!open) {
+      entryText = "";
+      return;
+    }
+    let cancelled = false;
+    void ipc
+      .readFile(open.root, open.entry)
+      .then((text) => {
+        if (!cancelled) entryText = text;
+      })
+      .catch(() => {
+        // An entry file that cannot be read is not worth reporting here: the
+        // project would not have opened.
+      });
+    return () => {
+      cancelled = true;
+    };
+  });
+
+  /**
+   * The `.bib` files the project loads.
+   *
+   * From the open buffer *and* from the entry file, because they are usually
+   * not the same file: `\addbibresource` goes in the preamble, and the
+   * citations that need it are in `sections/Vorbemerkungen.tex`. Reading only
+   * the open buffer meant opening any section found no bibliography at all and
+   * turned every citation in it red — which is what happened.
+   */
+  const declaredBibs = $derived.by(() => {
+    const found = declaredBibliographies(docText);
+    for (const name of declaredBibliographies(entryText)) {
+      if (!found.includes(name)) found.push(name);
+    }
+    return found;
+  });
 
   /**
    * What those files say, keyed by citation key.
@@ -945,6 +994,14 @@
   }
 
   /**
+   * Every work the document cites, resolved against the bibliography.
+   *
+   * Derived rather than loaded: it is a walk of the buffer the shell already
+   * has, and the tab has to agree with the text it is describing.
+   */
+  const documentCitations = $derived(citedWorks(docText, bibEntries));
+
+  /**
    * The unresolved citation being explained, and what is wrong.
    *
    * Null until one is clicked. Working this out reads the project directory,
@@ -979,31 +1036,39 @@
   /**
    * Point the document at a bibliography file.
    *
-   * Through the editor rather than by assigning the text, for two reasons: the
-   * buffer is the document (ADR-0004), and an edit made this way lands in undo
-   * with everything else the author has been doing — so a fix they did not mean
-   * to accept is one Ctrl+Z away.
+   * Which file gets the declaration is the whole difficulty. `\addbibresource`
+   * belongs in the preamble, and the preamble is in the entry file — but the
+   * citation that prompted this is usually in a section, so the file the author
+   * is looking at is the wrong one to edit. Writing it there produced a
+   * declaration that vanished the moment they opened something else, which is
+   * exactly what was reported.
    *
-   * The declaration replaces the one that is there, or goes in above
-   * `egin{document}` where there is none, which is where a preamble command
-   * belongs and where biblatex requires it.
+   * So: the open buffer when it is the one holding the preamble, through the
+   * editor so the change lands in undo; the entry file on disk otherwise.
    */
-  function useBibliography(name: string) {
-    if (!editorApi) return;
-    const text = editorApi.getText();
-    const declaration = `\\addbibresource{${name}}`;
-    const existing = /\\addbibresource\s*(?:\[[^\]]*\])?\s*\{[^}]*\}/.exec(text);
+  async function useBibliography(name: string) {
+    if (!project) return;
+    const open = project;
 
-    if (existing) {
-      editorApi.replaceRange(
-        existing.index,
-        existing.index + existing[0].length,
-        declaration,
-      );
-    } else {
-      const begins = text.indexOf(`\\begin{document}`);
-      const at = begins === -1 ? text.length : begins;
-      editorApi.replaceRange(at, at, `${declaration}\n\n`);
+    const buffer = editorApi?.getText() ?? docText;
+
+    try {
+      if (ownsPreamble(buffer) && editorApi) {
+        // Through the editor rather than by assigning the text: the buffer is
+        // the document (ADR-0004), and an edit made this way is one Ctrl+Z
+        // away if the author did not mean to accept it.
+        const next = withBibliography(buffer, name);
+        editorApi.replaceRange(0, buffer.length, next);
+      } else {
+        const entry = await ipc.readFile(open.root, open.entry);
+        const next = withBibliography(entry, name);
+        await ipc.writeFile(open.root, open.entry, next);
+        entryText = next;
+        showNotice(t("bib-fix-declared-in", { file: open.entry }));
+      }
+    } catch (error) {
+      failure = String(error);
+      return;
     }
 
     bibProblem = null;
@@ -1024,7 +1089,7 @@
         project = await ipc.openProject(project.root);
       }
       if (!declaredBibs.includes(name)) {
-        useBibliography(name);
+        await useBibliography(name);
       } else {
         bibProblem = null;
         bibGeneration += 1;
@@ -1039,6 +1104,7 @@
   const tabTitles = $derived<Record<TabId, string>>({
     editor: currentFile ?? t("workspace-tab-editor"),
     outline: t("workspace-tab-outline"),
+    citations: t("workspace-tab-citations"),
     pdf: t("workspace-tab-pdf"),
     history: t("workspace-tab-history"),
     ...Object.fromEntries(
@@ -1486,7 +1552,9 @@
             // contributed view names itself with its own message key, which is
             // why the two halves cannot share one template.
             ...[
-              ...(["editor", "pdf", "outline", "history"] as TabId[]).map(
+              ...(
+                ["editor", "pdf", "outline", "citations", "history"] as TabId[]
+              ).map(
                 (tab) => ({ tab, labelKey: `workspace-tab-${tab}` }),
               ),
               ...pluginViews.map((view) => ({
@@ -2837,6 +2905,14 @@
         editorApi?.revealRange(heading.titleFrom, heading.titleTo);
       }}
     />
+  {:else if tab === "citations"}
+    <Citations
+      works={documentCitations}
+      file={currentFile}
+      hasBibliography={bibEntries.size > 0}
+      onnavigate={(at) => editorApi?.revealRange(at, at)}
+      onexplain={(key) => void explainCitation(key)}
+    />
   {:else if pluginTab(tab)}
     <PluginView view={pluginTab(tab)!} doc={docText} />
   {:else if tab === "history"}
@@ -2857,7 +2933,7 @@
   <BibliographyFix
     citationKey={bibProblem.key}
     problem={bibProblem.problem}
-    onuse={useBibliography}
+    onuse={(name) => void useBibliography(name)}
     oncreate={(name) => void createBibliography(name)}
     onclose={() => (bibProblem = null)}
   />
@@ -2980,6 +3056,7 @@
       titleKey={picker.titleKey}
       placeholderKey={picker.placeholderKey}
       emptyKey={picker.emptyKey}
+      query={picker.query}
       load={picker.load}
       onchoose={(value) => {
         const pending = picker;

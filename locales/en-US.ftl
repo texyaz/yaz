@@ -686,3 +686,13 @@ bib-fix-create = Create { $file }
 bib-fix-create-declared-detail = Makes the empty file the document already asks for.
 bib-fix-create-detail = Makes the file and adds the \addbibresource for it.
 bib-fix-created = Created { $file } and pointed the document at it.
+bib-fix-declared-in = Declared in { $file }, where the preamble is.
+
+## The citations tab.
+
+workspace-tab-citations = Citations
+citations-empty = This file cites nothing yet.
+citations-unresolved = { $count } of these will not resolve. Click one to see why.
+citations-no-bibliography = No bibliography is loaded, so nothing can resolve.
+citations-not-in-bibliography = Not in the bibliography.
+citations-uses = Cited { $count } times.

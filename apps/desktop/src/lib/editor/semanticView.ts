@@ -453,6 +453,41 @@ function glossaryForm(command: string, name: string, detail: string): string {
 }
 
 /**
+ * What a quotation is attributed to, drawn from its optional argument.
+ *
+ * `\textquote[\cite[8]{din277}]{…}` — which is what the Zotero bridge writes
+ * for a dragged highlight — attributes the passage in its optional argument.
+ * That is content, not configuration, so it is drawn rather than hidden with
+ * the rest of the markup.
+ *
+ * Returns the text to put after the closing quotation mark, or `null` where
+ * there is nothing citable in there. Not every optional argument is a citation:
+ * `\textquote[][.]{…}` sets the punctuation, and drawing that as an attribution
+ * would invent a source.
+ */
+export function attribution(
+  optional: string,
+  books: ReadonlyMap<string, BibEntry>,
+): string | null {
+  const cite =
+    /\\[a-zA-Z]*cite[a-zA-Z]*\s*(?:\[([^\]]*)\])?\s*\{([^}]*)\}/.exec(optional);
+  if (!cite) return null;
+
+  const keys = (cite[2] ?? "")
+    .split(",")
+    .map((key) => key.trim())
+    .filter(Boolean);
+  if (keys.length === 0) return null;
+
+  // The bibliography's short form where it knows the work, and the key itself
+  // where it does not — which is what the author typed, and better than
+  // nothing.
+  const named = keys.map((key) => books.get(key)?.label ?? key).join("; ");
+  const page = (cite[1] ?? "").trim();
+  return page ? `[${named}, ${page}]` : `[${named}]`;
+}
+
+/**
  * Draw everything that stands for something else.
  *
  * Returns what the later passes need, rather than storing it: the heading pass
@@ -518,6 +553,55 @@ export function semanticMarkup(pass: Pass): Meaning {
     );
   }
 
+  /*
+   * Quotations before citations, because a quotation owns the citation inside
+   * it.
+   *
+   * `\textquote[\cite[8]{din277}]{…}` holds a real `\cite`, and the citation
+   * pass finds it on its own account. Drawn first it claims those characters,
+   * and the quotation's own replacement — which covers the whole
+   * `\textquote[…]{` prefix — then overlaps a claimed range and is refused. The
+   * result was a rendered attribution with the raw command still around it.
+   */
+  // The quotation marks the document's language uses, in place of the command.
+  for (const quotation of found.quotations) {
+    if (!drawable(pass, quotation.from, quotation.to)) continue;
+    replace(
+      pass,
+      quotation.from,
+      quotation.argFrom,
+      new TextWidget(marks.open, "cm-yaz-quote-mark"),
+    );
+
+    /*
+     * The attribution, where the quotation carries one.
+     *
+     * `	extquote[\cite[8]{din277}]{…}` is what the Zotero bridge writes for a
+     * dragged highlight, and its optional argument is the source — not a
+     * setting. Hiding it with the rest of the markup would draw a quotation
+     * from nowhere, which of all the things to lose from a citation tool is the
+     * worst one.
+     *
+     * It goes after the closing mark, which is where csquotes prints it.
+     */
+    const cited =
+      quotation.optFrom !== null && quotation.optTo !== null
+        ? attribution(
+            pass.text.slice(quotation.optFrom, quotation.optTo),
+            books,
+          )
+        : null;
+
+    replace(
+      pass,
+      quotation.argTo,
+      quotation.to,
+      cited
+        ? new TextWidget(`${marks.close} ${cited}`, "cm-yaz-quote-mark")
+        : new TextWidget(marks.close, "cm-yaz-quote-mark"),
+    );
+  }
+
   for (const citation of found.citations) {
     if (!drawable(pass, citation.from, citation.to)) continue;
     // `\parencite{a,b}` is one citation of two works, which is how a document
@@ -555,23 +639,6 @@ export function semanticMarkup(pass: Pass): Meaning {
         entry?.detail ?? null,
         entry?.at ?? null,
       ),
-    );
-  }
-
-  // The quotation marks the document's language uses, in place of the command.
-  for (const quotation of found.quotations) {
-    if (!drawable(pass, quotation.from, quotation.to)) continue;
-    replace(
-      pass,
-      quotation.from,
-      quotation.argFrom,
-      new TextWidget(marks.open, "cm-yaz-quote-mark"),
-    );
-    replace(
-      pass,
-      quotation.argTo,
-      quotation.to,
-      new TextWidget(marks.close, "cm-yaz-quote-mark"),
     );
   }
 

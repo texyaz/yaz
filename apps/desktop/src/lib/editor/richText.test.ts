@@ -1192,3 +1192,52 @@ describe("the everyday commands", () => {
     expect(view.contentDOM.querySelector(".cm-yaz-footnote")).not.toBeNull();
   });
 });
+
+/**
+ * A quotation with its source, which is what the Zotero bridge writes.
+ *
+ * Reported as "\textquote doesn't render in preview": the preview did not know
+ * the command, so the one construct the whole drag-and-drop path produces was
+ * shown as raw markup.
+ */
+describe("a quoted passage", () => {
+  const doc = [
+    `${B}begin{document}`,
+    `${B}textquote[${B}cite[8]{din277}]{Grundflächen im Hochbau}`,
+    "Ein Satz, damit der Cursor woanders steht.",
+    `${B}end{document}`,
+  ].join(nothing);
+
+  /** Mounted with the caret away from the quotation. */
+  function reading(): EditorView {
+    const view = mount(doc);
+    caret(view, doc.indexOf("Ein Satz") + 4);
+    return view;
+  }
+
+  it("draws the passage rather than the command", () => {
+    const shown = visible(reading());
+    expect(shown).toContain("Grundflächen im Hochbau");
+    expect(shown).not.toContain("textquote");
+  });
+
+  it("keeps the source the passage is attributed to", () => {
+    // The optional argument is the source, not a setting. Hiding it with the
+    // rest of the markup would draw a quotation from nowhere.
+    expect(visible(reading())).toContain("din277");
+  });
+
+  it("keeps the page the passage came from", () => {
+    expect(visible(reading())).toContain("8");
+  });
+
+  it("gives the source back when the caret arrives", () => {
+    const view = mount(doc);
+    caret(view, doc.indexOf("textquote") + 3);
+    expect(visible(view)).toContain("textquote");
+  });
+
+  it("leaves the buffer exactly as it was", () => {
+    expect(reading().state.doc.toString()).toBe(doc);
+  });
+});

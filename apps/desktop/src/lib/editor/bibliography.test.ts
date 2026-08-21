@@ -10,11 +10,15 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  citedWorks,
   declaredBibliographies,
   diagnoseBibliography,
   firstSurname,
+  ownsPreamble,
   readBib,
+  withBibliography,
 } from "./bibliography";
+import { attribution } from "./semanticView";
 
 const B = String.fromCharCode(92);
 
@@ -196,5 +200,189 @@ describe("diagnosing why a citation will not resolve", () => {
       kind: "absent",
       declared: "a.bib",
     });
+  });
+});
+
+/**
+ * Writing the declaration, and into which file.
+ *
+ * The reported regression: the fix went into whichever file was open, so a
+ * declaration added while reading a section vanished the moment the author
+ * opened something else. `\addbibresource` belongs in the preamble.
+ */
+describe("declaring a bibliography", () => {
+  it("puts the declaration above begin{document}", () => {
+    const doc = [
+      `${B}documentclass{report}`,
+      `${B}begin{document}`,
+      "Text.",
+      `${B}end{document}`,
+    ].join("\n");
+    const next = withBibliography(doc, "refs.bib");
+    expect(next.indexOf(`${B}addbibresource{refs.bib}`)).toBeGreaterThan(
+      next.indexOf(`${B}documentclass`),
+    );
+    expect(next.indexOf(`${B}addbibresource{refs.bib}`)).toBeLessThan(
+      next.indexOf(`${B}begin{document}`),
+    );
+  });
+
+  it("replaces a declaration that is already there", () => {
+    // Rather than adding a second one: biblatex would then load both, and the
+    // author asked to point the document at one file.
+    const doc = `${B}addbibresource{old.bib}\n${B}begin{document}`;
+    const next = withBibliography(doc, "new.bib");
+    expect(next).toContain(`${B}addbibresource{new.bib}`);
+    expect(next).not.toContain("old.bib");
+  });
+
+  it("keeps everything else exactly as it was", () => {
+    const doc = `${B}documentclass{report}\n${B}begin{document}\nText.`;
+    const next = withBibliography(doc, "refs.bib");
+    expect(next).toContain(`${B}documentclass{report}`);
+    expect(next).toContain("Text.");
+  });
+
+  it("appends to a file with no begin{document} rather than losing it", () => {
+    const next = withBibliography(`${B}usepackage{biblatex}`, "refs.bib");
+    expect(next).toContain(`${B}usepackage{biblatex}`);
+    expect(next).toContain(`${B}addbibresource{refs.bib}`);
+  });
+});
+
+describe("which file holds the preamble", () => {
+  it("recognises the file with begin{document}", () => {
+    expect(ownsPreamble(`${B}begin{document}\nText.`)).toBe(true);
+  });
+
+  it("recognises a preamble split into its own file", () => {
+    // A project that `\input`s its preamble still has the declaration there,
+    // and that is the file to edit.
+    expect(ownsPreamble(`${B}addbibresource{refs.bib}`)).toBe(true);
+  });
+
+  it("does not mistake a section for it", () => {
+    // The bug: a section is where the citation is and the wrong place for the
+    // declaration, because nothing in it is the preamble.
+    const section = `${B}chapter{Vorbemerkungen}\nEin Satz ${B}cite{din277}.`;
+    expect(ownsPreamble(section)).toBe(false);
+  });
+});
+
+/**
+ * Drawing a quotation's attribution.
+ *
+ * `\textquote[\cite[8]{din277}]{…}` is what the Zotero bridge writes for a
+ * dragged highlight. Its optional argument is the source, not a setting, so it
+ * is drawn after the closing quotation mark rather than hidden with the markup.
+ */
+describe("what a quotation is attributed to", () => {
+  const BOOKS = new Map([
+    ["din277", { key: "din277", label: "DIN 2021", detail: "DIN 277" }],
+    ["meister", { key: "meister", label: "Meister 2019", detail: "BIM" }],
+  ]);
+
+  it("names the work and the page", () => {
+    expect(attribution(`${B}cite[8]{din277}`, BOOKS)).toBe("[DIN 2021, 8]");
+  });
+
+  it("names the work when there is no page", () => {
+    expect(attribution(`${B}cite{din277}`, BOOKS)).toBe("[DIN 2021]");
+  });
+
+  it("falls back to the key for a work the bibliography does not know", () => {
+    // Which is what the author typed, and better than drawing nothing.
+    expect(attribution(`${B}cite{unknown}`, BOOKS)).toBe("[unknown]");
+  });
+
+  it("names every work cited together", () => {
+    expect(attribution(`${B}cite{din277,meister}`, BOOKS)).toBe(
+      "[DIN 2021; Meister 2019]",
+    );
+  });
+
+  it("reads a package's citation command as well as LaTeX's", () => {
+    // `\parencite` is biblatex's and `\cite` is LaTeX's; a quotation may carry
+    // either, and which one is not this function's business.
+    expect(attribution(`${B}parencite[8]{din277}`, BOOKS)).toBe(
+      "[DIN 2021, 8]",
+    );
+  });
+
+  it("says nothing for an optional argument that is not a citation", () => {
+    // `\textquote[][.]{…}` sets the punctuation. Drawing that as an
+    // attribution would invent a source the document never named.
+    expect(attribution("", BOOKS)).toBeNull();
+    expect(attribution(".", BOOKS)).toBeNull();
+  });
+});
+
+/**
+ * The works a document cites.
+ *
+ * What the Citations tab shows. Works rather than commands: a source cited
+ * eleven times is one source, and eleven rows for it would bury the one cited
+ * once that does not resolve.
+ */
+describe("the works a document cites", () => {
+  const BOOKS = new Map([
+    ["din277", { key: "din277", label: "DIN 2021", detail: "DIN 277" }],
+  ]);
+
+  it("finds a citation and resolves it", () => {
+    const doc = `Ein Satz ${B}cite{din277}.`;
+    const [work] = citedWorks(doc, BOOKS);
+    expect(work?.key).toBe("din277");
+    expect(work?.entry?.label).toBe("DIN 2021");
+  });
+
+  it("gathers every use of one work into a single row", () => {
+    const doc = `${B}cite{din277} und ${B}cite{din277} und ${B}cite{din277}`;
+    const works = citedWorks(doc, BOOKS);
+    expect(works).toHaveLength(1);
+    expect(works[0]?.at).toHaveLength(3);
+  });
+
+  it("reads a package's command as well as LaTeX's", () => {
+    const doc = `${B}parencite{din277} ${B}citep{other}`;
+    expect(
+      citedWorks(doc, BOOKS)
+        .map((work) => work.key)
+        .sort(),
+    ).toEqual(["din277", "other"]);
+  });
+
+  it("splits a citation of several works at once", () => {
+    const doc = `${B}cite{din277,other}`;
+    expect(citedWorks(doc, BOOKS)).toHaveLength(2);
+  });
+
+  it("reads past the page a citation carries", () => {
+    expect(citedWorks(`${B}cite[8]{din277}`, BOOKS)[0]?.key).toBe("din277");
+  });
+
+  it("puts the unresolved ones first", () => {
+    // They are the rows that need doing something about; a resolved citation
+    // needs nothing from anybody.
+    const doc = `${B}cite{din277} dann ${B}cite{missing}`;
+    expect(citedWorks(doc, BOOKS).map((work) => work.key)).toEqual([
+      "missing",
+      "din277",
+    ]);
+  });
+
+  it("ignores a citation that is commented out", () => {
+    expect(citedWorks(`% ${B}cite{din277}`, BOOKS)).toEqual([]);
+  });
+
+  it("does not mistake a quotation's attribution for nothing", () => {
+    // `\textquote[\cite[8]{din277}]{…}` cites the work, and a tab that missed
+    // it would under-report what the document depends on.
+    const doc = `${B}textquote[${B}cite[8]{din277}]{Ein Satz}`;
+    expect(citedWorks(doc, BOOKS)[0]?.key).toBe("din277");
+  });
+
+  it("finds nothing in a document that cites nothing", () => {
+    expect(citedWorks("Nur Text.", BOOKS)).toEqual([]);
   });
 });

@@ -51,6 +51,8 @@ export interface PickerRequest {
   titleKey: string;
   placeholderKey?: string | undefined;
   emptyKey?: string | undefined;
+  /** What the filter starts with, for a picker opened about something. */
+  query?: string | undefined;
   load: (query: string) => Promise<Row[]>;
   resolve: (value: unknown) => void;
 }
@@ -511,6 +513,7 @@ export class PluginRuntime {
               titleKey: options.titleKey,
               placeholderKey: options.placeholderKey,
               emptyKey: options.emptyKey,
+              query: options.query,
               load,
               resolve: (value) =>
                 resolve(value === undefined ? null : (value as T)),

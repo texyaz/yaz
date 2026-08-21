@@ -85,6 +85,34 @@ export function matchBrace(text: string, open: number): number | null {
 }
 
 /**
+ * The offset just past the `]` matching the `[` at `open`.
+ *
+ * Depth-counted rather than a search for the next `]`, because an optional
+ * argument routinely contains one: `	extquote[\cite[8]{din277}]{…}` is what
+ * a quotation with a page reference looks like, and taking the first `]` there
+ * ends the argument in the middle of the citation. That is not a corner case —
+ * it is every quotation the Zotero bridge writes.
+ */
+export function matchBracket(text: string, open: number): number | null {
+  if (text[open] !== "[") return null;
+  let depth = 0;
+  for (let index = open; index < text.length; index += 1) {
+    const character = text[index];
+    if (character === "\\") {
+      // A backslash escapes whatever follows, including a bracket.
+      index += 1;
+      continue;
+    }
+    if (character === "[") depth += 1;
+    else if (character === "]") {
+      depth -= 1;
+      if (depth === 0) return index + 1;
+    }
+  }
+  return null;
+}
+
+/**
  * Every heading in the source, in document order.
  *
  * Handles the starred form and the optional short-title argument, both of which
@@ -214,6 +242,16 @@ export interface BraceCommand {
   argFrom: number;
   /** Offset just past the last character of the argument. */
   argTo: number;
+  /**
+   * The optional `[...]` argument, where the command took one.
+   *
+   * Offsets of its contents, not of the brackets. Kept because for some
+   * commands it is content rather than configuration: `	extquote`'s optional
+   * argument is the citation the quotation is attributed to, and dropping it
+   * would draw a quotation from nowhere.
+   */
+  optFrom: number | null;
+  optTo: number | null;
 }
 
 /**
@@ -243,10 +281,17 @@ export function braceCommands(
     // `\caption[Kurz]{Lang}` — and it is skipped rather than refused, because a
     // command with an option is the same command.
     let open = token.after;
+    let optFrom: number | null = null;
+    let optTo: number | null = null;
     if (text[open] === "[") {
-      const close = text.indexOf("]", open);
-      if (close === -1) continue;
-      open = close + 1;
+      // Depth-counted: an optional argument can hold a bracket of its own, and
+      // `	extquote[\cite[8]{key}]{…}` — every quotation the Zotero bridge
+      // writes — does exactly that.
+      const close = matchBracket(text, open);
+      if (close === null) continue;
+      optFrom = open + 1;
+      optTo = close - 1;
+      open = close;
     }
     if (text[open] !== "{") continue;
 
@@ -259,6 +304,8 @@ export function braceCommands(
       to: end,
       argFrom: open + 1,
       argTo: end - 1,
+      optFrom,
+      optTo,
     });
     // A nested command inside the argument is in the index too, and is found on
     // its own account — which is what the rich-text view needs.

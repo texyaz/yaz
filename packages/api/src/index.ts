@@ -647,6 +647,16 @@ export interface PickerOptions<T> {
   /** Message key shown when there is nothing to choose from. */
   emptyKey?: string | undefined;
   /**
+   * What the filter starts with.
+   *
+   * For a picker opened *about* something — a drop that could not be
+   * identified, a search result being confirmed — so the row the user wants is
+   * usually the first one rather than something they retype.
+   *
+   * @since 0.3.0
+   */
+  query?: string | undefined;
+  /**
    * The rows.
    *
    * A function is called on every keystroke and is how a picker searches a

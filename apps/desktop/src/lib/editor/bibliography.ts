@@ -282,3 +282,106 @@ export function diagnoseBibliography(
 
   return { kind: "absent", declared: declared[0]! };
 }
+
+/**
+ * The text with an `\addbibresource` for `name` in it.
+ *
+ * Replaces the declaration that is already there, or puts one above
+ * `\begin{document}` — which is where a preamble command belongs and where
+ * biblatex requires it.
+ *
+ * Here rather than in the component that calls it because the pattern needs a
+ * literal backslash, and a regex escape written inline in a `.svelte` file is
+ * one nobody can test. Two of them were wrong before this moved.
+ */
+export function withBibliography(text: string, name: string): string {
+  const declaration = `${B}addbibresource{${name}}`;
+  const existing = new RegExp(
+    `${B}${B}addbibresource\\s*(?:\\[[^\\]]*\\])?\\s*\\{[^}]*\\}`,
+  ).exec(text);
+
+  if (existing) {
+    return (
+      text.slice(0, existing.index) +
+      declaration +
+      text.slice(existing.index + existing[0].length)
+    );
+  }
+
+  const begins = text.indexOf(`${B}begin{document}`);
+  const at = begins === -1 ? text.length : begins;
+  return `${text.slice(0, at)}${declaration}\n\n${text.slice(at)}`;
+}
+
+/**
+ * Whether this text is the one holding the preamble.
+ *
+ * Which decides where a fix is written. `\addbibresource` belongs in the
+ * preamble and the preamble is in the entry file, but the citation that
+ * prompted the fix is usually in a section — so the file the author is looking
+ * at is very often the wrong one to edit.
+ */
+export function ownsPreamble(text: string): boolean {
+  return (
+    text.includes(`${B}begin{document}`) ||
+    new RegExp(`${B}${B}addbibresource`).test(text)
+  );
+}
+
+/** One work the document cites, and where. */
+export interface CitedWork {
+  key: string;
+  /** What the bibliography calls it, or `null` when nothing defines it. */
+  entry: BibEntry | null;
+  /** Every offset in the source that cites it, in document order. */
+  at: number[];
+}
+
+/**
+ * Every work the document cites, resolved against the bibliography.
+ *
+ * Deliberately not a list of `\cite` commands: a work cited eleven times is one
+ * source, and a list with eleven rows for it would bury the one cited once that
+ * does not resolve. What a reader of this wants is the *works*, and for each,
+ * whether it is going to compile.
+ *
+ * Unresolved first, because those are the ones that need doing something about;
+ * within each group, in the order the document first cites them.
+ */
+export function citedWorks(
+  text: string,
+  books: ReadonlyMap<string, BibEntry>,
+): CitedWork[] {
+  const works = new Map<string, CitedWork>();
+
+  // Any citation command, whoever's it is: `\cite` is LaTeX's, `\parencite` is
+  // biblatex's, `\citep` is natbib's. Matching the shape rather than a list
+  // keeps this from going out of date every time a package is supported.
+  const pattern = new RegExp(
+    `${B}${B}[a-zA-Z]*cite[a-zA-Z]*\\s*(?:\\[[^\\]]*\\]){0,2}\\s*\\{([^}]*)\\}`,
+    "g",
+  );
+
+  for (const match of text.matchAll(pattern)) {
+    if (commented(text, match.index)) continue;
+    for (const raw of (match[1] ?? "").split(",")) {
+      const key = raw.trim();
+      if (!key) continue;
+      const found = works.get(key);
+      if (found) {
+        found.at.push(match.index);
+      } else {
+        works.set(key, {
+          key,
+          entry: books.get(key) ?? null,
+          at: [match.index],
+        });
+      }
+    }
+  }
+
+  return [...works.values()].sort((left, right) => {
+    const resolved = Number(left.entry !== null) - Number(right.entry !== null);
+    return resolved !== 0 ? resolved : left.at[0]! - right.at[0]!;
+  });
+}

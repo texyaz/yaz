@@ -11,6 +11,7 @@
   copy — the title, the placeholder, the empty state — is a message key.
 -->
 <script lang="ts">
+  import { untrack } from "svelte";
   import { t } from "./i18n";
 
   /** One row, mirroring `PickerItem` in @yaz/api. */
@@ -29,6 +30,14 @@
     // optional value passes the latter.
     placeholderKey?: string | undefined;
     emptyKey?: string | undefined;
+    /**
+     * What the filter starts with.
+     *
+     * For a picker opened *about* something — a dropped reference that could
+     * not be identified — so the row the user wants is usually the first one
+     * rather than something they have to retype.
+     */
+    query?: string | undefined;
     /** Called on every keystroke; an array source is wrapped by the caller. */
     load: (query: string) => Promise<Row[]>;
     onchoose: (value: unknown) => void;
@@ -39,12 +48,20 @@
     titleKey,
     placeholderKey = "picker-placeholder",
     emptyKey = "picker-empty",
+    query: initialQuery = "",
     load,
     onchoose,
     oncancel,
   }: Props = $props();
 
-  let query = $state("");
+  /*
+   * The seed, read once.
+   *
+   * `untrack` says so out loud: a picker is mounted fresh for each request, so
+   * the seed is a starting value and not something that should reach in and
+   * overwrite what the user has since typed.
+   */
+  let query = $state(untrack(() => initialQuery));
   let rows = $state<Row[]>([]);
   let active = $state(0);
   let loading = $state(true);

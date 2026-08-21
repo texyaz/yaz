@@ -57,6 +57,14 @@ export interface Occurrence {
   to: number;
   argFrom: number;
   argTo: number;
+  /**
+   * The optional `[...]`, where the command took one.
+   *
+   * Content for some commands rather than configuration: `	extquote`'s
+   * optional argument is the citation the quotation is attributed to.
+   */
+  optFrom: number | null;
+  optTo: number | null;
 }
 
 /** Everything the pass needs, from one walk of the commands. */
@@ -91,6 +99,8 @@ export function semantics(
       to: command.to,
       argFrom: command.argFrom,
       argTo: command.argTo,
+      optFrom: command.optFrom,
+      optTo: command.optTo,
     };
 
     // Sorted by what the vocabulary says the command *means*, not by its
