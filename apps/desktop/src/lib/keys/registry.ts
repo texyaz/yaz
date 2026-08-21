@@ -165,8 +165,11 @@ export const SHORTCUTS: readonly Shortcut[] = [
     suites: ["yaz"],
   },
   {
+    // The id is unchanged although it now rounds three ways rather than
+    // toggling two: it is what a saved keybinding refers to, and renaming it
+    // would silently drop anyone's custom binding for it.
     id: "view.togglePageView",
-    labelKey: "menu-view-page",
+    labelKey: "menu-view-cycle",
     keys: "Mod-Space p",
     suites: ["yaz"],
   },

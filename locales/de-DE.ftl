@@ -424,6 +424,7 @@ keys-press = Tasten drücken…
 keys-unbound = Nicht belegt
 keys-reset = Zurücksetzen
 keys-conflict = Ein anderes Tastenkürzel belegt diese Tasten.
+menu-view-cycle = Nächste Ansicht
 menu-view-plain = Einfach
 menu-view-continuous = Fortlaufend
 menu-view-page = Seite

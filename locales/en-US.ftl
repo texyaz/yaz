@@ -423,6 +423,7 @@ keys-press = Press the keys…
 keys-unbound = Not bound
 keys-reset = Put it back
 keys-conflict = Another shortcut uses these keys.
+menu-view-cycle = Next view
 menu-view-plain = Plain
 menu-view-continuous = Continuous
 menu-view-page = Page
