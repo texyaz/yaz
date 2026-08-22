@@ -111,8 +111,24 @@
   export interface Section {
     id: string;
     labelKey: string;
+    /**
+     * The name, where it is data rather than interface text.
+     *
+     * A plugin's name is its author's and is not translated, so a section for
+     * one carries the name itself and leaves `labelKey` as the fallback.
+     */
+    label?: string | undefined;
     /** A single glyph, shown beside the label. Not an icon font. */
     glyph: string;
+    /**
+     * Whether a rule is drawn above this in the list.
+     *
+     * Marks where the application's own settings stop and the installed
+     * plugins begin — which is the one distinction a settings list of this
+     * length has to make, because everything below the rule is something the
+     * user chose to install.
+     */
+    separated?: boolean | undefined;
     groups: Group[];
   }
 
@@ -243,6 +259,13 @@
     <div class="body">
       <nav class="sections" aria-label={t("settings-title")}>
         {#each sections as section (section.id)}
+          {#if section.separated}
+            <!-- Where the application stops and what was installed begins.
+                 A heading rather than a bare rule, because "these are your
+                 plugins" is the thing somebody is looking for when they open
+                 this list at all. -->
+            <span class="divider">{t("settings-installed-plugins")}</span>
+          {/if}
           <button
             type="button"
             class="section"
@@ -251,7 +274,7 @@
             onclick={() => (chosen = section.id)}
           >
             <span class="glyph" aria-hidden="true">{section.glyph}</span>
-            {t(section.labelKey)}
+            {section.label ?? t(section.labelKey)}
           </button>
         {/each}
       </nav>
@@ -513,6 +536,18 @@
     display: grid;
     grid-template-columns: 13rem 1fr;
     min-block-size: 0;
+  }
+
+  /* The line between the application's settings and the installed plugins. */
+  .divider {
+    display: block;
+    margin: var(--yaz-space-3) var(--yaz-space-2) var(--yaz-space-1);
+    padding-block-start: var(--yaz-space-2);
+    border-block-start: 1px solid var(--yaz-border);
+    font-size: 0.75em;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--yaz-text-muted);
   }
 
   .sections {

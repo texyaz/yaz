@@ -2535,33 +2535,18 @@ ${entryText}`,
         {
           titleKey: "plugins-installed",
           fields: [
-            ...plugins.flatMap((plugin) => [
-              {
-                kind: "note" as const,
-                labelKey: "plugins-installed",
-                text: `${plugin.name} ${plugin.version} — ${plugin.description}`,
-              },
-              ...(updateReport[plugin.id]
-                ? [
-                    {
-                      kind: "note" as const,
-                      labelKey: "plugins-update-unknown",
-                      text: updateReport[plugin.id],
-                    },
-                  ]
-                : []),
-            ]),
-            ...(plugins.length === 0
-              ? [{ kind: "note" as const, labelKey: "plugins-none" }]
-              : []),
-            // What each plugin wants to ask the user itself, under the list of
-            // what is installed — so a setting is found where its plugin is
-            // rather than in a place each plugin invented.
-            ...pluginPanels.map((panel) => ({
-              kind: "panel" as const,
-              labelKey: panel.titleKey,
-              render: panel.render,
-            })),
+            // A count, not a list. Each plugin has a section of its own below
+            // the rule now, which is where its name, its version and its own
+            // settings are — so repeating them here would be saying everything
+            // twice and burying the two controls that really are general.
+            {
+              kind: "note" as const,
+              labelKey: "plugins-installed",
+              text:
+                plugins.length === 0
+                  ? t("plugins-none")
+                  : t("plugins-installed-count", { count: plugins.length }),
+            },
             {
               kind: "button" as const,
               labelKey: "plugins-update-label",
@@ -2654,6 +2639,69 @@ ${entryText}`,
         },
       ],
     },
+    /*
+     * One section per installed plugin, below a rule.
+     *
+     * The way Obsidian and Zotero do it, and for the reason they do: a list
+     * that ends at "Plugins" makes what is installed something you have to
+     * open a page to find out, when it is the first thing somebody opening
+     * this dialog wants to see.
+     *
+     * Named with the plugin's own name rather than a message key, because a
+     * plugin's name is its author's and is not ours to translate.
+     */
+    ...plugins.map((plugin, index) => ({
+      id: `plugin:${plugin.id}`,
+      // Required by the shape and unused where `label` is set; it is what a
+      // plugin with no name at all would fall back to.
+      labelKey: "settings-section-plugins",
+      label: plugin.name,
+      glyph: "◈",
+      // Only the first carries the rule, so it reads as one boundary rather
+      // than a line between every plugin.
+      separated: index === 0,
+      groups: [
+        {
+          titleKey: "plugins-about",
+          fields: [
+            {
+              kind: "note" as const,
+              labelKey: "plugins-about",
+              text: plugin.description,
+            },
+            {
+              kind: "note" as const,
+              labelKey: "plugins-version",
+              text: t("plugins-version-value", { version: plugin.version }),
+            },
+            ...(updateReport[plugin.id]
+              ? [
+                  {
+                    kind: "note" as const,
+                    labelKey: "plugins-update-unknown",
+                    text: updateReport[plugin.id],
+                  },
+                ]
+              : []),
+          ],
+        },
+        // Its own panel, where it has one. A plugin with nothing to ask still
+        // gets a section, because "installed and has no settings" is worth
+        // seeing and an absent section reads as "not installed".
+        ...pluginPanels
+          .filter((panel) => panel.pluginId === plugin.id)
+          .map((panel) => ({
+            titleKey: panel.titleKey,
+            fields: [
+              {
+                kind: "panel" as const,
+                labelKey: panel.titleKey,
+                render: panel.render,
+              },
+            ],
+          })),
+      ],
+    })),
   ]);
 
   /** Change which backend records this project. */
