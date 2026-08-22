@@ -515,8 +515,6 @@
   let vcsBusy = $state(false);
   /** Set while the commit-message prompt is open. */
   let askingForMessage = $state(false);
-  /** Whether the task service's sign-in prompt is up. */
-  let askingForToken = $state(false);
 
   /** Refresh version-control state and history for the open project. */
   async function refreshVcs() {
@@ -1512,53 +1510,6 @@ ${entryText}`,
    * it lives in one place — beside Zotero, where somebody looking for "what is
    * this paper wired up to" will look. Settings keeps what is per install.
    */
-  function signInToTasks() {
-    if (!taskProvider) {
-      showNotice(t("tasks-no-provider"));
-      return;
-    }
-    askingForToken = true;
-  }
-
-  /** Store the token the prompt collected, and see whether it works. */
-  async function storeTaskToken(token: string) {
-    const held = taskProvider;
-    if (!held) return;
-    connectionsBusy = true;
-    try {
-      await ipc.pluginSetCredential(held.pluginId, token);
-      await loadTasks();
-      // What the service said, not what we hoped: a token can be stored and
-      // still refused, and "connected" that only means "we kept a string" is
-      // not worth telling anybody.
-      showNotice(
-        t(tasksReady ? "connections-tasks-ready" : "connections-tasks-refused"),
-      );
-    } catch (error) {
-      failure = String(error);
-    } finally {
-      connectionsBusy = false;
-    }
-  }
-
-  /** Forget the token, on this computer. */
-  async function forgetTaskToken() {
-    const held = taskProvider;
-    if (!held) return;
-    connectionsBusy = true;
-    try {
-      await ipc.pluginSetCredential(held.pluginId, null);
-      await loadTasks();
-      // Said precisely: gone from here is not revoked, and only the service
-      // can do the second one.
-      showNotice(t("connections-tasks-forgotten"));
-    } catch (error) {
-      failure = String(error);
-    } finally {
-      connectionsBusy = false;
-    }
-  }
-
   function notImplemented() {
     showNotice(t("menu-not-implemented"));
   }
@@ -1927,24 +1878,35 @@ ${entryText}`,
         ...(taskProvider
           ? [
               {
-                labelKey: tasksReady
-                  ? "connections-tasks-signed-in"
-                  : "connections-tasks-sign-in",
-                icon: "plug" as const,
-                group: "connections-tasks-group",
-                dot: (tasksReady ? "ok" : "unknown") as Health,
-                disabled: connectionsBusy,
-                action: tasksReady ? forgetTaskToken : signInToTasks,
-              },
-              {
+                // Per project: which list *this paper* uses. The sign-in is
+                // per install and lives in the plugin's own settings panel —
+                // one credential serves every paper, and asking for it here
+                // would be asking a project-shaped question about the machine.
                 labelKey: taskProject
                   ? "connections-tasks-relink"
                   : "connections-tasks-link",
                 icon: "calendar" as const,
                 group: "connections-tasks-group",
+                dot: (tasksReady
+                  ? taskProject
+                    ? "ok"
+                    : "unknown"
+                  : "error") as Health,
                 disabled: connectionsBusy || !tasksReady || !project,
                 action: () => void linkTasks(),
               },
+              // Said rather than left to be guessed from a disabled button:
+              // "sign in first" is a different problem from "no project open".
+              ...(tasksReady
+                ? []
+                : [
+                    {
+                      labelKey: "connections-tasks-sign-in-first",
+                      icon: "info" as const,
+                      group: "connections-tasks-group",
+                      action: () => showNotice(t("connections-tasks-sign-in-first")),
+                    },
+                  ]),
             ]
           : []),
         {
@@ -3447,19 +3409,6 @@ ${entryText}`,
       sections={settingsSections}
       initial={settingsSection}
       onclose={() => (settingsOpen = false)}
-    />
-  {/if}
-
-  {#if askingForToken}
-    <Prompt
-      titleKey="connections-tasks-sign-in"
-      placeholderKey="connections-tasks-token"
-      hintKey="connections-tasks-token-hint"
-      secret
-      onsubmit={(value) => {
-        askingForToken = false;
-        if (value) void storeTaskToken(value);
-      }}
     />
   {/if}
 

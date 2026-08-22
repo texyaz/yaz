@@ -11,15 +11,18 @@ that lives in Todoist and lets you add to it without leaving the document.
 
 | | |
 | --- | --- |
-| Sign in | A personal API token, kept in your system keychain — under **Connections** in the ribbon |
-| Link a paper | Choose a Todoist project, or create one named after the folder — also under **Connections** |
+| Sign in | A personal API token, kept in your system keychain — **Settings → Plugins → Todoist** |
+| Link a paper | Choose a Todoist project, or create one — **Connections → Todoist** in the ribbon |
 | See the list | In the **Tasks** tab, beside the editor |
 | Add a task | From the tab, or from the selected text with a command |
 | Tick one off | The checkbox in the tab |
 
-The link is stored in the project's own `yaz.toml`, so it travels with the paper
-rather than being re-made on every machine. A thesis and a conference paper are
-different work with different lists.
+**Two settings in two places, because they are two different things.** The token
+is per install — one sign-in serves every paper on this machine — so it lives in
+the plugin's own settings panel. The list a paper uses is per project, so it
+lives under Connections and is stored in that project's own `yaz.toml`, where it
+travels with the paper rather than being re-made on every machine. A thesis and
+a conference paper are different work with different lists.
 
 ## Where the token lives
 

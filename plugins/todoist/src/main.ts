@@ -24,12 +24,16 @@
  * `yaz.toml`, because a thesis and a conference paper are different work with
  * different lists and the link should travel with the project.
  *
- * # Why there is no settings panel here
+ * # Two settings in two places, because they are two different things
  *
- * Signing in and choosing the list both live under **Connections** in the
- * ribbon, beside Zotero. Connecting a paper to the things it is built from is
- * one kind of work and belongs in one place; Settings keeps what is per
- * install, and none of this is.
+ * The **token** is per install — one sign-in serves every paper on this
+ * machine — so it lives in this plugin's own panel under Settings → Plugins.
+ *
+ * The **list a paper uses** is per project, so it lives under Connections in
+ * the ribbon beside Zotero, where connecting a paper to the things it is built
+ * from happens. Putting the two together would mean either a per-install panel
+ * that quietly changes one project, or a per-project dialog asking for a
+ * credential it does not own.
  *
  * [ADR-0026]: https://generalpawz.github.io/yaz/adr/0026-task-providers-and-credentials
  */
@@ -45,6 +49,8 @@ import {
   listProjects,
   listTasks,
 } from "./api";
+import { renderSettings } from "./settings";
+import { SETTINGS_STYLE } from "./style";
 
 /** What this plugin stores against a project. */
 interface ProjectLink {
@@ -86,6 +92,12 @@ export default class TodoistPlugin extends Plugin {
         createTask(this.app, projectId, title),
       completeTask: (taskId: string) => completeTask(this.app, taskId),
     });
+
+    this.addSettingsTab({
+      titleKey: "todoist-settings-title",
+      render: (container) => renderSettings(this.app, container),
+    });
+    styleOnce();
 
     this.addCommand({
       id: "add-task",
@@ -141,6 +153,22 @@ export default class TodoistPlugin extends Plugin {
  * author can see what they made and fix it in Todoist.
  */
 const TITLE_LIMIT = 200;
+
+/**
+ * The settings panel's own styling, added once.
+ *
+ * Every colour is one of the theme's tokens (ADR-0010), so a plugin's panel
+ * follows the theme the user chose rather than being the one thing that does
+ * not.
+ */
+function styleOnce(): void {
+  const id = "yaz-todoist-style";
+  if (document.getElementById(id)) return;
+  const sheet = document.createElement("style");
+  sheet.id = id;
+  sheet.textContent = SETTINGS_STYLE;
+  document.head.append(sheet);
+}
 
 
 /** Re-exported so the tests can reach it without a running yaz. */
