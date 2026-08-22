@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import { open } from "@tauri-apps/plugin-dialog";
   import type { Extension } from "@codemirror/state";
   import type { EditorApi } from "@yaz/api";
@@ -985,6 +986,22 @@
    * between them is a setting nobody yet needs.
    */
   const taskProvider = $derived(taskProviders[0] ?? null);
+
+  /*
+   * Re-read the tasks when the project changes.
+   *
+   * Which list a paper uses is stored with the paper, so opening a different
+   * one is opening a different list — and the tab that showed the last one is
+   * showing the wrong thing until this runs.
+   */
+  $effect(() => {
+    // The dependencies, named. `loadTasks` writes state it also reads, and an
+    // effect that tracked those reads would re-run itself — so what it depends
+    // on is declared here and the call is untracked.
+    void project?.root;
+    void taskProviders.length;
+    untrack(() => void loadTasks());
+  });
 
   /** Read the link and the list it names. */
   async function loadTasks() {

@@ -24,6 +24,8 @@
 
 import type { App } from "@yaz/api";
 
+import { canReach } from "./api";
+
 /** Where a personal API token is found, for the link in the panel. */
 const TOKEN_PAGE = "https://app.todoist.com/app/settings/integrations/developer";
 
@@ -54,6 +56,11 @@ export function renderSettings(app: App, container: HTMLElement): void {
       forget.addEventListener("click", () => {
         void app.credentials.forget().then(() => {
           draw(false);
+          // The Tasks tab and the Connections entry were both drawn from a
+          // sign-in that has just gone, so they are told. Without this they
+          // keep offering a list nothing can reach until something else
+          // happens to refresh them.
+          app.tasks.refresh();
           // Said plainly: this machine has forgotten it, which is not the same
           // as Todoist having revoked it.
           app.notices.show("todoist-forgotten");
@@ -97,9 +104,20 @@ export function renderSettings(app: App, container: HTMLElement): void {
         field.value = "";
         void app.credentials
           .set(token)
-          .then(() => {
-            draw(true);
-            app.notices.show("todoist-signed-in");
+          // Stored is not signed in. A token can be mistyped, revoked, or
+          // simply the wrong kind of string, and every one of those looked
+          // exactly like "not signed in" from the Connections entry — which is
+          // an unanswerable state to be shown.
+          .then(() => canReach(app))
+          .then((reachable) => {
+            draw(reachable);
+            // The whole point of signing in is that everything else can now
+            // reach the service, so the Tasks tab and the Connections entry
+            // are told rather than left stale until something else asks.
+            app.tasks.refresh();
+            app.notices.show(
+              reachable ? "todoist-signed-in" : "todoist-token-refused",
+            );
           })
           .catch(() => app.notices.show("todoist-sign-in-failed"));
       };

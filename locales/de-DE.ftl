@@ -770,6 +770,7 @@ todoist-signed-in = Bei Todoist angemeldet.
 todoist-signed-out = Nicht angemeldet.
 todoist-sign-in = Anmelden
 todoist-sign-in-failed = Dieses Token konnte nicht gespeichert werden.
+todoist-token-refused = Das Token wurde gespeichert, aber von Todoist abgelehnt. Prüfen, ob es vollständig kopiert wurde und nicht widerrufen ist.
 todoist-token-placeholder = Persönliches API-Token
 todoist-token-where = Ein persönliches API-Token unter { $page } kopieren und hier einfügen. Es wird im Schlüsselbund des Systems abgelegt und von yaz nie wieder angezeigt.
 todoist-forget = Token vergessen
