@@ -35,6 +35,26 @@
   let { works, file, hasBibliography, onnavigate, onexplain }: Props = $props();
 
   const unresolved = $derived(works.filter((work) => work.entry === null));
+
+  /**
+   * Which use of each work was last visited.
+   *
+   * So clicking a work repeatedly walks through its citations rather than
+   * returning to the first one every time — a source cited eleven times is
+   * eleven places in the document, and going to the first of them ten times
+   * over is not a way of finding the other ten.
+   *
+   * Keyed by citation key rather than by row index, so it survives the list
+   * being rebuilt as the author types.
+   */
+  let visited = $state<Record<string, number>>({});
+
+  /** Go to the next use of a work, rounding to the first after the last. */
+  function step(work: CitedWork) {
+    const next = ((visited[work.key] ?? -1) + 1) % work.at.length;
+    visited = { ...visited, [work.key]: next };
+    onnavigate(work.at[next] ?? 0);
+  }
 </script>
 
 <div class="citations">
@@ -61,9 +81,7 @@
             type="button"
             class="work"
             onclick={() =>
-              work.entry === null
-                ? onexplain(work.key)
-                : onnavigate(work.at[0] ?? 0)}
+              work.entry === null ? onexplain(work.key) : step(work)}
           >
             <span class="label">{work.entry?.label ?? work.key}</span>
             <span class="detail">
@@ -75,8 +93,16 @@
                eleven times is a different kind of thing from one cited once,
                and the count is how a reader tells at a glance. -->
           {#if work.at.length > 1}
-            <span class="count" title={t("citations-uses", { count: work.at.length })}>
-              {work.at.length}
+            <span
+              class="count"
+              title={t("citations-uses", { count: work.at.length })}
+            >
+              <!-- Which of them the last click went to, once there has been
+                   one: a counter that only ever showed the total would not say
+                   whether clicking again does anything. -->
+              {visited[work.key] === undefined
+                ? work.at.length
+                : `${(visited[work.key] ?? 0) + 1}/${work.at.length}`}
             </span>
           {/if}
         </li>

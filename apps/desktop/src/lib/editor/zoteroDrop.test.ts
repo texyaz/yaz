@@ -20,6 +20,7 @@ import {
 } from "../../../../../plugins/zotero/src/drop";
 import {
   declaredBibliography,
+  searchQueries,
   searchable,
 } from "../../../../../plugins/zotero/src/main";
 
@@ -433,5 +434,61 @@ describe("the bibliography an entry is written to", () => {
     // Which leaves the bridge's own default in place, and is what the fix
     // modal is for.
     expect(declaredBibliography(`${B2}documentclass{article}`)).toBeUndefined();
+  });
+});
+
+/**
+ * Finding the item behind a reference that carries no link.
+ *
+ * Reported: dropping a book gave "nothing matches" while the book was sitting
+ * in the library. The whole formatted string was searched verbatim, and Zotero
+ * matches a title or a creator — never a style's concatenation of both.
+ */
+describe("what to search for when a drop carries no link", () => {
+  /** The drop that failed, verbatim. */
+  const BKI =
+    "H. Spielbauer, K.-P. Ruland, and Beirat Baukosteninformationszentrum, " +
+    "BKI Baukosten 2020 Neubau Statistische Kostenkennwerte für Gebäude, " +
+    "Stuttgart";
+
+  it("looks for the title rather than the whole entry", () => {
+    // The longest part between two commas. Authors are short and places are
+    // shorter; the title is what is left.
+    expect(searchQueries(BKI)).toContain(
+      "BKI Baukosten 2020 Neubau Statistische Kostenkennwerte für Gebäude",
+    );
+  });
+
+  it("prefers what the style italicised, which is always the title", () => {
+    const html = "H. Spielbauer, <i>BKI Baukosten 2020 Neubau</i>, Stuttgart";
+    expect(searchQueries(BKI, html)[0]).toBe("BKI Baukosten 2020 Neubau");
+  });
+
+  it("still tries the whole entry, which is right for a standard", () => {
+    // A standard's title is nearly the whole entry, which is why those worked
+    // when nothing else did.
+    const din =
+      "DIN EN ISO 29481-1 IDM Bauwerksinformationsmodelle Handbuch der " +
+      "Informationslieferungen, Jan. 2025.";
+    const queries = searchQueries(din);
+    expect(queries).toContain(
+      "DIN EN ISO 29481-1 IDM Bauwerksinformationsmodelle Handbuch der " +
+        "Informationslieferungen",
+    );
+  });
+
+  it("offers each query once", () => {
+    const queries = searchQueries("A single title with no commas at all");
+    expect(new Set(queries).size).toBe(queries.length);
+  });
+
+  it("offers nothing for a string too short to identify anything", () => {
+    // Searching for "ISO" would match half a library, and asking about a
+    // hundred rows is not asking.
+    expect(searchQueries("ISO")).toEqual([]);
+  });
+
+  it("survives markup it cannot parse", () => {
+    expect(searchQueries(BKI, "<i>unclosed").length).toBeGreaterThan(0);
   });
 });

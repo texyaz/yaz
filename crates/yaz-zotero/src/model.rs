@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// Attachments, notes and annotations are deliberately not items here, even
 /// though Zotero stores them in the same table.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Item {
     /// Zotero's own item key, stable across sync. The identifier used everywhere
@@ -49,6 +49,32 @@ pub struct Item {
 
     /// DOI, when recorded.
     pub doi: Option<String>,
+
+    /// Who published it, and where.
+    ///
+    /// A style prints these for a book or a report and ignores them for a
+    /// journal article, so they are read whether or not the current style
+    /// wants them — the style is the document's decision and can change after
+    /// the entry is written.
+    pub publisher: Option<String>,
+    /// The city, which a book's entry prints beside its publisher.
+    pub place: Option<String>,
+    /// Which edition, for a work that has had more than one.
+    pub edition: Option<String>,
+    /// `isbn` for a book, `issn` for a periodical.
+    pub isbn: Option<String>,
+    /// Where it lives, for something online.
+    pub url: Option<String>,
+    /// The full date as Zotero holds it, for a style that prints a month.
+    pub date: Option<String>,
+    /// The abstract, which a few styles print and most do not.
+    pub abstract_text: Option<String>,
+    /// How many pages, or which pages within a container.
+    pub pages: Option<String>,
+    /// Volume and issue, for something that has them.
+    pub volume: Option<String>,
+    /// The issue within a volume.
+    pub issue: Option<String>,
 }
 
 impl Item {

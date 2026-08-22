@@ -331,6 +331,23 @@ impl SqliteSource {
             year: field("date")?.as_deref().and_then(parse_year),
             container: field("publicationTitle")?,
             doi: field("DOI")?,
+            // Zotero names the same idea differently per item type: a book has
+            // a `publisher`, a report has an `institution`, a thesis has a
+            // `university`. One concept, three column names, so all three are
+            // tried and the first that answers wins.
+            publisher: field("publisher")?
+                .or(field("institution")?)
+                .or(field("university")?)
+                .or(field("company")?),
+            place: field("place")?,
+            edition: field("edition")?,
+            isbn: field("ISBN")?.or(field("ISSN")?),
+            url: field("url")?,
+            date: field("date")?,
+            abstract_text: field("abstractNote")?,
+            pages: field("pages")?.or(field("numPages")?),
+            volume: field("volume")?,
+            issue: field("issue")?,
         })
     }
 

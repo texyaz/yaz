@@ -1241,3 +1241,58 @@ describe("a quoted passage", () => {
     expect(reading().state.doc.toString()).toBe(doc);
   });
 });
+
+/**
+ * A quotation's source behaves like any other citation.
+ *
+ * Reported: the citation inside a `\textquote` came out grey with no hover and
+ * no click, while the identical `\cite` beside it was a link — a difference
+ * nobody could explain, because there is not one.
+ */
+describe("the source a quotation is attributed to", () => {
+  const doc = [
+    `${B}begin{document}`,
+    `${B}textquote[${B}cite[8]{din277}]{Grundflächen im Hochbau}`,
+    "Ein Satz, damit der Cursor woanders steht.",
+    `${B}end{document}`,
+  ].join(nothing);
+
+  function reading(): EditorView {
+    const view = mount(doc);
+    caret(view, doc.indexOf("Ein Satz") + 4);
+    return view;
+  }
+
+  it("is drawn as a citation, not as text", () => {
+    expect(
+      reading().contentDOM.querySelector(".cm-yaz-citation"),
+    ).not.toBeNull();
+  });
+
+  it("says what the work is on hover", () => {
+    const cited = reading().contentDOM.querySelector(".cm-yaz-citation");
+    expect(cited?.getAttribute("title")).toBeTruthy();
+  });
+
+  it("keeps the page inside the citation", () => {
+    expect(
+      reading().contentDOM.querySelector(".cm-yaz-citation")?.textContent,
+    ).toContain("8");
+  });
+
+  it("marks it unresolved when nothing defines the key", () => {
+    // The same signal a bare citation gets. A quotation attributed to a work
+    // the bibliography does not have will not compile either.
+    expect(
+      reading().contentDOM.querySelector(".cm-yaz-unresolved"),
+    ).not.toBeNull();
+  });
+
+  it("still closes the quotation", () => {
+    // The mark and the source replace one range, so losing the mark while
+    // gaining the link would be an easy mistake to make.
+    expect(
+      reading().contentDOM.querySelector(".cm-yaz-quote-mark"),
+    ).not.toBeNull();
+  });
+});

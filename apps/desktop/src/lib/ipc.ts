@@ -313,6 +313,7 @@ export function zoteroEnsureInBibliography(
   itemKey: string,
   bibliography?: string,
   scheme?: string,
+  fields?: unknown,
 ): Promise<CitationKey> {
   return invoke<CitationKey>("plugin_zotero_ensure_in_bibliography", {
     pluginId,
@@ -320,12 +321,35 @@ export function zoteroEnsureInBibliography(
     itemKey,
     bibliography,
     scheme,
+    fields,
   });
 }
 
 /** Re-probe the Zotero sources, e.g. after the user starts Zotero. */
 export function zoteroReconnect(pluginId: string): Promise<void> {
   return invoke<void>("plugin_zotero_reconnect", { pluginId });
+}
+
+/** What refreshing the bibliography from Zotero changed. */
+export interface BibliographyRefresh {
+  updated: number;
+  missing: string[];
+  bibliography: string;
+}
+
+/** Rewrite every Zotero entry in the project bibliography from the library. */
+export function zoteroRefreshBibliography(
+  pluginId: string,
+  root: string,
+  bibliography?: string,
+  fields?: unknown,
+): Promise<BibliographyRefresh> {
+  return invoke<BibliographyRefresh>("plugin_zotero_refresh_bibliography", {
+    pluginId,
+    root,
+    bibliography,
+    fields,
+  });
 }
 
 /** What a plugin has stored, or null on first run. */

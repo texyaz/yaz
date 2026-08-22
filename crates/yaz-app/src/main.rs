@@ -110,6 +110,7 @@ fn main() {
             plugin_host::plugin_get_settings,
             plugin_host::plugin_set_settings,
             plugin_host::plugin_zotero_status,
+            plugin_host::plugin_zotero_refresh_bibliography,
             plugin_host::plugin_zotero_installed,
             plugin_host::plugin_zotero_launch,
             plugin_host::plugin_zotero_search,

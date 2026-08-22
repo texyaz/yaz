@@ -328,6 +328,7 @@ impl PluginHost {
         item_key: &str,
         bibliography: Option<String>,
         scheme: yaz_zotero::bib::KeyScheme,
+        fields: yaz_zotero::bib::Fields,
     ) -> Result<CitationKey> {
         self.authorise(plugin_id, &Request::Zotero).await?;
 
@@ -391,7 +392,7 @@ impl PluginHost {
         }
 
         let key = yaz_zotero::bib::disambiguate(&base, &taken);
-        let entry = yaz_zotero::bib::to_bibtex(&item, &key);
+        let entry = yaz_zotero::bib::to_bibtex(&item, &key, fields);
 
         // Separate entries with a blank line, without introducing one at the
         // top of a file that did not exist a moment ago.
@@ -416,6 +417,68 @@ impl PluginHost {
             added: true,
             bibliography: relative,
             is_authoritative: item.citation_key.is_some(),
+        })
+    }
+
+    /// Rewrite every entry this wrote, from what Zotero says now.
+    ///
+    /// An entry copied into a `.bib` is a snapshot: correcting a title in
+    /// Zotero never reaches a document that already cited it. This is the
+    /// explicit pull that fixes that — explicit because it rewrites a file the
+    /// author may have edited by hand, and doing that in the background is how
+    /// somebody loses a correction they made and never told us about.
+    ///
+    /// Only entries recording a Zotero item are touched. A reference typed by
+    /// hand has none, so it is not in the list and cannot be overwritten.
+    pub async fn refresh_bibliography(
+        &self,
+        plugin_id: &str,
+        root: &Utf8Path,
+        bibliography: Option<String>,
+        fields: yaz_zotero::bib::Fields,
+    ) -> Result<BibliographyRefresh> {
+        self.authorise(plugin_id, &Request::Zotero).await?;
+
+        let relative = bibliography.unwrap_or_else(|| "references.bib".to_owned());
+        let bib_path = root.join(&relative);
+        self.authorise(plugin_id, &Request::FsWrite(&bib_path))
+            .await?;
+
+        let mut contents = std::fs::read_to_string(bib_path.as_std_path())
+            .map_err(|error| CommandError::new("zotero-error-io", error))?;
+
+        let library = self.library().await?;
+        let recorded = yaz_zotero::bib::recorded_items(&contents);
+        let mut updated = 0usize;
+        let mut missing = Vec::new();
+
+        for (item_key, citation_key) in recorded {
+            let Some(item) = library.find(&item_key).await.map_err(zotero_error)? else {
+                // Gone from the library, or in a library this source cannot
+                // see. Left exactly as it is: deleting somebody's reference
+                // because we could not find it would be the worst possible
+                // answer.
+                missing.push(citation_key);
+                continue;
+            };
+            let entry = yaz_zotero::bib::to_bibtex(&item, &citation_key, fields);
+            if let Some(next) = yaz_zotero::bib::replace_entry(&contents, &citation_key, &entry) {
+                if next != contents {
+                    contents = next;
+                    updated += 1;
+                }
+            }
+        }
+
+        if updated > 0 {
+            std::fs::write(bib_path.as_std_path(), &contents)
+                .map_err(|error| CommandError::new("zotero-error-io", error))?;
+        }
+
+        Ok(BibliographyRefresh {
+            updated,
+            missing,
+            bibliography: relative,
         })
     }
 
@@ -517,6 +580,36 @@ pub struct ZoteroAnnotationDto {
     /// Whether this is text that can be quoted, as opposed to an ink or image
     /// mark, or the reader's own note.
     is_quotable: bool,
+}
+
+/// What a refresh changed.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BibliographyRefresh {
+    /// How many entries were rewritten.
+    updated: usize,
+    /// Citation keys whose Zotero item could not be found, left untouched.
+    missing: Vec<String>,
+    /// Which file was walked.
+    bibliography: String,
+}
+
+/// Rewrite every Zotero entry in the project bibliography from the library.
+#[tauri::command]
+pub async fn plugin_zotero_refresh_bibliography(
+    plugin_id: String,
+    root: String,
+    bibliography: Option<String>,
+    fields: Option<yaz_zotero::bib::Fields>,
+    host: tauri::State<'_, PluginHost>,
+) -> Result<BibliographyRefresh> {
+    host.refresh_bibliography(
+        &plugin_id,
+        &Utf8PathBuf::from(root),
+        bibliography,
+        fields.unwrap_or_default(),
+    )
+    .await
 }
 
 /// Which source is answering, and whether it is current.
@@ -644,6 +737,7 @@ pub async fn plugin_zotero_ensure_in_bibliography(
     item_key: String,
     bibliography: Option<String>,
     scheme: Option<yaz_zotero::bib::KeyScheme>,
+    fields: Option<yaz_zotero::bib::Fields>,
     host: tauri::State<'_, PluginHost>,
 ) -> Result<CitationKey> {
     host.ensure_in_bibliography(
@@ -652,6 +746,7 @@ pub async fn plugin_zotero_ensure_in_bibliography(
         &item_key,
         bibliography,
         scheme.unwrap_or_default(),
+        fields.unwrap_or_default(),
     )
     .await
 }
@@ -871,6 +966,7 @@ mod tests {
                 "ITEMAAAA",
                 None,
                 Default::default(),
+                Default::default(),
             )
             .await
             .expect("citing should succeed");
@@ -906,6 +1002,7 @@ mod tests {
                 "ITEMAAAA",
                 None,
                 Default::default(),
+                Default::default(),
             )
             .await
             .unwrap();
@@ -915,6 +1012,7 @@ mod tests {
                 &project_root,
                 "ITEMAAAA",
                 None,
+                Default::default(),
                 Default::default(),
             )
             .await
@@ -944,6 +1042,7 @@ mod tests {
                 "ITEMAAAA",
                 Some("../../escaped.bib".to_owned()),
                 Default::default(),
+                Default::default(),
             )
             .await
             .unwrap_err();
@@ -962,6 +1061,7 @@ mod tests {
                 &project_root,
                 "GONEGONE",
                 None,
+                Default::default(),
                 Default::default(),
             )
             .await

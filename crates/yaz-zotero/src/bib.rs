@@ -196,7 +196,7 @@ fn escape(value: &str) -> String {
 /// The title is wrapped in an extra pair of braces so that styles which
 /// lowercase titles leave acronyms alone. `BIM and IFC` becoming `Bim and ifc`
 /// is the classic complaint, and this is the classic fix.
-pub fn to_bibtex(item: &Item, key: &str) -> String {
+pub fn to_bibtex(item: &Item, key: &str, fields: Fields) -> String {
     let mut out = format!("@{}{{{},\n", entry_type(&item.item_type), key);
 
     // Which Zotero item this is, so re-citing it finds this entry by identity
@@ -227,12 +227,46 @@ pub fn to_bibtex(item: &Item, key: &str) -> String {
         };
         out.push_str(&format!("  {field} = {{{}}},\n", escape(container)));
     }
-    if let Some(doi) = &item.doi {
-        out.push_str(&format!("  doi = {{{}}},\n", escape(doi)));
-    }
+    write_fields(&mut out, item, fields);
 
     out.push_str("}\n");
     out
+}
+
+/// The optional half of an entry, as the settings ask for it.
+///
+/// Everything is written by default, because biber ignores a field the style
+/// does not print — the cost of writing too much is a longer `.bib`, and the
+/// cost of writing too little is a reference that comes out missing its
+/// publisher after the author changes style.
+fn write_fields(out: &mut String, item: &Item, fields: Fields) {
+    let mut put = |name: &str, value: &Option<String>| {
+        if let Some(text) = value {
+            out.push_str(&format!("  {name} = {{{}}},\n", escape(text)));
+        }
+    };
+
+    if fields.publication {
+        put("publisher", &item.publisher);
+        // biblatex calls it `location`; BibTeX calls it `address`. `location`
+        // is what biber wants and what an older style quietly ignores, which
+        // is the right way round — ignored beats misplaced.
+        put("location", &item.place);
+        put("edition", &item.edition);
+    }
+    if fields.location {
+        put("volume", &item.volume);
+        put("number", &item.issue);
+        put("pages", &item.pages);
+    }
+    if fields.identifiers {
+        put("doi", &item.doi);
+        put("isbn", &item.isbn);
+        put("url", &item.url);
+    }
+    if fields.summary {
+        put("abstract", &item.abstract_text);
+    }
 }
 
 /// How a new entry is named.
@@ -252,6 +286,40 @@ pub enum KeyScheme {
     ItemKey,
     /// Whatever Better BibTeX calls it, falling back to [`KeyScheme::Readable`].
     BetterBibtex,
+}
+
+/// Which of Zotero's metadata is written into an entry.
+///
+/// Zotero holds far more than a citation needs, and which of it a style prints
+/// depends on the style — a book's entry wants a publisher and a place, an
+/// article's wants a volume and pages, and neither wants the other's. Writing
+/// everything is the default, because biber ignores a field the style does not
+/// print: the cost of too much is a longer `.bib`, and the cost of too little
+/// is a reference that loses its publisher when the author changes style.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct Fields {
+    /// Publisher, place and edition — what a book or a report is identified by.
+    pub publication: bool,
+    /// Volume, issue and pages — where an article sits inside its container.
+    pub location: bool,
+    /// DOI, ISBN and URL — how the work is found again.
+    pub identifiers: bool,
+    /// The abstract.
+    pub summary: bool,
+}
+
+impl Default for Fields {
+    fn default() -> Self {
+        Self {
+            publication: true,
+            location: true,
+            identifiers: true,
+            // The one exception: an abstract is a paragraph per entry, and a
+            // `.bib` nobody can read is a `.bib` nobody will correct.
+            summary: false,
+        }
+    }
 }
 
 /// The field an entry records its Zotero item under.
@@ -284,6 +352,67 @@ pub fn entry_for_item(bib: &str, item_key: &str) -> Option<String> {
         if !key.is_empty() && !key.contains(char::is_whitespace) {
             return Some(key.to_owned());
         }
+    }
+    None
+}
+
+/// Every Zotero item a `.bib` records, with the key its entry carries.
+///
+/// What a refresh walks. An entry with no item recorded is one this did not
+/// write — a reference the author typed themselves — and it is not in this
+/// list, so a refresh cannot touch it.
+pub fn recorded_items(bib: &str) -> Vec<(String, String)> {
+    let mut found = Vec::new();
+    for chunk in bib.split('@').skip(1) {
+        let Some(at) = chunk.find("zotero://select/items/") else {
+            continue;
+        };
+        let item: String = chunk[at + "zotero://select/items/".len()..]
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric())
+            .collect();
+        let Some((_, after_brace)) = chunk.split_once('{') else {
+            continue;
+        };
+        let key = after_brace.split(',').next().unwrap_or("").trim();
+        if !item.is_empty() && !key.is_empty() && !key.contains(char::is_whitespace) {
+            found.push((item, key.to_owned()));
+        }
+    }
+    found
+}
+
+/// Replace the entry with this citation key, keeping everything else.
+///
+/// By key rather than by position, and the whole entry at once: a refresh that
+/// merged field by field would have to decide whether an author's correction or
+/// Zotero's value wins for each of them, and it cannot know. Replacing wholesale
+/// at least means the result is exactly what Zotero says, which is what the
+/// person asking for a refresh asked for.
+pub fn replace_entry(bib: &str, key: &str, entry: &str) -> Option<String> {
+    let mut cursor = 0usize;
+    while let Some(at) = bib[cursor..].find('@') {
+        let start = cursor + at;
+        let rest = &bib[start..];
+        let Some((_, after_brace)) = rest.split_once('{') else {
+            break;
+        };
+        let found = after_brace.split(',').next().unwrap_or("").trim();
+        if found == key {
+            // To the end of this entry: the next `@` at the start of a line, or
+            // the end of the file.
+            let end = bib[start + 1..]
+                .find("\n@")
+                .map(|offset| start + 1 + offset + 1)
+                .unwrap_or(bib.len());
+            let mut out = String::with_capacity(bib.len());
+            out.push_str(&bib[..start]);
+            out.push_str(entry.trim_end());
+            out.push('\n');
+            out.push_str(&bib[end..]);
+            return Some(out);
+        }
+        cursor = start + 1;
     }
     None
 }
@@ -323,8 +452,9 @@ mod tests {
             title: title.into(),
             creators: creators.iter().map(|c| (*c).to_owned()).collect(),
             year,
-            container: None,
-            doi: None,
+            // The rest defaulted: these tests are about how a key is made, and
+            // spelling out ten empty fields in each of them would bury that.
+            ..Default::default()
         }
     }
 
@@ -397,7 +527,7 @@ mod tests {
         // A `%` would comment out the rest of the line and the entry would look
         // perfectly fine in the file while breaking the build.
         let it = item(&["A, B"], Some(2024), "Cost & risk: 50% of the _total_");
-        let bib = to_bibtex(&it, "ab2024cost");
+        let bib = to_bibtex(&it, "ab2024cost", Fields::default());
         assert!(bib.contains("\\&"), "{bib}");
         assert!(bib.contains("\\%"), "{bib}");
         assert!(bib.contains("\\_"), "{bib}");
@@ -406,7 +536,7 @@ mod tests {
     #[test]
     fn titles_are_brace_protected_so_acronyms_survive() {
         let it = item(&["Du, X"], Some(2024), "BIM and IFC data readiness");
-        let bib = to_bibtex(&it, "du2024bim");
+        let bib = to_bibtex(&it, "du2024bim", Fields::default());
         assert!(
             bib.contains("title = {{BIM and IFC data readiness}}"),
             "acronyms must not be lowercased by the style: {bib}"
@@ -416,7 +546,7 @@ mod tests {
     #[test]
     fn authors_are_joined_the_way_bibtex_expects() {
         let it = item(&["Du, X", "Hou, Y", "Zhang, Z"], Some(2024), "T");
-        let bib = to_bibtex(&it, "k");
+        let bib = to_bibtex(&it, "k", Fields::default());
         assert!(
             bib.contains("author = {Du, X and Hou, Y and Zhang, Z}"),
             "{bib}"
@@ -428,7 +558,7 @@ mod tests {
         let mut it = item(&["A, B"], Some(2024), "T");
         it.container = Some("Proceedings of Something".into());
         it.item_type = "conferencePaper".into();
-        let bib = to_bibtex(&it, "k");
+        let bib = to_bibtex(&it, "k", Fields::default());
         assert!(bib.starts_with("@inproceedings{k,"), "{bib}");
         assert!(
             bib.contains("booktitle = {Proceedings of Something}"),
@@ -436,14 +566,14 @@ mod tests {
         );
 
         it.item_type = "journalArticle".into();
-        assert!(to_bibtex(&it, "k").contains("journal = {"));
+        assert!(to_bibtex(&it, "k", Fields::default()).contains("journal = {"));
     }
 
     #[test]
     fn unknown_item_types_fall_back_to_misc() {
         let mut it = item(&["A, B"], Some(2024), "T");
         it.item_type = "somethingZoteroAddedLater".into();
-        assert!(to_bibtex(&it, "k").starts_with("@misc{k,"));
+        assert!(to_bibtex(&it, "k", Fields::default()).starts_with("@misc{k,"));
     }
 
     #[test]
@@ -470,7 +600,7 @@ mod tests {
         // insertion would collide with itself.
         let it = item(&["Hagedorn, Jakob"], Some(2024), "Semantic validation");
         let key = generate_key(&it);
-        let keys = existing_keys(&to_bibtex(&it, &key));
+        let keys = existing_keys(&to_bibtex(&it, &key, Fields::default()));
         assert!(
             keys.contains(&key),
             "wrote {key} but could not read it back"
@@ -490,14 +620,13 @@ mod identity_tests {
             title: "Building Information Modeling".into(),
             creators: vec!["Meister, Ulrich".into()],
             year: Some(2021),
-            container: None,
-            doi: None,
+            ..Default::default()
         }
     }
 
     #[test]
     fn an_entry_records_which_zotero_item_it_is() {
-        let written = to_bibtex(&sample(), "meister2021building");
+        let written = to_bibtex(&sample(), "meister2021building", Fields::default());
         assert!(
             written.contains("zotero://select/items/B8IM9SU5"),
             "{written}"
@@ -509,7 +638,7 @@ mod identity_tests {
         // The point of recording it. An author who renames `meister2021b` to
         // something they can remember must not get a second copy of the same
         // work the next time they cite it.
-        let written = to_bibtex(&sample(), "whatever-i-renamed-it-to");
+        let written = to_bibtex(&sample(), "whatever-i-renamed-it-to", Fields::default());
         assert_eq!(
             entry_for_item(&written, "B8IM9SU5").as_deref(),
             Some("whatever-i-renamed-it-to")
@@ -518,7 +647,7 @@ mod identity_tests {
 
     #[test]
     fn a_different_item_is_not_matched() {
-        let written = to_bibtex(&sample(), "meister2021building");
+        let written = to_bibtex(&sample(), "meister2021building", Fields::default());
         assert_eq!(entry_for_item(&written, "OTHERKEY"), None);
     }
 
@@ -530,8 +659,8 @@ mod identity_tests {
         let bib = format!(
             "{}
 {}",
-            to_bibtex(&other, "other2021something"),
-            to_bibtex(&sample(), "meister2021building")
+            to_bibtex(&other, "other2021something", Fields::default()),
+            to_bibtex(&sample(), "meister2021building", Fields::default())
         );
         assert_eq!(
             entry_for_item(&bib, "B8IM9SU5").as_deref(),
@@ -561,5 +690,94 @@ mod identity_tests {
     fn the_default_scheme_is_the_readable_one() {
         // A setting nobody has touched must leave the source legible.
         assert_eq!(KeyScheme::default(), KeyScheme::Readable);
+    }
+}
+
+#[cfg(test)]
+mod field_tests {
+    use super::*;
+
+    fn rich() -> Item {
+        Item {
+            key: "B8IM9SU5".into(),
+            item_type: "book".into(),
+            title: "BKI Baukosten 2020".into(),
+            creators: vec!["Spielbauer, Holger".into()],
+            year: Some(2020),
+            publisher: Some("BKI".into()),
+            place: Some("Stuttgart".into()),
+            edition: Some("3".into()),
+            isbn: Some("978-3-481-04000-0".into()),
+            url: Some("https://example.org/bki".into()),
+            abstract_text: Some("A long paragraph nobody prints.".into()),
+            pages: Some("120".into()),
+            volume: Some("2".into()),
+            issue: Some("4".into()),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn everything_a_style_might_print_is_written_by_default() {
+        // biber ignores a field the style does not print, so writing too much
+        // costs a longer file. Writing too little costs a reference that comes
+        // out missing its publisher after the author changes style.
+        let written = to_bibtex(&rich(), "bki2020", Fields::default());
+        for expected in ["publisher", "location", "edition", "isbn", "url"] {
+            assert!(written.contains(expected), "missing {expected}: {written}");
+        }
+    }
+
+    #[test]
+    fn the_abstract_is_left_out_unless_asked_for() {
+        // A paragraph per entry, and a `.bib` nobody can read is a `.bib`
+        // nobody will correct.
+        let written = to_bibtex(&rich(), "bki2020", Fields::default());
+        assert!(!written.contains("abstract"), "{written}");
+    }
+
+    #[test]
+    fn the_abstract_is_written_when_it_is() {
+        let fields = Fields {
+            summary: true,
+            ..Default::default()
+        };
+        assert!(to_bibtex(&rich(), "bki2020", fields).contains("abstract"));
+    }
+
+    #[test]
+    fn a_switched_off_group_writes_none_of_its_fields() {
+        let fields = Fields {
+            publication: false,
+            ..Default::default()
+        };
+        let written = to_bibtex(&rich(), "bki2020", fields);
+        assert!(!written.contains("publisher"), "{written}");
+        assert!(!written.contains("location"), "{written}");
+        // But the other groups are untouched.
+        assert!(written.contains("isbn"), "{written}");
+    }
+
+    #[test]
+    fn a_field_the_item_does_not_have_is_omitted_rather_than_empty() {
+        // `publisher = {}` is worse than no publisher: a style prints the
+        // empty braces.
+        let bare = Item {
+            key: "K".into(),
+            item_type: "book".into(),
+            title: "A title".into(),
+            ..Default::default()
+        };
+        let written = to_bibtex(&bare, "k", Fields::default());
+        assert!(!written.contains("publisher"), "{written}");
+        assert!(!written.contains("{}"), "{written}");
+    }
+
+    #[test]
+    fn the_place_is_written_as_location_for_biber() {
+        // biblatex calls it `location` and BibTeX calls it `address`. An older
+        // style ignoring `location` is better than biber mis-reading `address`.
+        let written = to_bibtex(&rich(), "bki2020", Fields::default());
+        assert!(written.contains("location = {Stuttgart}"), "{written}");
     }
 }

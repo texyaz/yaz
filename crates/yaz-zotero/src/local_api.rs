@@ -137,6 +137,37 @@ struct ItemData {
     /// authoritative key can arrive even on this tier.
     #[serde(default)]
     citation_key: Option<String>,
+
+    // The rest of what a citation style might print. Zotero names the same
+    // idea differently per item type — a book publishes, a report is issued by
+    // an institution, a thesis by a university — so all of them are read and
+    // the first that answers wins.
+    #[serde(default)]
+    publisher: Option<String>,
+    #[serde(default)]
+    institution: Option<String>,
+    #[serde(default)]
+    university: Option<String>,
+    #[serde(default)]
+    place: Option<String>,
+    #[serde(default)]
+    edition: Option<String>,
+    #[serde(default, rename = "ISBN")]
+    isbn: Option<String>,
+    #[serde(default, rename = "ISSN")]
+    issn: Option<String>,
+    #[serde(default)]
+    url: Option<String>,
+    #[serde(default)]
+    abstract_note: Option<String>,
+    #[serde(default)]
+    pages: Option<String>,
+    #[serde(default)]
+    num_pages: Option<String>,
+    #[serde(default)]
+    volume: Option<String>,
+    #[serde(default)]
+    issue: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -367,6 +398,11 @@ fn http(source: reqwest::Error) -> Error {
     }
 }
 
+/// An empty string is an absent field, not a value.
+fn some(value: Option<String>) -> Option<String> {
+    value.filter(|text| !text.trim().is_empty())
+}
+
 /// Parse a local-API item listing.
 fn parse_items(body: &str) -> Result<Vec<Item>> {
     let envelopes: Vec<Envelope<ItemData>> =
@@ -403,6 +439,23 @@ fn parse_items(body: &str) -> Result<Vec<Item>> {
                 .and_then(parse_year),
             container: e.data.publication_title.filter(|s| !s.is_empty()),
             doi: e.data.doi.filter(|s| !s.is_empty()),
+            // An empty string from the API is an absent field, not a value:
+            // writing `publisher = {}` into a `.bib` is worse than omitting it.
+            publisher: some(
+                e.data
+                    .publisher
+                    .or(e.data.institution)
+                    .or(e.data.university),
+            ),
+            place: some(e.data.place),
+            edition: some(e.data.edition),
+            isbn: some(e.data.isbn.or(e.data.issn)),
+            url: some(e.data.url),
+            date: some(e.data.date.clone()),
+            abstract_text: some(e.data.abstract_note),
+            pages: some(e.data.pages.or(e.data.num_pages)),
+            volume: some(e.data.volume),
+            issue: some(e.data.issue),
         })
         .collect())
 }

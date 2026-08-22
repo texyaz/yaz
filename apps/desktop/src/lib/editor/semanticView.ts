@@ -203,6 +203,61 @@ function describe(target: Target): string {
     : `${kind}${number}`;
 }
 
+/**
+ * A citation as an element: what it prints, what it says, where it goes.
+ *
+ * Shared, because a citation inside a quotation is the same citation as one
+ * standing on its own. It used to be drawn as plain text there — grey, no
+ * tooltip, no click — so `[1, 8]` inside a `\textquote` behaved like nothing
+ * at all while the `[1]` beside it was a link.
+ */
+function citationNode(options: {
+  keys: readonly string[];
+  entries: readonly (BibEntry | undefined)[];
+  numbers: readonly (number | undefined)[];
+  follow: ((key: string) => void) | null;
+  /** Whether the command prints its own brackets. */
+  bare: boolean;
+  /** A page, for a citation that named one. */
+  page: string | null;
+}): HTMLElement {
+  const node = document.createElement("span");
+  const resolved = options.entries.some(Boolean);
+  node.className = resolved
+    ? "cm-yaz-citation"
+    : "cm-yaz-citation cm-yaz-unresolved";
+
+  // The number where the style prints one and the work resolves; otherwise the
+  // bibliography's short form; otherwise the key the author typed.
+  const shown = options.keys.map(
+    (key, index) =>
+      options.numbers[index]?.toString() ??
+      options.entries[index]?.label ??
+      key,
+  );
+  const named = shown.join("; ");
+  const withPage = options.page ? `${named}, ${options.page}` : named;
+  node.textContent = options.bare ? withPage : `[${withPage}]`;
+
+  node.title = options.entries
+    .map((entry, index) =>
+      entry
+        ? entry.detail
+        : t("citation-unknown", { key: options.keys[index] ?? "" }),
+    )
+    .join("\n");
+
+  const follow = options.follow;
+  const first = options.keys[0];
+  if (follow && first) {
+    node.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      follow(first);
+    });
+  }
+  return node;
+}
+
 /** A citation, drawn as the bibliography's short form. */
 class CitationWidget extends WidgetType {
   constructor(
@@ -233,40 +288,16 @@ class CitationWidget extends WidgetType {
   }
 
   override toDOM(): HTMLElement {
-    const node = document.createElement("span");
-    const resolved = this.entries.some(Boolean);
-    node.className = resolved
-      ? "cm-yaz-citation"
-      : "cm-yaz-citation cm-yaz-unresolved";
-
-    // The number where the style prints one and the work resolves; otherwise
-    // the bibliography's short form; otherwise the key the author typed.
-    const shown = this.keys.map(
-      (key, index) =>
-        this.numbers[index]?.toString() ?? this.entries[index]?.label ?? key,
-    );
-    // `\parencite` prints its own brackets and `\textcite` does not — the
-    // difference is the whole reason a document uses both.
-    const bare = this.command === "textcite" || this.command === "citet";
-    node.textContent = bare ? shown.join("; ") : `[${shown.join("; ")}]`;
-
-    node.title = this.entries
-      .map((entry, index) =>
-        entry
-          ? entry.detail
-          : t("citation-unknown", { key: this.keys[index] ?? "" }),
-      )
-      .join("\n");
-
-    const follow = this.follow;
-    const first = this.keys[0];
-    if (follow && first) {
-      node.addEventListener("mousedown", (event) => {
-        event.preventDefault();
-        follow(first);
-      });
-    }
-    return node;
+    return citationNode({
+      keys: this.keys,
+      entries: this.entries,
+      numbers: this.numbers,
+      follow: this.follow,
+      // `\parencite` prints its own brackets and `\textcite` does not — the
+      // difference is the whole reason a document uses both.
+      bare: this.command === "textcite" || this.command === "citet",
+      page: null,
+    });
   }
 
   override ignoreEvent(): boolean {
@@ -336,6 +367,65 @@ class TextWidget extends WidgetType {
     node.className = this.className;
     node.textContent = this.content;
     return node;
+  }
+}
+
+/**
+ * A quotation's closing mark and the source it is attributed to.
+ *
+ * One widget rather than two, because they replace one range: everything from
+ * the end of the passage to the end of the command. The citation inside is a
+ * real citation element, so it resolves, says what the work is on hover and
+ * goes there when clicked — which it did not when this was drawn as text, and
+ * a grey `[1, 8]` beside a blue `[1]` is a difference nobody can explain.
+ */
+class AttributedCloseWidget extends WidgetType {
+  constructor(
+    readonly mark: string,
+    readonly cited: Attribution,
+    readonly entries: (BibEntry | undefined)[],
+    readonly numbers: (number | undefined)[],
+    readonly follow: ((key: string) => void) | null,
+  ) {
+    super();
+  }
+
+  override eq(other: AttributedCloseWidget): boolean {
+    return (
+      other.mark === this.mark &&
+      other.cited.page === this.cited.page &&
+      other.cited.keys.join() === this.cited.keys.join() &&
+      other.numbers.join() === this.numbers.join() &&
+      other.entries.map((entry) => entry?.label).join() ===
+        this.entries.map((entry) => entry?.label).join()
+    );
+  }
+
+  override toDOM(): HTMLElement {
+    const box = document.createElement("span");
+
+    const mark = document.createElement("span");
+    mark.className = "cm-yaz-quote-mark";
+    mark.textContent = this.mark;
+    box.append(mark);
+
+    // A space between the mark and the source, the way csquotes sets it.
+    box.append(document.createTextNode(" "));
+    box.append(
+      citationNode({
+        keys: this.cited.keys,
+        entries: this.entries,
+        numbers: this.numbers,
+        follow: this.follow,
+        bare: false,
+        page: this.cited.page,
+      }),
+    );
+    return box;
+  }
+
+  override ignoreEvent(): boolean {
+    return false;
   }
 }
 
@@ -481,24 +571,26 @@ function glossaryForm(command: string, name: string, detail: string): string {
   return word;
 }
 
+/** The citation inside a quotation's optional argument. */
+export interface Attribution {
+  keys: string[];
+  /** The page the passage came from, where the citation named one. */
+  page: string | null;
+}
+
 /**
- * What a quotation is attributed to, drawn from its optional argument.
+ * What a quotation is attributed to, read from its optional argument.
  *
  * `\textquote[\cite[8]{din277}]{…}` — which is what the Zotero bridge writes
  * for a dragged highlight — attributes the passage in its optional argument.
  * That is content, not configuration, so it is drawn rather than hidden with
  * the rest of the markup.
  *
- * Returns the text to put after the closing quotation mark, or `null` where
- * there is nothing citable in there. Not every optional argument is a citation:
- * `\textquote[][.]{…}` sets the punctuation, and drawing that as an attribution
- * would invent a source.
+ * `null` where there is nothing citable in there. Not every optional argument
+ * is a citation: `\textquote[][.]{…}` sets the punctuation, and drawing that
+ * as an attribution would invent a source.
  */
-export function attribution(
-  optional: string,
-  books: ReadonlyMap<string, BibEntry>,
-  numbering: ReadonlyMap<string, number> = new Map(),
-): string | null {
+export function citedIn(optional: string): Attribution | null {
   const cite =
     /\\[a-zA-Z]*cite[a-zA-Z]*\s*(?:\[([^\]]*)\])?\s*\{([^}]*)\}/.exec(optional);
   if (!cite) return null;
@@ -509,16 +601,35 @@ export function attribution(
     .filter(Boolean);
   if (keys.length === 0) return null;
 
-  // The bibliography's short form where it knows the work, and the key itself
-  // where it does not — which is what the author typed, and better than
-  // nothing.
-  const named = keys
+  const page = (cite[1] ?? "").trim();
+  return { keys, page: page || null };
+}
+
+/** How an attribution reads, for a tooltip or a view that cannot draw one. */
+export function attributionText(
+  cited: Attribution,
+  books: ReadonlyMap<string, BibEntry>,
+  numbering: ReadonlyMap<string, number> = new Map(),
+): string {
+  // The number where the style prints one, the bibliography's short form
+  // otherwise, and the key itself where it knows neither — which is what the
+  // author typed, and better than nothing.
+  const named = cited.keys
     .map(
       (key) => numbering.get(key)?.toString() ?? books.get(key)?.label ?? key,
     )
     .join("; ");
-  const page = (cite[1] ?? "").trim();
-  return page ? `[${named}, ${page}]` : `[${named}]`;
+  return cited.page ? `[${named}, ${cited.page}]` : `[${named}]`;
+}
+
+/** Both together, which is what a caller with no widget to draw wants. */
+export function attribution(
+  optional: string,
+  books: ReadonlyMap<string, BibEntry>,
+  numbering: ReadonlyMap<string, number> = new Map(),
+): string | null {
+  const cited = citedIn(optional);
+  return cited ? attributionText(cited, books, numbering) : null;
 }
 
 /**
@@ -621,11 +732,7 @@ export function semanticMarkup(pass: Pass): Meaning {
      */
     const cited =
       quotation.optFrom !== null && quotation.optTo !== null
-        ? attribution(
-            pass.text.slice(quotation.optFrom, quotation.optTo),
-            books,
-            numbering,
-          )
+        ? citedIn(pass.text.slice(quotation.optFrom, quotation.optTo))
         : null;
 
     replace(
@@ -633,7 +740,13 @@ export function semanticMarkup(pass: Pass): Meaning {
       quotation.argTo,
       quotation.to,
       cited
-        ? new TextWidget(`${marks.close} ${cited}`, "cm-yaz-quote-mark")
+        ? new AttributedCloseWidget(
+            marks.close,
+            cited,
+            cited.keys.map((key) => books.get(key)),
+            cited.keys.map((key) => numbering.get(key)),
+            follow,
+          )
         : new TextWidget(marks.close, "cm-yaz-quote-mark"),
     );
   }

@@ -565,10 +565,21 @@ export class PluginRuntime {
           ipc.zoteroSearch(pluginId, query, limit),
         listAnnotations: (itemKey: string) =>
           ipc.zoteroAnnotations(pluginId, itemKey),
+        refreshBibliography: (bibliography?: string, fields?: unknown) => {
+          const open = context.project();
+          if (!open) return Promise.reject(new Error("no project is open"));
+          return ipc.zoteroRefreshBibliography(
+            pluginId,
+            open.root,
+            bibliography,
+            fields,
+          );
+        },
         ensureInBibliography: (
           itemKey: string,
           bibliography?: string,
           scheme?: string,
+          fields?: unknown,
         ) => {
           const open = context.project();
           if (!open) return Promise.reject(new Error("no project is open"));
@@ -578,6 +589,7 @@ export class PluginRuntime {
             itemKey,
             bibliography,
             scheme,
+            fields,
           );
         },
         refresh: () => ipc.zoteroReconnect(pluginId),

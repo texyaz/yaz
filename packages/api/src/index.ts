@@ -487,10 +487,26 @@ export interface ZoteroApi {
     itemKey: string,
     bibliography?: string,
     scheme?: CitationKeyScheme,
+    fields?: BibliographyFields,
   ): Promise<CitationKey>;
 
   /** Re-probe the sources, e.g. after the user starts Zotero. */
   refresh(): Promise<void>;
+
+  /**
+   * Rewrite every entry this bridge wrote, from what Zotero says now.
+   *
+   * An entry copied into a `.bib` is a snapshot: correcting a title in Zotero
+   * never reaches a document that already cited it. Only entries recording a
+   * Zotero item are touched — a reference typed by hand has none and is left
+   * exactly as it is.
+   *
+   * @since 0.3.0
+   */
+  refreshBibliography(
+    bibliography?: string,
+    fields?: BibliographyFields,
+  ): Promise<BibliographyRefresh>;
 
   /**
    * Whether Zotero is on this machine at all.
@@ -634,6 +650,38 @@ export interface ZoteroAnnotation {
  * @since 0.3.0
  */
 export type CitationKeyScheme = "readable" | "item-key" | "better-bibtex";
+
+/**
+ * Which of Zotero's metadata is written into an entry.
+ *
+ * Zotero holds far more than a citation needs, and which of it a style prints
+ * depends on the style. Everything is written by default, because biber ignores
+ * a field the style does not print — the cost of too much is a longer file, and
+ * the cost of too little is a reference that loses its publisher when the
+ * author changes style.
+ *
+ * @since 0.3.0
+ */
+export interface BibliographyFields {
+  /** Publisher, place and edition. */
+  publication: boolean;
+  /** Volume, issue and pages. */
+  location: boolean;
+  /** DOI, ISBN and URL. */
+  identifiers: boolean;
+  /** The abstract, which almost no style prints. */
+  summary: boolean;
+}
+
+/** What a refresh changed. @since 0.3.0 */
+export interface BibliographyRefresh {
+  /** How many entries were rewritten. */
+  updated: number;
+  /** Citation keys whose Zotero item was not found, left untouched. */
+  missing: string[];
+  /** Which file was walked. */
+  bibliography: string;
+}
 
 /** The outcome of ensuring an item is citable from this project. @since 0.1.0 */
 export interface CitationKey {
