@@ -11,8 +11,8 @@ that lives in Todoist and lets you add to it without leaving the document.
 
 | | |
 | --- | --- |
-| Sign in | A personal API token, kept in your system keychain |
-| Link a paper | Choose a Todoist project, or create one named after the folder |
+| Sign in | A personal API token, kept in your system keychain — under **Connections** in the ribbon |
+| Link a paper | Choose a Todoist project, or create one named after the folder — also under **Connections** |
 | See the list | In the **Tasks** tab, beside the editor |
 | Add a task | From the tab, or from the selected text with a command |
 | Tick one off | The checkbox in the tab |

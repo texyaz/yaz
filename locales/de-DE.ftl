@@ -765,19 +765,34 @@ workspace-no-project-open = Ein Projekt öffnen, um seine Aufgaben zu sehen.
 ## Das Todoist-Plugin.
 
 todoist-name = Todoist
-todoist-settings-title = Todoist
-todoist-signed-in = Bei Todoist angemeldet.
-todoist-signed-out = Nicht angemeldet.
-todoist-sign-in = Anmelden
-todoist-sign-in-failed = Dieses Token konnte nicht gespeichert werden.
-todoist-token-placeholder = Persönliches API-Token
-todoist-token-where = Ein persönliches API-Token unter { $page } kopieren und hier einfügen. Es wird im Schlüsselbund des Systems abgelegt und von yaz nie wieder angezeigt.
-todoist-forget = Token vergessen
-todoist-forgotten = Auf diesem Rechner vergessen.
-todoist-revoke-elsewhere = Vergessen ist kein Widerrufen. Dafür das Token in den Einstellungen von Todoist löschen.
 todoist-command-add = Auswahl zu Todoist hinzufügen
 todoist-command-add-description = Aus dem markierten Text eine Aufgabe auf der Liste dieser Arbeit machen.
 todoist-notice-nothing-selected = Zuerst den Text markieren, aus dem eine Aufgabe werden soll.
 todoist-notice-not-linked = Diese Arbeit zuerst im Aufgaben-Tab mit einer Todoist-Liste verknüpfen.
 todoist-notice-added = Zu Todoist hinzugefügt.
 todoist-notice-failed = Todoist hat diese Aufgabe nicht angenommen.
+
+## Das Detail-Tab.
+
+workspace-tab-details = Details
+details-empty = Ein Zitat, eine Aufgabe oder einen Glossareintrag anklicken, um zu sehen, worum es sich handelt.
+details-kind-citation = Zitat
+details-kind-task = Aufgabe
+details-citation-key = Schlüssel
+details-citation-uses = Zitiert
+details-citation-fix = Warum lässt sich das nicht auflösen?
+details-task-due = Fällig
+details-task-priority = Priorität
+details-task-complete = Als erledigt markieren
+latex-packages-glossary-detail-kind = Glossareintrag
+latex-packages-glossary-detail-key = Schlüssel
+latex-packages-glossary-detail-meaning = Bedeutet
+connections-tasks-sign-in = Bei der Aufgabenliste anmelden
+connections-tasks-signed-in = Angemeldet — Token vergessen
+connections-tasks-token = Persönliches API-Token
+connections-tasks-token-hint = Wird im Schlüsselbund des Systems abgelegt. yaz zeigt es nie wieder an, und Vergessen ist kein Widerrufen.
+connections-tasks-ready = Mit der Aufgabenliste verbunden.
+connections-tasks-refused = Das Token wurde gespeichert, aber vom Dienst abgelehnt.
+connections-tasks-forgotten = Auf diesem Rechner vergessen. Zum Widerrufen die Einstellungen des Dienstes verwenden.
+connections-tasks-link = Liste dieser Arbeit wählen
+connections-tasks-relink = Liste dieser Arbeit wechseln

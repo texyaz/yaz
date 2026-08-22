@@ -16,11 +16,24 @@
     titleKey: string;
     placeholderKey?: string | undefined;
     hintKey?: string | undefined;
+    /**
+     * Whether what is typed should be hidden.
+     *
+     * For a token or a password: a field that shows a secret is a secret read
+     * over somebody's shoulder or left legible in a screen recording.
+     */
+    secret?: boolean | undefined;
     /** Resolved with the text, or null if dismissed. */
     onsubmit: (value: string | null) => void;
   }
 
-  let { titleKey, placeholderKey, hintKey, onsubmit }: Props = $props();
+  let {
+    titleKey,
+    placeholderKey,
+    hintKey,
+    secret = false,
+    onsubmit,
+  }: Props = $props();
 
   let value = $state("");
   let input = $state<HTMLInputElement | null>(null);
@@ -54,7 +67,7 @@
       bind:this={input}
       bind:value
       {onkeydown}
-      type="text"
+      type={secret ? "password" : "text"}
       placeholder={placeholderKey ? t(placeholderKey) : undefined}
       aria-label={t(titleKey)}
     />

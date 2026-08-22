@@ -33,6 +33,7 @@
   import BibliographyFix from "./lib/BibliographyFix.svelte";
   import Citations from "./lib/Citations.svelte";
   import Tasks from "./lib/Tasks.svelte";
+  import Details from "./lib/Details.svelte";
   import type { Heading } from "./lib/editor/structure";
   import { LINE_NUMBERING } from "./lib/editor/lineNumbers";
   import {
@@ -92,7 +93,12 @@
     type RegisteredTaskProvider,
     type RegisteredView,
   } from "./lib/plugins/host";
-  import type { ListingKind, Task, TaskProject } from "@yaz/api";
+  import type {
+    Detail,
+    ListingKind,
+    Task,
+    TaskProject,
+  } from "@yaz/api";
   import {
     declaredBibliographies,
     numberCitations,
@@ -103,7 +109,10 @@
     readBib,
     withBibliography,
   } from "./lib/editor/bibliography";
-  import type { BibProblem } from "./lib/editor/bibliography";
+  import type {
+    BibProblem,
+    CitedWork,
+  } from "./lib/editor/bibliography";
   import type { BibEntry } from "./lib/editor/semanticView";
   import {
     canPaginate,
@@ -506,6 +515,8 @@
   let vcsBusy = $state(false);
   /** Set while the commit-message prompt is open. */
   let askingForMessage = $state(false);
+  /** Whether the task service's sign-in prompt is up. */
+  let askingForToken = $state(false);
 
   /** Refresh version-control state and history for the open project. */
   async function refreshVcs() {
@@ -892,6 +903,65 @@
    * unrelated state change would look like the plugin had failed.
    */
   let dropTakers = $state<RegisteredDropHandler[]>([]);
+
+  /**
+   * What the Details tab is showing.
+   *
+   * Whatever was last clicked, from wherever. Not opened automatically: a pane
+   * that appeared on every citation click would be a pane fighting the document
+   * for room, so it is opened from View and then follows the cursor.
+   */
+  let detail = $state<Detail | null>(null);
+
+  /** Describe a citation for the Details tab. */
+  function showCitationDetail(work: CitedWork) {
+    detail = work.entry
+      ? {
+          source: "yaz",
+          kindKey: "details-kind-citation",
+          title: work.entry.label,
+          subtitle: work.entry.detail,
+          fields: [
+            { labelKey: "details-citation-key", value: work.key },
+            { labelKey: "details-citation-uses", value: String(work.at.length) },
+          ],
+        }
+      : {
+          source: "yaz",
+          kindKey: "details-kind-citation",
+          title: work.key,
+          subtitle: t("citations-not-in-bibliography"),
+          fields: [{ labelKey: "details-citation-key", value: work.key }],
+          actions: [
+            {
+              labelKey: "details-citation-fix",
+              run: () => void explainCitation(work.key),
+            },
+          ],
+        };
+  }
+
+  /** Describe a task for the Details tab. */
+  function showTaskDetail(task: Task) {
+    detail = {
+      source: "yaz",
+      kindKey: "details-kind-task",
+      title: task.title,
+      subtitle: taskProject?.name,
+      fields: [
+        ...(task.due ? [{ labelKey: "details-task-due", value: task.due }] : []),
+        ...(task.priority !== null
+          ? [{ labelKey: "details-task-priority", value: String(task.priority) }]
+          : []),
+      ],
+      actions: [
+        {
+          labelKey: "details-task-complete",
+          run: () => void completeTask(task),
+        },
+      ],
+    };
+  }
 
   /** Settings panels plugins contributed, shown under Settings → Plugins. */
   let pluginPanels = $state<RegisteredSettings[]>([]);
@@ -1283,6 +1353,7 @@ ${entryText}`,
     outline: t("workspace-tab-outline"),
     citations: t("workspace-tab-citations"),
     tasks: t("workspace-tab-tasks"),
+    details: t("workspace-tab-details"),
     pdf: t("workspace-tab-pdf"),
     history: t("workspace-tab-history"),
     ...Object.fromEntries(
@@ -1434,6 +1505,60 @@ ${entryText}`,
     }
   }
 
+  /**
+   * Sign in to the task service, from Connections rather than Settings.
+   *
+   * Connecting to the things a paper is built from is its own kind of work and
+   * it lives in one place — beside Zotero, where somebody looking for "what is
+   * this paper wired up to" will look. Settings keeps what is per install.
+   */
+  function signInToTasks() {
+    if (!taskProvider) {
+      showNotice(t("tasks-no-provider"));
+      return;
+    }
+    askingForToken = true;
+  }
+
+  /** Store the token the prompt collected, and see whether it works. */
+  async function storeTaskToken(token: string) {
+    const held = taskProvider;
+    if (!held) return;
+    connectionsBusy = true;
+    try {
+      await ipc.pluginSetCredential(held.pluginId, token);
+      await loadTasks();
+      // What the service said, not what we hoped: a token can be stored and
+      // still refused, and "connected" that only means "we kept a string" is
+      // not worth telling anybody.
+      showNotice(
+        t(tasksReady ? "connections-tasks-ready" : "connections-tasks-refused"),
+      );
+    } catch (error) {
+      failure = String(error);
+    } finally {
+      connectionsBusy = false;
+    }
+  }
+
+  /** Forget the token, on this computer. */
+  async function forgetTaskToken() {
+    const held = taskProvider;
+    if (!held) return;
+    connectionsBusy = true;
+    try {
+      await ipc.pluginSetCredential(held.pluginId, null);
+      await loadTasks();
+      // Said precisely: gone from here is not revoked, and only the service
+      // can do the second one.
+      showNotice(t("connections-tasks-forgotten"));
+    } catch (error) {
+      failure = String(error);
+    } finally {
+      connectionsBusy = false;
+    }
+  }
+
   function notImplemented() {
     showNotice(t("menu-not-implemented"));
   }
@@ -1465,6 +1590,7 @@ ${entryText}`,
     },
     showNotice,
     refreshTasks: () => void loadTasks(),
+    showDetail: (shown: Detail | null) => (detail = shown),
   });
 
   let commands = $state<ReturnType<PluginRuntime["availableCommands"]>>([]);
@@ -1738,6 +1864,7 @@ ${entryText}`,
                   "outline",
                   "citations",
                   "tasks",
+                  "details",
                   "history",
                 ] as TabId[]
               ).map(
@@ -1794,6 +1921,32 @@ ${entryText}`,
           group: "connections-zotero-group",
           action: () => runCommand(command.id),
         })),
+        // The task service, beside the others. Connecting a paper to the
+        // things it is built from is one kind of work and belongs in one
+        // place — Settings keeps what is per install.
+        ...(taskProvider
+          ? [
+              {
+                labelKey: tasksReady
+                  ? "connections-tasks-signed-in"
+                  : "connections-tasks-sign-in",
+                icon: "plug" as const,
+                group: "connections-tasks-group",
+                dot: (tasksReady ? "ok" : "unknown") as Health,
+                disabled: connectionsBusy,
+                action: tasksReady ? forgetTaskToken : signInToTasks,
+              },
+              {
+                labelKey: taskProject
+                  ? "connections-tasks-relink"
+                  : "connections-tasks-link",
+                icon: "calendar" as const,
+                group: "connections-tasks-group",
+                disabled: connectionsBusy || !tasksReady || !project,
+                action: () => void linkTasks(),
+              },
+            ]
+          : []),
         {
           labelKey: "connections-obsidian",
           icon: "folder" as const,
@@ -3111,7 +3264,10 @@ ${entryText}`,
       hasBibliography={bibEntries.size > 0}
       onnavigate={(at) => editorApi?.revealRange(at, at)}
       onexplain={(key) => void explainCitation(key)}
+      onselect={showCitationDetail}
     />
+  {:else if tab === "details"}
+    <Details {detail} />
   {:else if tab === "tasks"}
     <Tasks
       hasProject={project !== null}
@@ -3124,6 +3280,7 @@ ${entryText}`,
       onadd={(title) => void addTask(title)}
       oncomplete={(task) => void completeTask(task)}
       onrefresh={() => void loadTasks()}
+      onselect={showTaskDetail}
     />
   {:else if pluginTab(tab)}
     <PluginView view={pluginTab(tab)!} doc={docText} />
@@ -3290,6 +3447,19 @@ ${entryText}`,
       sections={settingsSections}
       initial={settingsSection}
       onclose={() => (settingsOpen = false)}
+    />
+  {/if}
+
+  {#if askingForToken}
+    <Prompt
+      titleKey="connections-tasks-sign-in"
+      placeholderKey="connections-tasks-token"
+      hintKey="connections-tasks-token-hint"
+      secret
+      onsubmit={(value) => {
+        askingForToken = false;
+        if (value) void storeTaskToken(value);
+      }}
     />
   {/if}
 

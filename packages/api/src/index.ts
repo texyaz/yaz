@@ -214,6 +214,8 @@ export interface App {
   readonly credentials: CredentialApi;
   /** Task lists, which a to-do plugin fills and the Tasks tab shows. */
   readonly tasks: TasksApi;
+  /** The Details tab: what the thing under the cursor actually is. */
+  readonly details: DetailsApi;
   /** Transient user-facing messages. */
   readonly notices: NoticeApi;
   /** Chooser dialogs. */
@@ -399,6 +401,75 @@ export interface CredentialApi {
     url: string,
     options?: { method?: "GET" | "POST" | "DELETE"; body?: unknown },
   ): Promise<unknown>;
+}
+
+/**
+ * The Details tab.
+ *
+ * One tab, shared. Clicking a citation shows what the bibliography says about
+ * it; clicking a glossary term shows its definition; clicking a task shows when
+ * it is due and what list it is on. Every one of those comes from somewhere
+ * else — core, the packages plugin, a to-do plugin — and a tab each would be
+ * three tabs the reader has to keep track of for one question they keep asking:
+ * *what is this thing?*
+ *
+ * So the shape is core and the contents are not. A plugin describes its own
+ * things in terms core can draw, and never draws them itself — which is what
+ * keeps a citation and a task looking like they belong to the same application.
+ *
+ * @since 0.3.0
+ */
+export interface DetailsApi {
+  /** Show this, replacing whatever was there. */
+  show(detail: Detail): void;
+  /** Show nothing, for a selection that has moved off anything. */
+  clear(): void;
+}
+
+/**
+ * One thing, described.
+ *
+ * Deliberately plain: a heading, some labelled rows, and things you can do
+ * about it. Every richer idea — a picture, a nested list, a chart — is a
+ * different tab's job, and a details pane that could render anything would
+ * quickly render six different-looking things.
+ *
+ * @since 0.3.0
+ */
+export interface Detail {
+  /**
+   * Which plugin or part of yaz this came from.
+   *
+   * Not shown. It is here so that a later selection from the same source
+   * replaces this rather than stacking, and so clearing one source's detail
+   * does not clear another's.
+   */
+  source: string;
+  /** Message key naming the kind: "Citation", "Glossary entry", "Task". */
+  kindKey: string;
+  /** The thing itself. Data, so a string rather than a message key. */
+  title: string;
+  /** A second line, where there is one worth having. */
+  subtitle?: string | undefined;
+  /** Labelled rows, in the order they should read. */
+  fields?: DetailField[] | undefined;
+  /** What can be done about it from here. */
+  actions?: DetailAction[] | undefined;
+}
+
+/** One labelled row. @since 0.3.0 */
+export interface DetailField {
+  /** Message key for the label — the label is interface text (ADR-0011). */
+  labelKey: string;
+  /** The value. Data, so not a key. */
+  value: string;
+}
+
+/** Something that can be done about the thing shown. @since 0.3.0 */
+export interface DetailAction {
+  /** Message key for the button. */
+  labelKey: string;
+  run(): void | Promise<void>;
 }
 
 /** Task lists. @since 0.3.0 */

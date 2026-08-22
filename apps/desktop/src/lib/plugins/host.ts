@@ -30,6 +30,7 @@
 import type {
   App,
   Command,
+  Detail,
   EditorApi,
   DropHandler,
   ListingKind,
@@ -95,6 +96,8 @@ export interface HostContext {
   showNotice(text: string): void;
   /** Re-read the task list, after a provider changed something. */
   refreshTasks(): void;
+  /** Show something in the Details tab, or clear it with `null`. */
+  showDetail(detail: Detail | null): void;
 }
 
 /** A text format a plugin contributed, and who contributed it. */
@@ -518,6 +521,13 @@ export class PluginRuntime {
 
       tasks: {
         refresh: () => context.refreshTasks(),
+      },
+
+      details: {
+        // Stamped with the plugin that sent it, so a later detail from the
+        // same source replaces this one rather than two sources fighting.
+        show: (detail) => context.showDetail({ ...detail, source: pluginId }),
+        clear: () => context.showDetail(null),
       },
 
       workspace: {

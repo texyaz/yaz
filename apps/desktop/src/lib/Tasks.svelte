@@ -45,6 +45,8 @@
     oncomplete: (task: Task) => void;
     /** Re-read the list. */
     onrefresh: () => void;
+    /** Describe this task in the Details tab. */
+    onselect: (task: Task) => void;
   }
 
   let {
@@ -58,6 +60,7 @@
     onadd,
     oncomplete,
     onrefresh,
+    onselect,
   }: Props = $props();
 
   let draft = $state("");
@@ -150,12 +153,15 @@
               aria-label={task.title}
               onchange={() => oncomplete(task)}
             />
-            <span class="body">
+            <!-- The row is the way into the details; the checkbox beside it
+                 is the way to be done with the task. Two things to click,
+                 because they are two different intentions. -->
+            <button type="button" class="body" onclick={() => onselect(task)}>
               <span class="title">{task.title}</span>
               {#if task.due}
                 <span class="due">{task.due}</span>
               {/if}
-            </span>
+            </button>
           </li>
         {/each}
       </ul>
@@ -278,9 +284,17 @@
   }
 
   .body {
+    flex: 1;
     display: flex;
     flex-direction: column;
+    align-items: flex-start;
     min-inline-size: 0;
+    font: inherit;
+    text-align: start;
+    padding: 0;
+    background: none;
+    border: none;
+    cursor: pointer;
   }
 
   .title {

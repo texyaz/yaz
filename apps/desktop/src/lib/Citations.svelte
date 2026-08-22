@@ -30,9 +30,18 @@
     onnavigate: (at: number) => void;
     /** Explain why a key will not resolve, and offer the fix. */
     onexplain: (key: string) => void;
+    /** Describe this work in the Details tab. */
+    onselect: (work: CitedWork) => void;
   }
 
-  let { works, file, hasBibliography, onnavigate, onexplain }: Props = $props();
+  let {
+    works,
+    file,
+    hasBibliography,
+    onnavigate,
+    onexplain,
+    onselect,
+  }: Props = $props();
 
   const unresolved = $derived(works.filter((work) => work.entry === null));
 
@@ -80,8 +89,13 @@
           <button
             type="button"
             class="work"
-            onclick={() =>
-              work.entry === null ? onexplain(work.key) : step(work)}
+            onclick={() => {
+              // The Details tab follows the cursor whether or not the click
+              // also goes somewhere, so it is told first and unconditionally.
+              onselect(work);
+              if (work.entry === null) onexplain(work.key);
+              else step(work);
+            }}
           >
             <span class="label">{work.entry?.label ?? work.key}</span>
             <span class="detail">

@@ -764,19 +764,34 @@ workspace-no-project-open = Open a project to see its tasks.
 ## The Todoist plugin.
 
 todoist-name = Todoist
-todoist-settings-title = Todoist
-todoist-signed-in = Signed in to Todoist.
-todoist-signed-out = Not signed in.
-todoist-sign-in = Sign in
-todoist-sign-in-failed = That token could not be stored.
-todoist-token-placeholder = Personal API token
-todoist-token-where = Copy a personal API token from { $page } and paste it here. It is kept in your system keychain, and yaz never shows it again.
-todoist-forget = Forget this token
-todoist-forgotten = Forgotten on this computer.
-todoist-revoke-elsewhere = Forgetting it here does not revoke it. To do that, delete it in Todoist's own settings.
 todoist-command-add = Add the selection to Todoist
 todoist-command-add-description = Make a task out of the selected text, on this paper's list.
 todoist-notice-nothing-selected = Select the text to make a task from first.
 todoist-notice-not-linked = Link this paper to a Todoist list first, in the Tasks tab.
 todoist-notice-added = Added to Todoist.
 todoist-notice-failed = Todoist would not take that task.
+
+## The details tab.
+
+workspace-tab-details = Details
+details-empty = Click a citation, a task or a glossary entry to see what it is.
+details-kind-citation = Citation
+details-kind-task = Task
+details-citation-key = Key
+details-citation-uses = Cited
+details-citation-fix = Why will this not resolve?
+details-task-due = Due
+details-task-priority = Priority
+details-task-complete = Mark done
+latex-packages-glossary-detail-kind = Glossary entry
+latex-packages-glossary-detail-key = Key
+latex-packages-glossary-detail-meaning = Means
+connections-tasks-sign-in = Sign in to your task list
+connections-tasks-signed-in = Signed in — forget this token
+connections-tasks-token = Personal API token
+connections-tasks-token-hint = Kept in your system keychain. yaz never shows it again, and forgetting it here does not revoke it.
+connections-tasks-ready = Connected to your task list.
+connections-tasks-refused = That token was stored, but the service refused it.
+connections-tasks-forgotten = Forgotten on this computer. To revoke it, use the service's own settings.
+connections-tasks-link = Choose this paper's list
+connections-tasks-relink = Change this paper's list
