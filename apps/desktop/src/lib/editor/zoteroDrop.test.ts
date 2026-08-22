@@ -14,6 +14,7 @@ import { describe, expect, it } from "vitest";
 import {
   itemKeyFromUri,
   readZoteroDrop,
+  splitQuoted,
   unquote,
   withoutLinks,
   zoteroLinks,
@@ -153,6 +154,7 @@ describe("a highlight dragged out of the reader", () => {
       itemKey: "ABCD1234",
       annotationKey: "ANNOT001",
       text: PASSAGE,
+      comment: "",
       pageLabel: "8",
     });
   });
@@ -194,6 +196,7 @@ describe("a highlight dragged out of the reader", () => {
       itemKey: null,
       annotationKey: "ANNOT003",
       text: "Ohne Quelle.",
+      comment: "",
       pageLabel: null,
     });
   });
@@ -272,6 +275,7 @@ describe("a Markdown Quick Copy drag", () => {
       itemKey: "B8IM9SU5",
       annotationKey: "FARPUJ53",
       text: PASSAGE,
+      comment: "",
       pageLabel: "8",
     });
   });
@@ -490,5 +494,69 @@ describe("what to search for when a drop carries no link", () => {
 
   it("survives markup it cannot parse", () => {
     expect(searchQueries(BKI, "<i>unclosed").length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * A highlight the reader wrote a note on.
+ *
+ * Reported: the note ended up inside the quotation with a stray closing mark
+ * before it — so the reader's own words were attributed to the source. The
+ * marks were stripped off the *ends* of the string, and with a note after the
+ * closing one the last character is a letter, so the `”` stayed in the middle.
+ */
+describe("splitting a highlight from the note on it", () => {
+  it("keeps the note out of the passage", () => {
+    const dragged =
+      "“die beabsichtigte Norm von der vorliegenden Fassung abweichen kann, " +
+      "ist die Anwendung dieses Entwurfs besonders zu vereinbaren. " +
+      "Stellungnahmen werden erbeten — vorzugsweise onlin” Test";
+    const split = splitQuoted(dragged);
+    expect(split.passage.endsWith("vorzugsweise onlin")).toBe(true);
+    expect(split.passage).not.toContain("Test");
+    expect(split.comment).toBe("Test");
+  });
+
+  it("leaves no quotation mark inside the passage", () => {
+    // The visible half of the bug: the preview drew `onlin” Test”`.
+    const split = splitQuoted("“Ein Satz” Meine Notiz");
+    expect(split.passage).toBe("Ein Satz");
+  });
+
+  it("says there is no note when there is none", () => {
+    expect(splitQuoted("“Ein Satz”")).toEqual({
+      passage: "Ein Satz",
+      comment: "",
+    });
+  });
+
+  it("takes a passage that is not quoted at all as all passage", () => {
+    // `the so-called "smart" building` is a highlight, not a highlight plus a
+    // note, and the quotation marks in it are the source's.
+    const plain = 'the so-called "smart" building';
+    expect(splitQuoted(plain)).toEqual({ passage: plain, comment: "" });
+  });
+
+  it("handles German low-high marks", () => {
+    expect(splitQuoted("„Ein Satz“ Notiz")).toEqual({
+      passage: "Ein Satz",
+      comment: "Notiz",
+    });
+  });
+
+  it("collapses the line breaks PDF extraction leaves in the passage", () => {
+    expect(splitQuoted("“Ver- und\n  Entsorgung” Notiz").passage).toBe(
+      "Ver- und Entsorgung",
+    );
+  });
+
+  it("reads the note out of a link-carrying drag", () => {
+    const SELECT = "zotero://select/groups/1/items/ML9HJSU4";
+    const OPEN = "zotero://open-pdf/groups/1/items/AT/?page=1&annotation=A1";
+    const dragged = `“Ein Satz” Test ([x](${SELECT})) ([pdf](${OPEN}))`;
+    const drop = readZoteroDrop("", dragged);
+    expect(drop.kind).toBe("annotation");
+    expect(drop.kind === "annotation" && drop.text).toBe("Ein Satz");
+    expect(drop.kind === "annotation" && drop.comment).toBe("Test");
   });
 });

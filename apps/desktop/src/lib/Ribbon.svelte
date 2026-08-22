@@ -595,32 +595,62 @@
     border-inline-end: none;
   }
 
+  /* Vertical: one control per row, because the ribbon is the narrow dimension
+     now and columns of three would be columns nobody can read. */
+  .ribbon.vertical .controls {
+    grid-auto-flow: row;
+    grid-template-rows: none;
+    grid-auto-columns: auto;
+  }
+
+  .ribbon.vertical .controls > :global(.action.large) {
+    grid-row: auto;
+  }
+
   .ribbon.vertical .group {
     border-inline-end: none;
     border-block-end: 1px solid var(--yaz-border);
     padding-block-end: var(--yaz-space-2);
   }
 
-  /* Small controls stack two or three deep in a column and the columns run
-     along, which is what gives a ribbon its shape: a tall group is one
-     important command, a wide group is many small ones. */
+  /* Small controls stack three deep in a column and the columns run along,
+     which is what gives a ribbon its shape: a tall group is one important
+     command, a wide group is many small ones.
+
+     A grid rather than a wrapping column of flex, which is what this was. A
+     column-wrap flex container does not grow its width to fit the columns it
+     wrapped into — so the last control of a group sat outside the group's box
+     and over the top of the group beside it. A grid's columns are part of its
+     size, so the group is as wide as what is in it and the rule between groups
+     lands where it should.
+
+     `max-content` columns: a control is as wide as its label, and a group of
+     three short ones is narrower than a group of three long ones. */
   .controls {
-    display: flex;
-    flex-flow: column wrap;
-    align-content: flex-start;
-    align-items: stretch;
+    display: grid;
+    grid-auto-flow: column;
+    grid-template-rows: repeat(3, auto);
+    grid-auto-columns: max-content;
+    align-content: start;
     gap: 2px;
-    max-block-size: 4.5rem;
-    flex: 1;
+  }
+
+  /* The one that fills the group's height spans the rows the others share. */
+  .controls > :global(.action.large) {
+    grid-row: span 3;
   }
 
   /* Compact: everything on one line, labels and all. The large button loses
      its height with the rest — a tall button in a short ribbon is a button
      sticking out of it. */
   .ribbon.compact .controls {
-    flex-flow: row nowrap;
-    max-block-size: none;
+    grid-template-rows: auto;
     align-items: center;
+  }
+
+  /* One row, so nothing spans three of them. */
+  .ribbon.compact .controls > :global(.action.large) {
+    grid-row: auto;
   }
 
   .ribbon.compact .group-title {
@@ -742,8 +772,16 @@
     color: var(--yaz-text-muted);
   }
 
+  /* The wrapper a menu's popover is positioned against.
+     Its button fills it, so a menu control is the same width as the plain
+     buttons stacked above and below it in the same grid column. */
   .dropdown-host {
     position: relative;
+    display: flex;
+  }
+
+  .dropdown-host > .action {
+    inline-size: 100%;
   }
 
   /* Fixed to the window, so a menu is never clipped by the ribbon it opens
