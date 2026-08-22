@@ -34,6 +34,7 @@ import type {
   DropHandler,
   ListingKind,
   PickerItem,
+  TaskProvider,
   PickerOptions,
   Plugin,
   ProjectApi,
@@ -92,6 +93,8 @@ export interface HostContext {
   requestPicker(request: PickerRequest): void;
   /** Show a transient message. */
   showNotice(text: string): void;
+  /** Re-read the task list, after a provider changed something. */
+  refreshTasks(): void;
 }
 
 /** A text format a plugin contributed, and who contributed it. */
@@ -140,6 +143,12 @@ export interface RegisteredView {
   /** The generated list this view is the home of, where it is one. */
   listing: ListingKind | null;
   mount: (container: HTMLElement) => ViewHandle;
+}
+
+/** A task list a plugin offered, and who offered it. */
+export interface RegisteredTaskProvider {
+  pluginId: string;
+  provider: TaskProvider;
 }
 
 /** A settings panel a plugin contributed, and who contributed it. */
@@ -209,6 +218,14 @@ export class PluginRuntime {
   readonly dropHandlers: RegisteredDropHandler[] = [];
   /** Settings panels plugins contributed, shown under Settings → Plugins. */
   readonly settingsPanels: RegisteredSettings[] = [];
+  /**
+   * Task lists plugins have offered.
+   *
+   * Held rather than shown, like everything else a plugin contributes: which
+   * list a project is linked to is the project's business and the tab's, and a
+   * plugin cannot make itself the one in use.
+   */
+  readonly taskProviders: RegisteredTaskProvider[] = [];
   private readonly loaded = new Map<string, Plugin>();
   /** Stops a second `start()` adding a second listener for the same events. */
   private listening = false;
@@ -375,6 +392,18 @@ export class PluginRuntime {
       });
     };
 
+    plugin.registerTaskProvider = function registerTaskProvider(provider) {
+      if (
+        runtime.taskProviders.some((held) => held.provider.id === provider.id)
+      ) {
+        console.warn(
+          `[yaz] a task provider called "${provider.id}" is already registered`,
+        );
+        return;
+      }
+      runtime.taskProviders.push({ pluginId, provider });
+    };
+
     plugin.addSettingsTab = function addSettingsTab(tab) {
       runtime.settingsPanels.push({
         pluginId,
@@ -455,6 +484,40 @@ export class PluginRuntime {
           return (stored ?? undefined) as T | undefined;
         },
         set: (value: unknown) => ipc.pluginSetSettings(pluginId, value),
+
+        forProject: {
+          async get<T>() {
+            const open = context.project();
+            if (!open) return undefined;
+            const stored = await ipc.pluginGetProjectSettings(
+              pluginId,
+              open.root,
+            );
+            return (stored ?? undefined) as T | undefined;
+          },
+          async set(value: unknown) {
+            const open = context.project();
+            if (!open) throw new Error("no project is open");
+            return ipc.pluginSetProjectSettings(pluginId, open.root, value);
+          },
+        },
+      },
+
+      credentials: {
+        has: () => ipc.pluginHasCredential(pluginId),
+        set: (secret: string) => ipc.pluginSetCredential(pluginId, secret),
+        forget: () => ipc.pluginSetCredential(pluginId, null),
+        fetch: (url: string, options?: { method?: string; body?: unknown }) =>
+          ipc.pluginFetchWithCredential(
+            pluginId,
+            url,
+            options?.method,
+            options?.body,
+          ),
+      },
+
+      tasks: {
+        refresh: () => context.refreshTasks(),
       },
 
       workspace: {

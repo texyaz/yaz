@@ -352,6 +352,56 @@ export function zoteroRefreshBibliography(
   });
 }
 
+/** What a plugin has stored about the open project. */
+export function pluginGetProjectSettings(
+  pluginId: string,
+  root: string,
+): Promise<unknown> {
+  return invoke<unknown>("plugin_get_project_settings", { pluginId, root });
+}
+
+/** Store what a plugin wants to remember about the open project. */
+export function pluginSetProjectSettings(
+  pluginId: string,
+  root: string,
+  value: unknown,
+): Promise<void> {
+  return invoke<void>("plugin_set_project_settings", { pluginId, root, value });
+}
+
+/** Whether a plugin has a sign-in stored — never what it is. */
+export function pluginHasCredential(pluginId: string): Promise<boolean> {
+  return invoke<boolean>("plugin_has_credential", { pluginId });
+}
+
+/** Store a plugin's sign-in, or forget it when given nothing. */
+export function pluginSetCredential(
+  pluginId: string,
+  secret: string | null,
+): Promise<void> {
+  return invoke<void>("plugin_set_credential", { pluginId, secret });
+}
+
+/**
+ * Make a request on a plugin's behalf, spending its stored credential.
+ *
+ * The secret stays in the Rust process: a plugin says which request to make and
+ * never sees the token (ADR-0026).
+ */
+export function pluginFetchWithCredential(
+  pluginId: string,
+  url: string,
+  method?: string,
+  body?: unknown,
+): Promise<unknown> {
+  return invoke<unknown>("plugin_fetch_with_credential", {
+    pluginId,
+    url,
+    method,
+    body,
+  });
+}
+
 /** What a plugin has stored, or null on first run. */
 export function pluginGetSettings(pluginId: string): Promise<unknown> {
   return invoke<unknown>("plugin_get_settings", { pluginId });

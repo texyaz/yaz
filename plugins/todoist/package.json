@@ -1,0 +1,19 @@
+{
+  "name": "yaz-todoist",
+  "version": "0.1.0",
+  "description": "Keep a paper's task list in Todoist, and see it beside the writing.",
+  "license": "MIT",
+  "type": "module",
+  "main": "src/main.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/texyaz/yaz-todoist.git"
+  },
+  "scripts": {
+    "check": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@yaz/api": "^0.3.0",
+    "typescript": "^6.0.0"
+  }
+}

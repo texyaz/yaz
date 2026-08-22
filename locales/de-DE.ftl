@@ -70,6 +70,7 @@ capability-obsidian-description = Ihren Obsidian-Vault lesen.
 capability-clipboard-description = Die Zwischenablage lesen und ändern.
 capability-notifications-description = Systembenachrichtigungen anzeigen.
 capability-shell-open-description = Links und Dateien mit Ihren anderen Anwendungen öffnen.
+capability-credential-description = Eine Anmeldung für diesen Dienst im Schlüsselbund des Systems ablegen.
 
 ## Plugin-Verwaltung
 
@@ -733,3 +734,50 @@ zotero-comments-text = Hinter das Zitat setzen
 zotero-comments-text-detail = Ein Ausgangspunkt zum Schreiben. Bleibt sie stehen, wird sie gedruckt.
 zotero-comments-comment = Als LaTeX-Kommentar stehen lassen
 zotero-comments-comment-detail = Beim Schreiben sichtbar, nie gedruckt, beim Löschen weg.
+
+## Kommunikation mit einem Dienst im Auftrag eines Plugins.
+
+error-project-settings = Die Einstellungen dieses Projekts konnten nicht gelesen oder geschrieben werden.
+error-keychain = Der Schlüsselbund des Systems war nicht erreichbar.
+error-no-credential = Für diesen Dienst ist keine Anmeldung hinterlegt.
+error-invalid-url = Diese Adresse war nicht lesbar.
+error-http-client = Es konnte kein Netzwerk-Client erstellt werden.
+error-http = Der Dienst war nicht erreichbar.
+error-http-status = Der Dienst hat die Anfrage abgelehnt.
+
+## Das Aufgaben-Tab.
+
+workspace-tab-tasks = Aufgaben
+tasks-no-provider = Es ist keine Aufgabenliste verbunden. Ein To-do-Plugin installieren und unter Einstellungen → Plugins anmelden.
+tasks-not-linked = Diese Arbeit ist noch mit keiner Aufgabenliste verknüpft.
+tasks-link = Liste wählen
+tasks-relink = Liste wechseln
+tasks-refresh = Aktualisieren
+tasks-empty = Nichts mehr zu tun.
+tasks-add = Hinzufügen
+tasks-add-placeholder = Was ist zu tun?
+tasks-link-title = Welche Liste gehört zu dieser Arbeit?
+tasks-link-placeholder = Filtern oder einen Namen für eine neue Liste eingeben
+tasks-link-empty = Noch keine Listen.
+tasks-link-new = „{ $name }" anlegen
+workspace-no-project-open = Ein Projekt öffnen, um seine Aufgaben zu sehen.
+
+## Das Todoist-Plugin.
+
+todoist-name = Todoist
+todoist-settings-title = Todoist
+todoist-signed-in = Bei Todoist angemeldet.
+todoist-signed-out = Nicht angemeldet.
+todoist-sign-in = Anmelden
+todoist-sign-in-failed = Dieses Token konnte nicht gespeichert werden.
+todoist-token-placeholder = Persönliches API-Token
+todoist-token-where = Ein persönliches API-Token unter { $page } kopieren und hier einfügen. Es wird im Schlüsselbund des Systems abgelegt und von yaz nie wieder angezeigt.
+todoist-forget = Token vergessen
+todoist-forgotten = Auf diesem Rechner vergessen.
+todoist-revoke-elsewhere = Vergessen ist kein Widerrufen. Dafür das Token in den Einstellungen von Todoist löschen.
+todoist-command-add = Auswahl zu Todoist hinzufügen
+todoist-command-add-description = Aus dem markierten Text eine Aufgabe auf der Liste dieser Arbeit machen.
+todoist-notice-nothing-selected = Zuerst den Text markieren, aus dem eine Aufgabe werden soll.
+todoist-notice-not-linked = Diese Arbeit zuerst im Aufgaben-Tab mit einer Todoist-Liste verknüpfen.
+todoist-notice-added = Zu Todoist hinzugefügt.
+todoist-notice-failed = Todoist hat diese Aufgabe nicht angenommen.

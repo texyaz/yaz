@@ -78,6 +78,18 @@ pub enum Capability {
 
     /// Open a URL or file with the system handler.
     ShellOpen,
+
+    /// Keep a credential in the operating system's keychain.
+    ///
+    /// Declared because holding one is a thing a user should be told about
+    /// before they install a plugin, and because a token for somebody's task
+    /// list or mail is worth more than most of what is on this list.
+    ///
+    /// The secret is namespaced by plugin and never reaches the webview: a
+    /// plugin asks the Rust side to *spend* it against a host its manifest
+    /// declared, and cannot ask to read it back
+    /// ([ADR-0026](https://github.com/texyaz/yaz/blob/main/docs/adr/0026-task-providers-and-credentials.md)).
+    Credential,
 }
 
 impl Capability {
@@ -95,6 +107,7 @@ impl Capability {
             Capability::Clipboard => "clipboard",
             Capability::Notifications => "notifications",
             Capability::ShellOpen => "shell:open",
+            Capability::Credential => "credential",
         }
     }
 
@@ -116,6 +129,9 @@ impl Capability {
                 | Capability::FsWrite { .. }
                 | Capability::Net { .. }
                 | Capability::McpClient { .. }
+                // A token for somebody's task list or mail outlives the
+                // session and is worth more than most of what is on this list.
+                | Capability::Credential
         )
     }
 
@@ -143,6 +159,7 @@ impl Capability {
             Capability::Clipboard,
             Capability::Notifications,
             Capability::ShellOpen,
+            Capability::Credential,
         ];
         // Not reached; it exists so that a new variant fails to compile here.
         if false {
@@ -157,7 +174,8 @@ impl Capability {
                 | Capability::Obsidian
                 | Capability::Clipboard
                 | Capability::Notifications
-                | Capability::ShellOpen => {}
+                | Capability::ShellOpen
+                | Capability::Credential => {}
             }
         }
         all
@@ -214,6 +232,9 @@ mod tests {
                     | Capability::Process { .. }
                     | Capability::FsWrite { .. }
                     | Capability::McpClient { .. }
+                    // And holding a credential, which outlives the session and
+                    // is worth more than most of the rest (ADR-0026).
+                    | Capability::Credential
             );
             assert_eq!(
                 capability.is_sensitive(),

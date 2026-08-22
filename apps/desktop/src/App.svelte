@@ -32,6 +32,7 @@
   import PluginView from "./lib/PluginView.svelte";
   import BibliographyFix from "./lib/BibliographyFix.svelte";
   import Citations from "./lib/Citations.svelte";
+  import Tasks from "./lib/Tasks.svelte";
   import type { Heading } from "./lib/editor/structure";
   import { LINE_NUMBERING } from "./lib/editor/lineNumbers";
   import {
@@ -88,9 +89,10 @@
     type PickerRequest,
     type RegisteredDropHandler,
     type RegisteredSettings,
+    type RegisteredTaskProvider,
     type RegisteredView,
   } from "./lib/plugins/host";
-  import type { ListingKind } from "@yaz/api";
+  import type { ListingKind, Task, TaskProject } from "@yaz/api";
   import {
     declaredBibliographies,
     numberCitations,
@@ -114,6 +116,7 @@
   import FormatsPlugin from "../../../plugins/formats/src/main";
   import LearnPlugin from "../../../plugins/learn/src/main";
   import LatexPackagesPlugin from "../../../plugins/latex-packages/src/main";
+  import TodoistPlugin from "../../../plugins/todoist/src/main";
 
   /** The plugin the shell asks about connection status on the user's behalf. */
   const ZOTERO_PLUGIN_ID = "com.yaz.zotero";
@@ -894,6 +897,157 @@
   let pluginPanels = $state<RegisteredSettings[]>([]);
 
   /**
+   * The task lists plugins offered, and what this project is linked to.
+   *
+   * Which list a paper uses is stored by the provider *with the paper*
+   * (ADR-0026), so it is asked for when the project opens rather than held per
+   * install — and the tab never learns how the provider stores it.
+   */
+  let taskProviders = $state<RegisteredTaskProvider[]>([]);
+  let taskProject = $state<TaskProject | null>(null);
+  let tasks = $state<Task[]>([]);
+  let tasksBusy = $state(false);
+  let tasksReady = $state(false);
+
+  /**
+   * The provider serving this project.
+   *
+   * The first registered, for now: two to-do plugins installed at once is a
+   * problem worth having before it is a problem worth solving, and picking
+   * between them is a setting nobody yet needs.
+   */
+  const taskProvider = $derived(taskProviders[0] ?? null);
+
+  /** Read the link and the list it names. */
+  async function loadTasks() {
+    const held = taskProvider;
+    if (!project || !held) {
+      tasks = [];
+      taskProject = null;
+      tasksReady = false;
+      return;
+    }
+
+    tasksBusy = true;
+    try {
+      tasksReady = await held.provider.isReady();
+      if (!tasksReady) {
+        tasks = [];
+        taskProject = null;
+        return;
+      }
+      taskProject = await held.provider.linkedProject();
+      tasks = taskProject
+        ? await held.provider.listTasks(taskProject.id)
+        : [];
+    } catch (error) {
+      failure = String(error);
+      tasks = [];
+    } finally {
+      tasksBusy = false;
+    }
+  }
+
+  /**
+   * Choose which of the service's projects this paper is linked to.
+   *
+   * The picker lists what is there and offers making a new one, because a paper
+   * started today has no list yet and sending the author to another application
+   * to make one before they can use this tab is the wrong way round.
+   */
+  async function linkTasks() {
+    const held = taskProvider;
+    if (!held) return;
+
+    tasksBusy = true;
+    try {
+      const projects = await held.provider.listProjects();
+      const chosen = await new Promise<TaskProject | "new" | null>(
+        (resolve) => {
+          picker = {
+            titleKey: "tasks-link-title",
+            placeholderKey: "tasks-link-placeholder",
+            emptyKey: "tasks-link-empty",
+            load: async (query: string) => {
+              const wanted = query.trim().toLowerCase();
+              const rows = projects
+                .filter((entry) => entry.name.toLowerCase().includes(wanted))
+                .map((entry) => ({
+                  value: entry,
+                  label: entry.name,
+                }));
+              // Offered last and always, so a name that matches nothing is an
+              // invitation to create it rather than a dead end.
+              return [
+                ...rows,
+                {
+                  value: "new" as const,
+                  label: t("tasks-link-new", {
+                    name: query.trim() || currentProjectName(),
+                  }),
+                },
+              ];
+            },
+            resolve: (value) =>
+              resolve(value as TaskProject | "new" | null),
+          };
+        },
+      );
+      picker = null;
+
+      if (chosen === null) return;
+      const linked =
+        chosen === "new"
+          ? await held.provider.createProject(currentProjectName())
+          : chosen;
+      await held.provider.link(linked);
+    } catch (error) {
+      failure = String(error);
+    } finally {
+      tasksBusy = false;
+    }
+    await loadTasks();
+  }
+
+  /** The open project's folder name, which is what a new list is called. */
+  function currentProjectName(): string {
+    return project?.root.split(/[\/]/).filter(Boolean).pop() ?? "yaz";
+  }
+
+  /** Add a task to the linked list. */
+  async function addTask(title: string) {
+    const held = taskProvider;
+    if (!held || !taskProject) return;
+    tasksBusy = true;
+    try {
+      await held.provider.createTask(taskProject.id, title);
+    } catch (error) {
+      failure = String(error);
+    } finally {
+      tasksBusy = false;
+    }
+    await loadTasks();
+  }
+
+  /** Tick one off. */
+  async function completeTask(task: Task) {
+    const held = taskProvider;
+    if (!held) return;
+    tasksBusy = true;
+    try {
+      await held.provider.completeTask(task.id);
+      // Taken off the list here rather than waiting for the round trip, so the
+      // checkbox does what a checkbox does.
+      tasks = tasks.filter((held) => held.id !== task.id);
+    } catch (error) {
+      failure = String(error);
+      await loadTasks();
+    } finally {
+      tasksBusy = false;
+    }
+  }
+
+  /**
    * The `.bib` files the open document declares.
    *
    * Read from the buffer rather than from the project, because it is the
@@ -1128,6 +1282,7 @@ ${entryText}`,
     editor: currentFile ?? t("workspace-tab-editor"),
     outline: t("workspace-tab-outline"),
     citations: t("workspace-tab-citations"),
+    tasks: t("workspace-tab-tasks"),
     pdf: t("workspace-tab-pdf"),
     history: t("workspace-tab-history"),
     ...Object.fromEntries(
@@ -1309,6 +1464,7 @@ ${entryText}`,
       picker = request;
     },
     showNotice,
+    refreshTasks: () => void loadTasks(),
   });
 
   let commands = $state<ReturnType<PluginRuntime["availableCommands"]>>([]);
@@ -1576,7 +1732,14 @@ ${entryText}`,
             // why the two halves cannot share one template.
             ...[
               ...(
-                ["editor", "pdf", "outline", "citations", "history"] as TabId[]
+                [
+                  "editor",
+                  "pdf",
+                  "outline",
+                  "citations",
+                  "tasks",
+                  "history",
+                ] as TabId[]
               ).map(
                 (tab) => ({ tab, labelKey: `workspace-tab-${tab}` }),
               ),
@@ -2481,6 +2644,7 @@ ${entryText}`,
         "com.yaz.formats": FormatsPlugin,
         "com.yaz.learn": LearnPlugin,
         "com.yaz.latex-packages": LatexPackagesPlugin,
+        "com.yaz.todoist": TodoistPlugin,
       })
       .then(() => {
         // What the plugins offered, handed to the registry once they have all
@@ -2509,6 +2673,8 @@ ${entryText}`,
         pluginViews = [...runtime.views];
         dropTakers = [...runtime.dropHandlers];
         pluginPanels = [...runtime.settingsPanels];
+        taskProviders = [...runtime.taskProviders];
+        void loadTasks();
         refreshCommands();
       })
       .catch((error) => {
@@ -2945,6 +3111,19 @@ ${entryText}`,
       hasBibliography={bibEntries.size > 0}
       onnavigate={(at) => editorApi?.revealRange(at, at)}
       onexplain={(key) => void explainCitation(key)}
+    />
+  {:else if tab === "tasks"}
+    <Tasks
+      hasProject={project !== null}
+      providerName={taskProvider ? t(taskProvider.provider.nameKey) : null}
+      linked={taskProject}
+      {tasks}
+      busy={tasksBusy}
+      ready={tasksReady}
+      onlink={() => void linkTasks()}
+      onadd={(title) => void addTask(title)}
+      oncomplete={(task) => void completeTask(task)}
+      onrefresh={() => void loadTasks()}
     />
   {:else if pluginTab(tab)}
     <PluginView view={pluginTab(tab)!} doc={docText} />

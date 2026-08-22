@@ -69,6 +69,7 @@ capability-obsidian-description = Read your Obsidian vault.
 capability-clipboard-description = Read and change the clipboard.
 capability-notifications-description = Show desktop notifications.
 capability-shell-open-description = Open links and files with your other applications.
+capability-credential-description = Keep a sign-in for this service in your system keychain.
 
 ## Plugin management
 
@@ -732,3 +733,50 @@ zotero-comments-text = Put it after the quotation
 zotero-comments-text-detail = Something to write from. It will print if you leave it there.
 zotero-comments-comment = Leave it as a LaTeX comment
 zotero-comments-comment-detail = Visible while you write, never printed, gone when you delete it.
+
+## Talking to a service on a plugin's behalf.
+
+error-project-settings = This project's settings could not be read or written.
+error-keychain = Your system keychain could not be reached.
+error-no-credential = No sign-in is stored for this service.
+error-invalid-url = That address could not be understood.
+error-http-client = A network client could not be created.
+error-http = The service could not be reached.
+error-http-status = The service refused the request.
+
+## The tasks tab.
+
+workspace-tab-tasks = Tasks
+tasks-no-provider = No task list is connected. Install a to-do plugin and sign in to it under Settings → Plugins.
+tasks-not-linked = This paper is not linked to a task list yet.
+tasks-link = Choose a list
+tasks-relink = Change list
+tasks-refresh = Refresh
+tasks-empty = Nothing left to do.
+tasks-add = Add
+tasks-add-placeholder = What needs doing?
+tasks-link-title = Which list is this paper's?
+tasks-link-placeholder = Filter, or type a name to create one
+tasks-link-empty = No lists yet.
+tasks-link-new = Create "{ $name }"
+workspace-no-project-open = Open a project to see its tasks.
+
+## The Todoist plugin.
+
+todoist-name = Todoist
+todoist-settings-title = Todoist
+todoist-signed-in = Signed in to Todoist.
+todoist-signed-out = Not signed in.
+todoist-sign-in = Sign in
+todoist-sign-in-failed = That token could not be stored.
+todoist-token-placeholder = Personal API token
+todoist-token-where = Copy a personal API token from { $page } and paste it here. It is kept in your system keychain, and yaz never shows it again.
+todoist-forget = Forget this token
+todoist-forgotten = Forgotten on this computer.
+todoist-revoke-elsewhere = Forgetting it here does not revoke it. To do that, delete it in Todoist's own settings.
+todoist-command-add = Add the selection to Todoist
+todoist-command-add-description = Make a task out of the selected text, on this paper's list.
+todoist-notice-nothing-selected = Select the text to make a task from first.
+todoist-notice-not-linked = Link this paper to a Todoist list first, in the Tasks tab.
+todoist-notice-added = Added to Todoist.
+todoist-notice-failed = Todoist would not take that task.

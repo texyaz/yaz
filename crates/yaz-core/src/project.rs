@@ -132,6 +132,20 @@ pub struct ProjectSettings {
     /// different arrangements, and the engine choice already lives here.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace: Option<String>,
+
+    /// What each plugin has stored *about this project*, keyed by plugin id.
+    ///
+    /// The other half of the per-install store in
+    /// [`crate::settings::Settings::plugins`]. Which Todoist project a paper is
+    /// linked to belongs to the paper, not to the machine — a thesis and a
+    /// conference paper are different work with different task lists, and the
+    /// link should travel with the project rather than be re-made on every
+    /// machine the author opens it on.
+    ///
+    /// Opaque here, like the workspace above: this crate's interest is only
+    /// that it round trips.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub plugins: std::collections::BTreeMap<String, toml::Value>,
 }
 
 impl ProjectSettings {
@@ -203,6 +217,10 @@ mod tests {
             document_locale: Some("de-DE".to_owned()),
             version_control: Some("git".to_owned()),
             workspace: Some(r#"{"kind":"leaf","tabs":["editor"]}"#.to_owned()),
+            // What a plugin stores about this project — the Todoist project a
+            // paper is linked to, say. Empty here because the round trip is
+            // what is being checked, and it is checked on its own below.
+            plugins: std::collections::BTreeMap::new(),
         };
         let text = toml::to_string_pretty(&settings).expect("serialises");
         // The flat form is what makes the file pleasant to hand-edit.

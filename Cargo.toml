@@ -42,6 +42,9 @@ anyhow = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "1.1"
+# The operating system's own credential store (ADR-0026). Native on every
+# target and needs no C toolchain on aarch64-pc-windows-msvc (ADR-0014).
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
 
 # Async
 tokio = { version = "1", features = ["rt-multi-thread", "fs", "process", "sync", "time", "macros"] }

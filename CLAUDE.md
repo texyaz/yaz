@@ -40,6 +40,8 @@ The load-bearing ones:
   **card on the paper and a tab beside it**, never pages. Nothing in the buffer
   decides how long a contents list is. The glossary tab is the packages
   plugin's, through the public `workspace.registerView`.
+- **0026** — A task list is a **core tab a plugin fills**, the same shape as 0025. An API token is a **declared capability stored in the OS keychain**,
+  never in a config file and never handed to the webview.
 
 ## Environment (this machine)
 

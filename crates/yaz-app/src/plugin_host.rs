@@ -67,6 +67,7 @@ const CORE_MANIFESTS: &[&str] = &[
     include_str!("../../../plugins/formats/manifest.json"),
     include_str!("../../../plugins/learn/manifest.json"),
     include_str!("../../../plugins/latex-packages/manifest.json"),
+    include_str!("../../../plugins/todoist/manifest.json"),
 ];
 
 /// A core plugin the application ships with.
@@ -821,6 +822,183 @@ pub fn plugin_set_settings(plugin_id: String, value: serde_json::Value) -> Resul
     settings.plugins.insert(plugin_id, value);
     settings.save(&directory)?;
     Ok(())
+}
+
+/// What a plugin has stored about the open project.
+///
+/// The other half of [`plugin_get_settings`]. Which Todoist project a paper is
+/// linked to belongs to the paper rather than to the machine, so it lives in
+/// `yaz.toml` beside the engine and travels with the project (ADR-0026).
+///
+/// JSON at this boundary though TOML on disk: a plugin should not have to know
+/// which file format its host happens to use.
+#[tauri::command]
+pub async fn plugin_get_project_settings(
+    plugin_id: String,
+    root: String,
+    host: tauri::State<'_, PluginHost>,
+) -> Result<Option<serde_json::Value>> {
+    let root = Utf8PathBuf::from(root);
+    // Reading the project's own settings file is inside the project, so the
+    // check is the one every other project read makes.
+    host.authorise(&plugin_id, &Request::FsRead(&root)).await?;
+
+    let settings = yaz_core::project::ProjectSettings::load(&root)?;
+    let Some(stored) = settings.plugins.get(&plugin_id) else {
+        return Ok(None);
+    };
+    Ok(Some(serde_json::to_value(stored).map_err(|error| {
+        CommandError::new("error-project-settings", error)
+    })?))
+}
+
+/// Store what a plugin wants to remember about the open project.
+#[tauri::command]
+pub async fn plugin_set_project_settings(
+    plugin_id: String,
+    root: String,
+    value: serde_json::Value,
+    host: tauri::State<'_, PluginHost>,
+) -> Result<()> {
+    let root = Utf8PathBuf::from(root);
+    let file = root.join(yaz_core::project::ProjectSettings::FILE_NAME);
+    host.authorise(&plugin_id, &Request::FsWrite(&file)).await?;
+
+    let mut settings = yaz_core::project::ProjectSettings::load(&root)?;
+    let stored: toml::Value = serde_json::from_value(value)
+        .map_err(|error| CommandError::new("error-project-settings", error))?;
+    settings.plugins.insert(plugin_id, stored);
+    settings.save(&root)?;
+    Ok(())
+}
+
+/// Where a plugin's credential lives, in the operating system's terms.
+///
+/// The plugin id is the account, so two plugins cannot reach each other's — and
+/// the id is the one the runtime instantiated the plugin under, never something
+/// the caller passes (ADR-0026).
+fn credential_for(plugin_id: &str) -> keyring::Result<keyring::Entry> {
+    keyring::Entry::new("yaz", plugin_id)
+}
+
+/// Whether this plugin has a credential stored.
+///
+/// Deliberately not "what is it". A plugin needs to know whether to ask the
+/// user to sign in; it never needs the secret itself, because it does not make
+/// the request that spends it.
+#[tauri::command]
+pub async fn plugin_has_credential(
+    plugin_id: String,
+    host: tauri::State<'_, PluginHost>,
+) -> Result<bool> {
+    host.authorise(&plugin_id, &Request::Credential).await?;
+    let entry =
+        credential_for(&plugin_id).map_err(|error| CommandError::new("error-keychain", error))?;
+    match entry.get_password() {
+        Ok(_) => Ok(true),
+        Err(keyring::Error::NoEntry) => Ok(false),
+        Err(error) => Err(CommandError::new("error-keychain", error)),
+    }
+}
+
+/// Store this plugin's credential, or forget it when given nothing.
+#[tauri::command]
+pub async fn plugin_set_credential(
+    plugin_id: String,
+    secret: Option<String>,
+    host: tauri::State<'_, PluginHost>,
+) -> Result<()> {
+    host.authorise(&plugin_id, &Request::Credential).await?;
+    let entry =
+        credential_for(&plugin_id).map_err(|error| CommandError::new("error-keychain", error))?;
+
+    match secret {
+        Some(secret) if !secret.trim().is_empty() => entry
+            .set_password(secret.trim())
+            .map_err(|error| CommandError::new("error-keychain", error)),
+        _ => match entry.delete_credential() {
+            // Forgetting something that was not there is the outcome the caller
+            // wanted, not a failure.
+            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Err(error) => Err(CommandError::new("error-keychain", error)),
+        },
+    }
+}
+
+/// Make an HTTP request on a plugin's behalf, spending its stored credential.
+///
+/// The secret never crosses into the webview. A plugin says *which* request to
+/// make and this side adds the authorisation — so a plugin holding a Todoist
+/// credential can spend it against the hosts its manifest declared and cannot
+/// read it, copy it, or send it anywhere else (ADR-0026).
+#[tauri::command]
+pub async fn plugin_fetch_with_credential(
+    plugin_id: String,
+    url: String,
+    method: Option<String>,
+    body: Option<serde_json::Value>,
+    host: tauri::State<'_, PluginHost>,
+) -> Result<serde_json::Value> {
+    host.authorise(&plugin_id, &Request::Credential).await?;
+
+    let parsed =
+        url::Url::parse(&url).map_err(|error| CommandError::new("error-invalid-url", error))?;
+    let target = parsed
+        .host_str()
+        .ok_or_else(|| CommandError::new("error-invalid-url", &url))?
+        .to_owned();
+    // The host is checked separately and explicitly: holding a credential must
+    // not imply permission to reach anywhere with it.
+    host.authorise(&plugin_id, &Request::Net { host: &target })
+        .await?;
+
+    let entry =
+        credential_for(&plugin_id).map_err(|error| CommandError::new("error-keychain", error))?;
+    let secret = entry
+        .get_password()
+        .map_err(|error| CommandError::new("error-no-credential", error))?;
+
+    let client = yaz_core::net::http_client()
+        .map_err(|error| CommandError::new("error-http-client", error))?;
+    let verb = method.unwrap_or_else(|| "GET".to_owned()).to_uppercase();
+    let mut request = match verb.as_str() {
+        "POST" => client.post(parsed),
+        "DELETE" => client.delete(parsed),
+        _ => client.get(parsed),
+    }
+    .bearer_auth(secret);
+
+    if let Some(body) = body {
+        request = request.json(&body);
+    }
+
+    let response = request
+        .send()
+        .await
+        .map_err(|error| CommandError::new("error-http", error))?;
+
+    let status = response.status();
+    let text = response
+        .text()
+        .await
+        .map_err(|error| CommandError::new("error-http", error))?;
+
+    if !status.is_success() {
+        // The service's own words, which say far more than "request failed" —
+        // an expired token and a project that no longer exists are different
+        // problems with different fixes.
+        return Err(CommandError::new(
+            "error-http-status",
+            format!("{status}: {text}"),
+        ));
+    }
+
+    // An empty body is a successful call that returned nothing, which is what
+    // Todoist answers a completion with.
+    if text.trim().is_empty() {
+        return Ok(serde_json::Value::Null);
+    }
+    serde_json::from_str(&text).map_err(|error| CommandError::new("error-http", error))
 }
 
 /// Every bundled plugin, with the capabilities its manifest declares.

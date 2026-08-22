@@ -62,6 +62,20 @@ export abstract class Plugin {
    */
   onunload(): void | Promise<void> {}
 
+  /**
+   * Offer a task list to the Tasks tab.
+   *
+   * The tab, and what a task *is*, are core; where the tasks come from is not
+   * ({@link https://generalpawz.github.io/yaz/adr/0026-task-providers-and-credentials | ADR-0026}).
+   * Todoist fills it today and a Things or Microsoft To Do plugin fills the
+   * same one tomorrow, with no change to the tab.
+   *
+   * @since 0.3.0
+   */
+  registerTaskProvider(_provider: TaskProvider): void {
+    throw new Error("not implemented");
+  }
+
   /** Register a command, available in the palette and bindable to a key. */
   addCommand(_command: Command): void {
     throw new Error("not implemented");
@@ -196,6 +210,10 @@ export interface App {
   readonly i18n: I18nApi;
   /** Where this plugin keeps what it needs to remember. */
   readonly settings: SettingsApi;
+  /** A sign-in this plugin holds, kept by the operating system. */
+  readonly credentials: CredentialApi;
+  /** Task lists, which a to-do plugin fills and the Tasks tab shows. */
+  readonly tasks: TasksApi;
   /** Transient user-facing messages. */
   readonly notices: NoticeApi;
   /** Chooser dialogs. */
@@ -345,6 +363,116 @@ export interface I18nApi {
 export interface NoticeApi {
   /** Show a notice. Takes a message key, never a literal string. */
   show(key: string, params?: Record<string, string | number>): void;
+}
+
+/**
+ * A sign-in for a service, kept by the operating system.
+ *
+ * Windows Credential Manager, macOS Keychain, or the Secret Service on Linux —
+ * never a file in the configuration directory, which would put a token in every
+ * backup and every synced folder.
+ *
+ * Note what is missing: there is no way to *read* the secret. A plugin says
+ * which request to make and yaz spends the credential on its behalf, against
+ * the hosts the manifest declared. So a plugin holding a token cannot copy it
+ * or send it anywhere else
+ * ({@link https://generalpawz.github.io/yaz/adr/0026-task-providers-and-credentials | ADR-0026}).
+ *
+ * Requires the `credential` capability.
+ *
+ * @since 0.3.0
+ */
+export interface CredentialApi {
+  /** Whether a sign-in is stored — not what it is. */
+  has(): Promise<boolean>;
+  /** Store one, replacing whatever was there. */
+  set(secret: string): Promise<void>;
+  /** Forget it. This does not revoke it with the service. */
+  forget(): Promise<void>;
+  /**
+   * Make a request with the stored credential attached as a bearer token.
+   *
+   * The host must be one the manifest declared under `net`: holding a
+   * credential does not imply permission to reach anywhere with it.
+   */
+  fetch(
+    url: string,
+    options?: { method?: "GET" | "POST" | "DELETE"; body?: unknown },
+  ): Promise<unknown>;
+}
+
+/** Task lists. @since 0.3.0 */
+export interface TasksApi {
+  /** What the Tasks tab is showing, so a provider can ask it to refresh. */
+  refresh(): void;
+}
+
+/**
+ * A list of things to do, from wherever the author keeps them.
+ *
+ * Every method answers about the provider's own service. None of them knows
+ * about the tab, and the tab knows about none of them — which is the property
+ * that makes a second to-do integration a new plugin and no change here.
+ *
+ * @since 0.3.0
+ */
+export interface TaskProvider {
+  /** Stable identifier, e.g. `todoist`. Recorded against the project. */
+  id: string;
+  /** Message key naming the service, for the tab and the settings. */
+  nameKey: string;
+  /** Whether the plugin can talk to the service — signed in and reachable. */
+  isReady(): Promise<boolean>;
+  /**
+   * Which of the service's projects the open yaz project is linked to.
+   *
+   * The provider owns the storage — it is a per-project setting of its own
+   * ({@link SettingsApi.forProject}) — and the tab only asks. So a provider is
+   * free to remember more than an id, and the tab is free to know nothing
+   * about what.
+   */
+  linkedProject(): Promise<TaskProject | null>;
+  /** Link the open yaz project to one, or to none. */
+  link(project: TaskProject | null): Promise<void>;
+  /** The projects a task list could be linked to. */
+  listProjects(): Promise<TaskProject[]>;
+  /** Make a new one, for a paper that does not have one yet. */
+  createProject(name: string): Promise<TaskProject>;
+  /** What is on the list. */
+  listTasks(projectId: string): Promise<Task[]>;
+  /** Add to it. */
+  createTask(projectId: string, title: string): Promise<Task>;
+  /** Tick one off. */
+  completeTask(taskId: string): Promise<void>;
+}
+
+/** A project in the to-do service, which a paper can be linked to. @since 0.3.0 */
+export interface TaskProject {
+  id: string;
+  name: string;
+}
+
+/**
+ * One thing to do.
+ *
+ * Deliberately small. Every to-do application has its own notions — labels,
+ * energy levels, recurrence rules — and a shape built around one of them would
+ * be a shape the next one does not fit. What is here is what a writer looking
+ * at a paper's task list needs to see.
+ *
+ * @since 0.3.0
+ */
+export interface Task {
+  id: string;
+  title: string;
+  /** Whether it is done. A completed task is usually not returned at all. */
+  done: boolean;
+  /** When it is due, as the service formats it. `null` when it is not. */
+  due: string | null;
+  /** Higher is more urgent, or `null` where the service has no notion. */
+  priority: number | null;
+  /** Where to open it in the service itself, when it can be opened. */
+  url: string | null;
 }
 
 /** Panes, tabs and views. @since 0.1.0 */
@@ -999,4 +1127,20 @@ export interface SettingsApi {
   get<T = unknown>(): Promise<T | undefined>;
   /** Store it, replacing whatever was there. */
   set(value: unknown): Promise<void>;
+  /**
+   * The same, but stored with the open project rather than with the install.
+   *
+   * For what belongs to the work rather than to the machine: which Todoist
+   * project a paper is linked to is a fact about the paper, and it should
+   * travel with it rather than be re-made on every machine the author opens it
+   * on. Kept in `yaz.toml` beside the engine and the pane layout.
+   *
+   * Resolves to `undefined` when no project is open.
+   *
+   * @since 0.3.0
+   */
+  readonly forProject: {
+    get<T = unknown>(): Promise<T | undefined>;
+    set(value: unknown): Promise<void>;
+  };
 }
