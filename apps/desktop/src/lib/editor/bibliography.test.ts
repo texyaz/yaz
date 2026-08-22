@@ -10,6 +10,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  numberCitations,
+  citationStyle,
   citedWorks,
   declaredBibliographies,
   diagnoseBibliography,
@@ -384,5 +386,88 @@ describe("the works a document cites", () => {
 
   it("finds nothing in a document that cites nothing", () => {
     expect(citedWorks("Nur Text.", BOOKS)).toEqual([]);
+  });
+});
+
+/**
+ * Drawing a citation the way the document will print it.
+ *
+ * `citestyle=numeric` prints `[1]`, but the preview always drew
+ * `[Meister 2021]` — so it disagreed with the PDF about every citation in the
+ * document.
+ */
+describe("the citation style a document asks for", () => {
+  it("reads citestyle out of the biblatex options", () => {
+    const doc = `${B}usepackage[backend=biber,style=numeric,citestyle=numeric]{biblatex}`;
+    expect(citationStyle(doc)).toBe("numeric");
+  });
+
+  it("lets citestyle override style, as biblatex does", () => {
+    const doc = `${B}usepackage[style=numeric,citestyle=authoryear]{biblatex}`;
+    expect(citationStyle(doc)).toBe("authoryear");
+  });
+
+  it("falls back to style when there is no citestyle", () => {
+    expect(citationStyle(`${B}usepackage[style=authoryear]{biblatex}`)).toBe(
+      "authoryear",
+    );
+  });
+
+  it("reads options spread over several lines", () => {
+    // Which is how a real preamble writes them.
+    const doc = [
+      `${B}usepackage[`,
+      "  backend=biber,",
+      "  style=authoryear,",
+      "]{biblatex}",
+    ].join("\n");
+    expect(citationStyle(doc)).toBe("authoryear");
+  });
+
+  it("treats a document with no biblatex as numeric", () => {
+    // Plain LaTeX's \cite prints [1], so numeric is the honest answer rather
+    // than a guess.
+    expect(citationStyle(`${B}documentclass{article}`)).toBe("numeric");
+  });
+
+  it("treats an unrecognised style as numeric", () => {
+    expect(citationStyle(`${B}usepackage[style=alphabetic]{biblatex}`)).toBe(
+      "numeric",
+    );
+  });
+
+  it("is not fooled by a different package's options", () => {
+    const doc = `${B}usepackage[style=authoryear]{somethingelse}`;
+    expect(citationStyle(doc)).toBe("numeric");
+  });
+});
+
+describe("numbering citations the way a numeric style does", () => {
+  const BOOKS = new Map([
+    ["a", { key: "a", label: "A 2001", detail: "A" }],
+    ["b", { key: "b", label: "B 2002", detail: "B" }],
+  ]);
+
+  it("numbers by first citation, not by key or author", () => {
+    const doc = `${B}cite{b} dann ${B}cite{a}`;
+    const numbers = numberCitations(citedWorks(doc, BOOKS));
+    expect(numbers.get("b")).toBe(1);
+    expect(numbers.get("a")).toBe(2);
+  });
+
+  it("gives a work one number however often it is cited", () => {
+    const doc = `${B}cite{a} ${B}cite{b} ${B}cite{a}`;
+    const numbers = numberCitations(citedWorks(doc, BOOKS));
+    expect(numbers.get("a")).toBe(1);
+    expect(numbers.get("b")).toBe(2);
+  });
+
+  it("does not number a key the bibliography does not define", () => {
+    // It prints [?] in the PDF, so a number here would be invented — and would
+    // shift every number after it.
+    const doc = `${B}cite{missing} dann ${B}cite{a}`;
+    const numbers = numberCitations(citedWorks(doc, BOOKS));
+    expect(numbers.has("missing")).toBe(false);
+    expect(numbers.get("a")).toBe(1);
   });
 });

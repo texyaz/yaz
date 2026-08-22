@@ -91,6 +91,23 @@ export const imageSource = Facet.define<
   combine: (values) => values[0] ?? null,
 });
 
+/**
+ * The number each work prints, when the document's style is numeric.
+ *
+ * Supplied by the shell rather than counted here, because the count runs over
+ * the *whole* document and the preview draws one file at a time — a `\cite` in
+ * chapter four is `[17]` because of sixteen works cited in chapters one to
+ * three, none of which this buffer contains.
+ *
+ * Empty means "not a numeric style", and a citation then draws its short form.
+ */
+export const citationNumbering = Facet.define<
+  ReadonlyMap<string, number>,
+  ReadonlyMap<string, number>
+>({
+  combine: (values) => values[0] ?? new Map(),
+});
+
 /** What to do when a citation is clicked, since its entry is in another file. */
 export const followCitation = Facet.define<
   (key: string) => void,
@@ -193,6 +210,14 @@ class CitationWidget extends WidgetType {
     readonly keys: string[],
     readonly entries: (BibEntry | undefined)[],
     readonly follow: ((key: string) => void) | null,
+    /**
+     * What each key prints under a numeric style, or empty for author-year.
+     *
+     * The document decides this, not the preview: `citestyle=numeric` prints
+     * `[1]` and drawing `[Meister 2021]` there means the preview and the PDF
+     * disagree about every citation.
+     */
+    readonly numbers: readonly (number | undefined)[] = [],
   ) {
     super();
   }
@@ -201,6 +226,7 @@ class CitationWidget extends WidgetType {
     return (
       other.command === this.command &&
       other.keys.join() === this.keys.join() &&
+      other.numbers.join() === this.numbers.join() &&
       other.entries.map((entry) => entry?.label).join() ===
         this.entries.map((entry) => entry?.label).join()
     );
@@ -213,8 +239,11 @@ class CitationWidget extends WidgetType {
       ? "cm-yaz-citation"
       : "cm-yaz-citation cm-yaz-unresolved";
 
+    // The number where the style prints one and the work resolves; otherwise
+    // the bibliography's short form; otherwise the key the author typed.
     const shown = this.keys.map(
-      (key, index) => this.entries[index]?.label ?? key,
+      (key, index) =>
+        this.numbers[index]?.toString() ?? this.entries[index]?.label ?? key,
     );
     // `\parencite` prints its own brackets and `\textcite` does not — the
     // difference is the whole reason a document uses both.
@@ -468,6 +497,7 @@ function glossaryForm(command: string, name: string, detail: string): string {
 export function attribution(
   optional: string,
   books: ReadonlyMap<string, BibEntry>,
+  numbering: ReadonlyMap<string, number> = new Map(),
 ): string | null {
   const cite =
     /\\[a-zA-Z]*cite[a-zA-Z]*\s*(?:\[([^\]]*)\])?\s*\{([^}]*)\}/.exec(optional);
@@ -482,7 +512,11 @@ export function attribution(
   // The bibliography's short form where it knows the work, and the key itself
   // where it does not — which is what the author typed, and better than
   // nothing.
-  const named = keys.map((key) => books.get(key)?.label ?? key).join("; ");
+  const named = keys
+    .map(
+      (key) => numbering.get(key)?.toString() ?? books.get(key)?.label ?? key,
+    )
+    .join("; ");
   const page = (cite[1] ?? "").trim();
   return page ? `[${named}, ${page}]` : `[${named}]`;
 }
@@ -527,6 +561,7 @@ export function semanticMarkup(pass: Pass): Meaning {
   const follow = pass.state.facet(followCitation);
   const resolve = pass.state.facet(imageSource);
   const marks = quotationMarks(pass.text);
+  const numbering = pass.state.facet(citationNumbering);
 
   // Figures, drawn as figures. Before the labels and captions inside them are
   // looked at on their own account, because the whole environment is claimed.
@@ -589,6 +624,7 @@ export function semanticMarkup(pass: Pass): Meaning {
         ? attribution(
             pass.text.slice(quotation.optFrom, quotation.optTo),
             books,
+            numbering,
           )
         : null;
 
@@ -619,6 +655,7 @@ export function semanticMarkup(pass: Pass): Meaning {
         keys,
         keys.map((key) => books.get(key)),
         follow,
+        keys.map((key) => numbering.get(key)),
       ),
     );
   }

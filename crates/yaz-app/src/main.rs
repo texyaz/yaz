@@ -107,6 +107,8 @@ fn main() {
             commands::read_artefact,
             commands::locate_in_source,
             commands::report_ready,
+            plugin_host::plugin_get_settings,
+            plugin_host::plugin_set_settings,
             plugin_host::plugin_zotero_status,
             plugin_host::plugin_zotero_installed,
             plugin_host::plugin_zotero_launch,

@@ -199,6 +199,10 @@ fn escape(value: &str) -> String {
 pub fn to_bibtex(item: &Item, key: &str) -> String {
     let mut out = format!("@{}{{{},\n", entry_type(&item.item_type), key);
 
+    // Which Zotero item this is, so re-citing it finds this entry by identity
+    // rather than by what it happens to be called. See [`entry_for_item`].
+    out.push_str(&format!("  {ITEM_FIELD} = {{{}}},\n", item_uri(&item.key)));
+
     if !item.title.is_empty() {
         out.push_str(&format!("  title = {{{{{}}}}},\n", escape(&item.title)));
     }
@@ -229,6 +233,59 @@ pub fn to_bibtex(item: &Item, key: &str) -> String {
 
     out.push_str("}\n");
     out
+}
+
+/// How a new entry is named.
+///
+/// Three, because the trade is real and different people want different ends of
+/// it. A generated key is legible in the source and is *ours*, so it may not
+/// match a co-author's; an item key never collides and never needs renaming but
+/// says nothing to a reader; Better BibTeX's is authoritative and needs Better
+/// BibTeX to be running.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum KeyScheme {
+    /// `meister2021building`, with the Zotero item key recorded in the entry.
+    #[default]
+    Readable,
+    /// `B8IM9SU5` — Zotero's own identifier, used directly.
+    ItemKey,
+    /// Whatever Better BibTeX calls it, falling back to [`KeyScheme::Readable`].
+    BetterBibtex,
+}
+
+/// The field an entry records its Zotero item under.
+///
+/// A `note` rather than an invented field name: biber warns about a field it
+/// does not know, and a warning per entry in a build log is how a real error
+/// gets missed. `note` is a standard field, and a Zotero URI in it is
+/// meaningful to a person reading the `.bib` as well as to this.
+const ITEM_FIELD: &str = "note";
+
+/// The Zotero URI recorded for an item, as it appears in an entry.
+fn item_uri(item_key: &str) -> String {
+    format!("zotero://select/items/{item_key}")
+}
+
+/// The citation key of the entry recording this Zotero item, if one does.
+///
+/// This is what makes re-citing idempotent *whatever the key is called*.
+/// Matching on the generated name instead meant that an author who renamed a
+/// key by hand — which is the first thing anyone does to `meister2021b` — got a
+/// second copy of the same work the next time they cited it.
+pub fn entry_for_item(bib: &str, item_key: &str) -> Option<String> {
+    let needle = item_uri(item_key);
+    for chunk in bib.split('@').skip(1) {
+        if !chunk.contains(&needle) {
+            continue;
+        }
+        let (_, after_brace) = chunk.split_once('{')?;
+        let key = after_brace.split(',').next().unwrap_or("").trim();
+        if !key.is_empty() && !key.contains(char::is_whitespace) {
+            return Some(key.to_owned());
+        }
+    }
+    None
 }
 
 /// Citation keys already present in a `.bib` file.
@@ -418,5 +475,91 @@ mod tests {
             keys.contains(&key),
             "wrote {key} but could not read it back"
         );
+    }
+}
+
+#[cfg(test)]
+mod identity_tests {
+    use super::*;
+
+    fn sample() -> Item {
+        Item {
+            key: "B8IM9SU5".into(),
+            citation_key: None,
+            item_type: "journalArticle".into(),
+            title: "Building Information Modeling".into(),
+            creators: vec!["Meister, Ulrich".into()],
+            year: Some(2021),
+            container: None,
+            doi: None,
+        }
+    }
+
+    #[test]
+    fn an_entry_records_which_zotero_item_it_is() {
+        let written = to_bibtex(&sample(), "meister2021building");
+        assert!(
+            written.contains("zotero://select/items/B8IM9SU5"),
+            "{written}"
+        );
+    }
+
+    #[test]
+    fn the_recorded_item_is_found_whatever_the_entry_is_called() {
+        // The point of recording it. An author who renames `meister2021b` to
+        // something they can remember must not get a second copy of the same
+        // work the next time they cite it.
+        let written = to_bibtex(&sample(), "whatever-i-renamed-it-to");
+        assert_eq!(
+            entry_for_item(&written, "B8IM9SU5").as_deref(),
+            Some("whatever-i-renamed-it-to")
+        );
+    }
+
+    #[test]
+    fn a_different_item_is_not_matched() {
+        let written = to_bibtex(&sample(), "meister2021building");
+        assert_eq!(entry_for_item(&written, "OTHERKEY"), None);
+    }
+
+    #[test]
+    fn the_right_entry_is_found_among_several() {
+        let mut other = sample();
+        other.key = "OTHERKEY".into();
+        other.title = "Something else".into();
+        let bib = format!(
+            "{}
+{}",
+            to_bibtex(&other, "other2021something"),
+            to_bibtex(&sample(), "meister2021building")
+        );
+        assert_eq!(
+            entry_for_item(&bib, "B8IM9SU5").as_deref(),
+            Some("meister2021building")
+        );
+    }
+
+    #[test]
+    fn a_bibliography_written_by_hand_matches_nothing() {
+        // Which is right: an entry with no Zotero item recorded is one this
+        // did not write, and claiming it as a match would attach an author's
+        // own reference to whatever they happened to cite next.
+        let bib = "@book{knuth1984, title = {The TeXbook}, year = {1984}}";
+        assert_eq!(entry_for_item(bib, "B8IM9SU5"), None);
+    }
+
+    #[test]
+    fn the_item_key_scheme_uses_zoteros_own_identifier() {
+        // Not a function under test so much as the property the scheme exists
+        // for: it is the item's key, so it cannot collide and never needs a
+        // suffix.
+        assert_eq!(sample().key, "B8IM9SU5");
+        assert_ne!(generate_key(&sample()), sample().key);
+    }
+
+    #[test]
+    fn the_default_scheme_is_the_readable_one() {
+        // A setting nobody has touched must leave the source legible.
+        assert_eq!(KeyScheme::default(), KeyScheme::Readable);
     }
 }

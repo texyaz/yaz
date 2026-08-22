@@ -327,6 +327,7 @@ impl PluginHost {
         root: &Utf8Path,
         item_key: &str,
         bibliography: Option<String>,
+        scheme: yaz_zotero::bib::KeyScheme,
     ) -> Result<CitationKey> {
         self.authorise(plugin_id, &Request::Zotero).await?;
 
@@ -351,13 +352,36 @@ impl PluginHost {
         let existing = std::fs::read_to_string(bib_path.as_std_path()).unwrap_or_default();
         let taken = yaz_zotero::bib::existing_keys(&existing);
 
-        // An entry already written for this item is found by its key, so citing
-        // the same source twice does not append a duplicate.
-        let base = item
-            .citation_key
-            .clone()
-            .unwrap_or_else(|| yaz_zotero::bib::generate_key(&item));
-        if taken.contains(&base) {
+        // Already written for this item? Found by the Zotero item recorded in
+        // the entry rather than by what the entry is called, so an author who
+        // renamed a key by hand does not get a second copy of the same work the
+        // next time they cite it.
+        if let Some(key) = yaz_zotero::bib::entry_for_item(&existing, item_key) {
+            return Ok(CitationKey {
+                key,
+                added: false,
+                bibliography: relative,
+                is_authoritative: item.citation_key.is_some(),
+            });
+        }
+
+        let base = match scheme {
+            // Zotero's own identifier: unique by construction, so there is
+            // nothing to disambiguate and nothing to collide with.
+            yaz_zotero::bib::KeyScheme::ItemKey => item.key.clone(),
+            // Better BibTeX's where the library gave us one, and the generated
+            // key where it did not — which is what happens without BBT
+            // installed, and is better than refusing to cite.
+            yaz_zotero::bib::KeyScheme::BetterBibtex => item
+                .citation_key
+                .clone()
+                .unwrap_or_else(|| yaz_zotero::bib::generate_key(&item)),
+            yaz_zotero::bib::KeyScheme::Readable => yaz_zotero::bib::generate_key(&item),
+        };
+
+        // An entry under this name that is *not* this item — two works by the
+        // same author in the same year — still needs a suffix.
+        if taken.contains(&base) && scheme == yaz_zotero::bib::KeyScheme::ItemKey {
             return Ok(CitationKey {
                 key: base,
                 added: false,
@@ -619,6 +643,7 @@ pub async fn plugin_zotero_ensure_in_bibliography(
     root: String,
     item_key: String,
     bibliography: Option<String>,
+    scheme: Option<yaz_zotero::bib::KeyScheme>,
     host: tauri::State<'_, PluginHost>,
 ) -> Result<CitationKey> {
     host.ensure_in_bibliography(
@@ -626,6 +651,7 @@ pub async fn plugin_zotero_ensure_in_bibliography(
         &Utf8PathBuf::from(root),
         &item_key,
         bibliography,
+        scheme.unwrap_or_default(),
     )
     .await
 }
@@ -668,6 +694,37 @@ pub async fn plugin_zotero_launch(
 ) -> Result<()> {
     host.authorise(&plugin_id, &Request::Zotero).await?;
     yaz_zotero::launch::launch().map_err(zotero_error)?;
+    Ok(())
+}
+
+/// What a plugin has stored, or `null` where it has stored nothing.
+///
+/// Namespaced by plugin id and not by anything the caller says: `plugin_id` is
+/// the identity the runtime instantiated this plugin under, so a plugin reads
+/// its own settings and has no way to name another's. That is the same boundary
+/// every other capability is drawn on (ADR-0006), and it is why this takes no
+/// path and no key beyond the plugin's own.
+#[tauri::command]
+pub fn plugin_get_settings(plugin_id: String) -> Result<Option<serde_json::Value>> {
+    let directory = yaz_core::settings::config_dir()
+        .ok_or_else(|| CommandError::new("error-fs-not-found", "no configuration directory"))?;
+    Ok(yaz_core::settings::Settings::load(&directory)
+        .plugins
+        .get(&plugin_id)
+        .cloned())
+}
+
+/// Store what a plugin wants to remember.
+///
+/// The value is opaque: this side cannot know what a Zotero bridge or a Citavi
+/// bridge wants to keep, so it is carried as JSON and never interpreted.
+#[tauri::command]
+pub fn plugin_set_settings(plugin_id: String, value: serde_json::Value) -> Result<()> {
+    let directory = yaz_core::settings::config_dir()
+        .ok_or_else(|| CommandError::new("error-fs-not-found", "no configuration directory"))?;
+    let mut settings = yaz_core::settings::Settings::load(&directory);
+    settings.plugins.insert(plugin_id, value);
+    settings.save(&directory)?;
     Ok(())
 }
 
@@ -808,7 +865,13 @@ mod tests {
         host.set_project_root(Some(&project_root)).await;
 
         let result = host
-            .ensure_in_bibliography("com.yaz.zotero", &project_root, "ITEMAAAA", None)
+            .ensure_in_bibliography(
+                "com.yaz.zotero",
+                &project_root,
+                "ITEMAAAA",
+                None,
+                Default::default(),
+            )
             .await
             .expect("citing should succeed");
 
@@ -837,11 +900,23 @@ mod tests {
         host.set_project_root(Some(&project_root)).await;
 
         let first = host
-            .ensure_in_bibliography("com.yaz.zotero", &project_root, "ITEMAAAA", None)
+            .ensure_in_bibliography(
+                "com.yaz.zotero",
+                &project_root,
+                "ITEMAAAA",
+                None,
+                Default::default(),
+            )
             .await
             .unwrap();
         let second = host
-            .ensure_in_bibliography("com.yaz.zotero", &project_root, "ITEMAAAA", None)
+            .ensure_in_bibliography(
+                "com.yaz.zotero",
+                &project_root,
+                "ITEMAAAA",
+                None,
+                Default::default(),
+            )
             .await
             .unwrap();
 
@@ -868,6 +943,7 @@ mod tests {
                 &project_root,
                 "ITEMAAAA",
                 Some("../../escaped.bib".to_owned()),
+                Default::default(),
             )
             .await
             .unwrap_err();
@@ -881,7 +957,13 @@ mod tests {
         host.set_project_root(Some(&project_root)).await;
 
         let error = host
-            .ensure_in_bibliography("com.yaz.zotero", &project_root, "GONEGONE", None)
+            .ensure_in_bibliography(
+                "com.yaz.zotero",
+                &project_root,
+                "GONEGONE",
+                None,
+                Default::default(),
+            )
             .await
             .unwrap_err();
         assert_eq!(error.message_key(), "zotero-error-item-not-found");

@@ -385,3 +385,64 @@ export function citedWorks(
     return resolved !== 0 ? resolved : left.at[0]! - right.at[0]!;
   });
 }
+
+/**
+ * How a citation prints, as far as it changes what a reader sees.
+ *
+ * Not a model of biblatex's forty styles — a model of the one distinction that
+ * shows in the text. `numeric` prints `[1]` and `authoryear` prints
+ * `[Meister 2021]`, and the preview drawing the second while the document is
+ * set to the first means the preview disagrees with the PDF about every
+ * citation in it.
+ */
+export type CitationStyle = "numeric" | "authoryear";
+
+/**
+ * Which of those the document asks for.
+ *
+ * `citestyle=` wins over `style=`, because that is what biblatex does: `style=`
+ * sets both the bibliography and the citations, and `citestyle=` then overrides
+ * the citations on their own.
+ *
+ * Numeric is biblatex's own default, and it is also what a document that loads
+ * no bibliography package at all gets — plain LaTeX's `\cite` prints `[1]`.
+ */
+export function citationStyle(text: string): CitationStyle {
+  const options =
+    new RegExp(
+      `${B}${B}usepackage\\s*\\[([^\\]]*)\\]\\s*\\{[^}]*biblatex[^}]*\\}`,
+      "s",
+    ).exec(text)?.[1] ?? "";
+
+  const named =
+    /\bcitestyle\s*=\s*([a-zA-Z-]+)/.exec(options)?.[1] ??
+    /(?:^|,)\s*style\s*=\s*([a-zA-Z-]+)/.exec(options)?.[1] ??
+    "";
+
+  // Everything author-date-ish prints a name and a year; everything else
+  // prints a number. A style this does not recognise is treated as numeric,
+  // which is biblatex's default and the commoner answer.
+  return /^(authoryear|authortitle|apa|mla|chicago|harvard)/i.test(named)
+    ? "authoryear"
+    : "numeric";
+}
+
+/**
+ * The number each work will print, in first-citation order.
+ *
+ * What a numeric style does: the first work cited is `[1]`, whatever its key or
+ * its author. Built from the same walk the Citations tab uses, so the two
+ * cannot disagree.
+ *
+ * Only works the bibliography defines are numbered. An unresolved key prints
+ * `[?]` in the PDF and is drawn as unresolved here, so giving it a number would
+ * be inventing one — and would shift every number after it.
+ */
+export function numberCitations(
+  works: readonly CitedWork[],
+): Map<string, number> {
+  const numbered = [...works]
+    .filter((work) => work.entry !== null)
+    .sort((left, right) => left.at[0]! - right.at[0]!);
+  return new Map(numbered.map((work, index) => [work.key, index + 1]));
+}

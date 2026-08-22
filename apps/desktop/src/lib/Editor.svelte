@@ -42,6 +42,7 @@
   } from "./editor/richText";
   import {
     bibliography,
+    citationNumbering,
     followCitation,
     imageSource,
   } from "./editor/semanticView";
@@ -232,6 +233,14 @@
      */
     bibliography?: ReadonlyMap<string, BibEntry> | undefined;
     /**
+     * What each work prints under a numeric citation style.
+     *
+     * Counted by the shell over the whole document rather than here, because a
+     * `\cite` in chapter four is `[17]` on account of works cited in chapters
+     * this buffer does not contain. Empty means the style is not numeric.
+     */
+    citationNumbers?: ReadonlyMap<string, number> | undefined;
+    /**
      * A citation whose key nothing defines was clicked.
      *
      * The shell answers this by looking at the project directory, which is why
@@ -293,6 +302,7 @@
     listings = [],
     onOpenListing,
     bibliography: bibEntries = new Map<string, BibEntry>(),
+    citationNumbers: bibNumbers = new Map<string, number>(),
     onUnresolvedCitation,
     dropTakers: takers = [],
     onRefused,
@@ -513,7 +523,10 @@
       imageSource.of((path) => resolveImage?.(path) ?? Promise.resolve(null)),
       pagination(),
       listingCompartment.of(listingHomes(listings)),
-      bibCompartment.of(bibliography.of(bibEntries)),
+      bibCompartment.of([
+        bibliography.of(bibEntries),
+        citationNumbering.of(bibNumbers),
+      ]),
       // Clicking a citation whose key nothing defines. A resolved one does
       // nothing here — going to a `.bib` entry is a different feature, and one
       // that silently did nothing would read as broken.
@@ -773,7 +786,10 @@
   // creation.
   $effect(() => {
     view?.dispatch({
-      effects: bibCompartment.reconfigure(bibliography.of(bibEntries)),
+      effects: bibCompartment.reconfigure([
+        bibliography.of(bibEntries),
+        citationNumbering.of(bibNumbers),
+      ]),
     });
   });
 

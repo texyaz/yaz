@@ -142,6 +142,13 @@ export interface RegisteredView {
   mount: (container: HTMLElement) => ViewHandle;
 }
 
+/** A settings panel a plugin contributed, and who contributed it. */
+export interface RegisteredSettings {
+  pluginId: string;
+  titleKey: string;
+  render: (container: HTMLElement) => void;
+}
+
 /** A drop handler a plugin registered, and who registered it. */
 export interface RegisteredDropHandler {
   pluginId: string;
@@ -200,6 +207,8 @@ export class PluginRuntime {
    * of two plugins that *both* understand it gets to answer.
    */
   readonly dropHandlers: RegisteredDropHandler[] = [];
+  /** Settings panels plugins contributed, shown under Settings → Plugins. */
+  readonly settingsPanels: RegisteredSettings[] = [];
   private readonly loaded = new Map<string, Plugin>();
   /** Stops a second `start()` adding a second listener for the same events. */
   private listening = false;
@@ -366,6 +375,14 @@ export class PluginRuntime {
       });
     };
 
+    plugin.addSettingsTab = function addSettingsTab(tab) {
+      runtime.settingsPanels.push({
+        pluginId,
+        titleKey: tab.titleKey,
+        render: tab.render.bind(tab),
+      });
+    };
+
     plugin.registerDropHandler = function registerDropHandler(handler) {
       runtime.dropHandlers.push({
         pluginId,
@@ -427,6 +444,17 @@ export class PluginRuntime {
       },
       get editor() {
         return context.editor();
+      },
+
+      settings: {
+        async get<T>() {
+          // `pluginId` is the identity the runtime instantiated this plugin
+          // under, not something the caller passes — so a plugin reads its own
+          // settings and has no way to name another's (ADR-0006).
+          const stored = await ipc.pluginGetSettings(pluginId);
+          return (stored ?? undefined) as T | undefined;
+        },
+        set: (value: unknown) => ipc.pluginSetSettings(pluginId, value),
       },
 
       workspace: {
@@ -537,7 +565,11 @@ export class PluginRuntime {
           ipc.zoteroSearch(pluginId, query, limit),
         listAnnotations: (itemKey: string) =>
           ipc.zoteroAnnotations(pluginId, itemKey),
-        ensureInBibliography: (itemKey: string, bibliography?: string) => {
+        ensureInBibliography: (
+          itemKey: string,
+          bibliography?: string,
+          scheme?: string,
+        ) => {
           const open = context.project();
           if (!open) return Promise.reject(new Error("no project is open"));
           return ipc.zoteroEnsureInBibliography(
@@ -545,6 +577,7 @@ export class PluginRuntime {
             open.root,
             itemKey,
             bibliography,
+            scheme,
           );
         },
         refresh: () => ipc.zoteroReconnect(pluginId),

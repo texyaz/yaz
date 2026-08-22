@@ -77,6 +77,18 @@
         onclear: () => void;
       }
     | {
+        /**
+         * A panel a plugin renders itself.
+         *
+         * The plugin is handed a plain `HTMLElement` and nothing else — the
+         * same contract a contributed view gets, and for the same reason: the
+         * shell's framework is the shell's business (ADR-0005).
+         */
+        kind: "panel";
+        labelKey: string;
+        render: (container: HTMLElement) => void;
+      }
+    | {
         kind: "note";
         labelKey: string;
         /**
@@ -253,6 +265,17 @@
               {#each group.fields as field, index (index)}
                 {#if field.kind === "note"}
                   <p class="note">{field.text ?? t(field.labelKey)}</p>
+                {:else if field.kind === "panel"}
+                  <!-- Mounted for as long as there is somewhere to mount into.
+                       A plugin writing into a detached node for the rest of the
+                       session is what the teardown prevents. -->
+                  <div
+                    class="panel"
+                    {@attach (node) => {
+                      field.render(node);
+                      return () => node.replaceChildren();
+                    }}
+                  ></div>
                 {:else if field.kind === "copy"}
                   <div class="row">
                     <span class="label">{t(field.labelKey)}</span>
@@ -675,6 +698,13 @@
   }
 
   .help,
+  /* A plugin's own panel. Only the box is ours; what is in it is the
+     plugin's, and it follows the theme because the tokens cascade. */
+  .panel {
+    display: block;
+    inline-size: 100%;
+  }
+
   .note {
     margin: var(--yaz-space-1) 0 0;
     font-size: var(--yaz-font-size-sm);

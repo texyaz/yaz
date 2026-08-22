@@ -67,7 +67,13 @@ export abstract class Plugin {
     throw new Error("not implemented");
   }
 
-  /** Add a settings tab for this plugin. */
+  /**
+   * Add a settings panel for this plugin.
+   *
+   * Rendered inside the application's own Settings, under Plugins, so a user
+   * looks in one place for every setting rather than hunting for each plugin's
+   * idea of where its own belong.
+   */
   addSettingsTab(_tab: SettingsTab): void {
     throw new Error("not implemented");
   }
@@ -188,6 +194,8 @@ export interface App {
   readonly fs: FileSystemApi;
   /** Message resolution against the active locale. */
   readonly i18n: I18nApi;
+  /** Where this plugin keeps what it needs to remember. */
+  readonly settings: SettingsApi;
   /** Transient user-facing messages. */
   readonly notices: NoticeApi;
   /** Chooser dialogs. */
@@ -478,6 +486,7 @@ export interface ZoteroApi {
   ensureInBibliography(
     itemKey: string,
     bibliography?: string,
+    scheme?: CitationKeyScheme,
   ): Promise<CitationKey>;
 
   /** Re-probe the sources, e.g. after the user starts Zotero. */
@@ -607,6 +616,24 @@ export interface ZoteroAnnotation {
    */
   isQuotable: boolean;
 }
+
+/**
+ * How a new bibliography entry is named.
+ *
+ * The trade is real and different people want different ends of it, so it is a
+ * setting rather than a decision made for them:
+ *
+ * - `readable` — `meister2021building`, legible in the source. The Zotero item
+ *   is recorded inside the entry, so re-citing matches on identity and renaming
+ *   the key by hand never produces a duplicate.
+ * - `item-key` — `B8IM9SU5`, Zotero's own identifier. Cannot collide, never
+ *   needs a suffix, and says nothing to somebody reading the `.tex`.
+ * - `better-bibtex` — whatever Better BibTeX calls it, so a key matches a
+ *   co-author's exactly. Falls back to `readable` when BBT is not answering.
+ *
+ * @since 0.3.0
+ */
+export type CitationKeyScheme = "readable" | "item-key" | "better-bibtex";
 
 /** The outcome of ensuring an item is citable from this project. @since 0.1.0 */
 export interface CitationKey {
@@ -897,6 +924,31 @@ export interface ToolContribution {
 export interface SettingsTab {
   /** Message key for the tab title. */
   titleKey: string;
-  /** Render into the supplied container. */
+  /**
+   * Render into the supplied container.
+   *
+   * A plain `HTMLElement` and nothing else, for the same reason a contributed
+   * view gets one: the shell's framework is the shell's business, and a plugin
+   * written against it would break the first time the shell changed its mind.
+   */
   render(container: HTMLElement): void;
+}
+
+/**
+ * Where a plugin keeps what it needs to remember.
+ *
+ * Namespaced by plugin, and the namespace is the runtime's to decide rather
+ * than the caller's — a plugin reads its own settings and has no way to name
+ * another's. Persisted with the application's settings, so they survive a
+ * restart and a plugin update.
+ *
+ * The shape is the plugin's own: yaz stores JSON and never interprets it.
+ *
+ * @since 0.3.0
+ */
+export interface SettingsApi {
+  /** What was stored, or `undefined` on first run. */
+  get<T = unknown>(): Promise<T | undefined>;
+  /** Store it, replacing whatever was there. */
+  set(value: unknown): Promise<void>;
 }

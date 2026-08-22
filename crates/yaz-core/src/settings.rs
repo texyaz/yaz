@@ -6,6 +6,7 @@
 
 use camino::{Utf8Path, Utf8PathBuf};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 /// How many projects the recent list remembers.
 ///
@@ -66,6 +67,19 @@ pub struct Settings {
     /// [ADR-0021]: https://github.com/texyaz/yaz/blob/main/docs/adr/0021-plugin-distribution.md
     #[serde(default)]
     pub development_plugin: Option<Utf8PathBuf>,
+
+    /// What each plugin has stored, keyed by plugin id.
+    ///
+    /// Opaque here on purpose. A plugin's settings are its own — this side
+    /// cannot know what a Zotero bridge or a Citavi bridge wants to remember —
+    /// so they are carried as JSON and never interpreted. What this file does
+    /// own is that they are *namespaced*: a plugin reads and writes under its
+    /// own id and cannot reach another's, which is the same boundary every
+    /// other capability is drawn on ([ADR-0006]).
+    ///
+    /// [ADR-0006]: https://github.com/texyaz/yaz/blob/main/docs/adr/0006-plugin-runtime-and-capabilities.md
+    #[serde(default)]
+    pub plugins: BTreeMap<String, serde_json::Value>,
 }
 
 /// Text formats whose support the user switched off.
@@ -113,6 +127,7 @@ impl Default for Settings {
             // format added in a later version has to arrive as.
             formats: FormatPreferences::default(),
             development_plugin: None,
+            plugins: BTreeMap::new(),
         }
     }
 }

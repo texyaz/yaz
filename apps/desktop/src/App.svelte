@@ -87,11 +87,14 @@
     PluginRuntime,
     type PickerRequest,
     type RegisteredDropHandler,
+    type RegisteredSettings,
     type RegisteredView,
   } from "./lib/plugins/host";
   import type { ListingKind } from "@yaz/api";
   import {
     declaredBibliographies,
+    numberCitations,
+    citationStyle,
     citedWorks,
     diagnoseBibliography,
     ownsPreamble,
@@ -887,6 +890,9 @@
    */
   let dropTakers = $state<RegisteredDropHandler[]>([]);
 
+  /** Settings panels plugins contributed, shown under Settings → Plugins. */
+  let pluginPanels = $state<RegisteredSettings[]>([]);
+
   /**
    * The `.bib` files the open document declares.
    *
@@ -1000,6 +1006,23 @@
    * has, and the tab has to agree with the text it is describing.
    */
   const documentCitations = $derived(citedWorks(docText, bibEntries));
+
+  /**
+   * What each work prints, when the document's style is numeric.
+   *
+   * The style is declared in the preamble, so it is read from the entry file as
+   * well as the open one — the same reason the bibliography is. Empty for an
+   * author-year style, where a citation prints its short form instead.
+   */
+  const citationNumbers = $derived.by(() => {
+    const style = citationStyle(
+      ownsPreamble(docText) ? docText : `${docText}
+${entryText}`,
+    );
+    return style === "numeric"
+      ? numberCitations(documentCitations)
+      : new Map<string, number>();
+  });
 
   /**
    * The unresolved citation being explained, and what is wrong.
@@ -2253,6 +2276,14 @@
             ...(plugins.length === 0
               ? [{ kind: "note" as const, labelKey: "plugins-none" }]
               : []),
+            // What each plugin wants to ask the user itself, under the list of
+            // what is installed — so a setting is found where its plugin is
+            // rather than in a place each plugin invented.
+            ...pluginPanels.map((panel) => ({
+              kind: "panel" as const,
+              labelKey: panel.titleKey,
+              render: panel.render,
+            })),
             {
               kind: "button" as const,
               labelKey: "plugins-update-label",
@@ -2477,6 +2508,7 @@
         // unrelated change would look like the plugin had failed.
         pluginViews = [...runtime.views];
         dropTakers = [...runtime.dropHandlers];
+        pluginPanels = [...runtime.settingsPanels];
         refreshCommands();
       })
       .catch((error) => {
@@ -2872,6 +2904,7 @@
         {resolveImage}
         {dropTakers}
         bibliography={bibEntries}
+        {citationNumbers}
         onUnresolvedCitation={(key) => void explainCitation(key)}
         listings={listingHomes}
         onOpenListing={openListing}

@@ -697,3 +697,16 @@ citations-unresolved = { $count } davon lassen sich nicht auflösen. Zum Nachseh
 citations-no-bibliography = Es ist keine Literaturdatei geladen, deshalb kann nichts aufgelöst werden.
 citations-not-in-bibliography = Nicht in der Literaturdatei.
 citations-uses = { $count }-mal zitiert.
+
+## Einstellungen des Zotero-Plugins.
+
+zotero-settings-title = Zotero
+zotero-settings-key-scheme = Benennung neuer Einträge
+zotero-settings-key-scheme-detail = Unabhängig von der Wahl hält der Eintrag fest, welcher Zotero-Eintrag er ist — eine Quelle wird also nie doppelt geschrieben, auch nicht nach dem Umbenennen des Schlüssels.
+zotero-settings-saved = Gespeichert.
+zotero-key-scheme-readable = Lesbarer Schlüssel
+zotero-key-scheme-readable-detail = meister2021building — im Quelltext lesbar, stimmt aber nicht zwingend mit dem von Mitautoren überein.
+zotero-key-scheme-item-key = Zotero-Eintragsschlüssel
+zotero-key-scheme-item-key-detail = B8IM9SU5 — kollidiert nie und muss nie umbenannt werden, sagt Lesenden aber nichts.
+zotero-key-scheme-better-bibtex = Better-BibTeX-Schlüssel
+zotero-key-scheme-better-bibtex-detail = Stimmt exakt mit dem von Mitautoren überein. Benötigt Zotero mit Better BibTeX; sonst wird ein lesbarer Schlüssel verwendet.

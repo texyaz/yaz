@@ -696,3 +696,16 @@ citations-unresolved = { $count } of these will not resolve. Click one to see wh
 citations-no-bibliography = No bibliography is loaded, so nothing can resolve.
 citations-not-in-bibliography = Not in the bibliography.
 citations-uses = Cited { $count } times.
+
+## The Zotero plugin's settings.
+
+zotero-settings-title = Zotero
+zotero-settings-key-scheme = How a new entry is named
+zotero-settings-key-scheme-detail = Whichever you choose, the entry records which Zotero item it is — so citing a source twice never writes it twice, even after you rename the key.
+zotero-settings-saved = Saved.
+zotero-key-scheme-readable = Readable key
+zotero-key-scheme-readable-detail = meister2021building — legible in the source, and may not match a co-author's.
+zotero-key-scheme-item-key = Zotero item key
+zotero-key-scheme-item-key-detail = B8IM9SU5 — never collides and never needs renaming, but says nothing to a reader.
+zotero-key-scheme-better-bibtex = Better BibTeX key
+zotero-key-scheme-better-bibtex-detail = Matches a co-author's exactly. Needs Zotero running with Better BibTeX; falls back to a readable key.

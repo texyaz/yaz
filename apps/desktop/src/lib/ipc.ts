@@ -312,18 +312,33 @@ export function zoteroEnsureInBibliography(
   root: string,
   itemKey: string,
   bibliography?: string,
+  scheme?: string,
 ): Promise<CitationKey> {
   return invoke<CitationKey>("plugin_zotero_ensure_in_bibliography", {
     pluginId,
     root,
     itemKey,
-    bibliography: bibliography ?? null,
+    bibliography,
+    scheme,
   });
 }
 
 /** Re-probe the Zotero sources, e.g. after the user starts Zotero. */
 export function zoteroReconnect(pluginId: string): Promise<void> {
   return invoke<void>("plugin_zotero_reconnect", { pluginId });
+}
+
+/** What a plugin has stored, or null on first run. */
+export function pluginGetSettings(pluginId: string): Promise<unknown> {
+  return invoke<unknown>("plugin_get_settings", { pluginId });
+}
+
+/** Store what a plugin wants to remember. */
+export function pluginSetSettings(
+  pluginId: string,
+  value: unknown,
+): Promise<void> {
+  return invoke<void>("plugin_set_settings", { pluginId, value });
 }
 
 /** Whether Zotero is installed, wherever its installer puts it. */
