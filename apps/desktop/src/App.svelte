@@ -1,5 +1,6 @@
 <script lang="ts">
   import { untrack } from "svelte";
+  import { INSERTIONS, prepareAt } from "./lib/editor/insert";
   import { open } from "@tauri-apps/plugin-dialog";
   import type { Extension } from "@codemirror/state";
   import type { EditorApi } from "@yaz/api";
@@ -787,6 +788,9 @@
    */
   function runShortcut(command: CommandId) {
     switch (command) {
+      case "navigate.commands":
+        openCommandPalette();
+        return;
       case "view.toggleRichText":
         richText = !richText;
         return;
@@ -1562,6 +1566,99 @@ ${entryText}`,
   });
 
   let commands = $state<ReturnType<PluginRuntime["availableCommands"]>>([]);
+
+  /**
+   * Everything the palette can run: yaz's own commands and the plugins'.
+   *
+   * One list, because from the author's side there is one question — "what can
+   * I do?" — and which half of the application answers it is not part of the
+   * question. A plugin's command appears here by having been registered at all;
+   * there is nothing for a plugin author to opt into, which is the property
+   * that keeps the palette complete as plugins come and go.
+   */
+  const paletteEntries = $derived([
+    ...shortcuts
+      // Not the palette itself: offering "open the palette" inside the palette
+      // is a row that can only take you where you already are.
+      .filter((shortcut) => shortcut.id !== "navigate.commands")
+      .map((shortcut) => ({
+        label: t(shortcut.labelKey),
+        binding: describeBinding(shortcut.binding),
+        run: () => runShortcut(shortcut.id),
+      })),
+    ...commands.map((command) => ({
+      label: command.name,
+      // Which plugin it came from, so two plugins offering "Refresh" are
+      // telling the author which is which.
+      binding: pluginNameOf(command.pluginId),
+      run: () => runCommand(command.id),
+    })),
+    // The LaTeX a paper is made of. Only where the document is LaTeX: offering
+    // to insert a `tabular` into a Markdown file would be offering nonsense.
+    ...(currentFormat === "latex"
+      ? INSERTIONS.map((entry) => ({
+          label: t(entry.labelKey),
+          binding: "",
+          run: () => insertLatex(entry.template),
+        }))
+      : []),
+  ]);
+
+  /**
+   * Put a construct into the document, with the caret where the writing starts.
+   *
+   * Through the editor rather than by assigning the text, so it lands in undo
+   * with everything else and the buffer stays the document (ADR-0004).
+   */
+  function insertLatex(template: string) {
+    if (!editorApi) return;
+    const { from } = editorApi.getSelection();
+    const text = editorApi.getText();
+    // Indented to sit where it is going: a `tabular` inserted inside an
+    // already-indented environment should line up with what is around it.
+    const lineStart = text.lastIndexOf("\n", Math.max(0, from - 1)) + 1;
+    const prepared = prepareAt(template, text.slice(lineStart, from));
+    editorApi.replaceRange(from, from, prepared.text);
+    editorApi.revealRange(from + prepared.caret, from + prepared.caret);
+  }
+
+  /** The display name of the plugin a command came from. */
+  function pluginNameOf(pluginId: string): string {
+    return plugins.find((plugin) => plugin.id === pluginId)?.name ?? "";
+  }
+
+  /**
+   * Show every command, and run the one chosen.
+   *
+   * The picker rather than a palette of its own: filtering a list and choosing
+   * a row is what it already does, and a second thing that looked almost the
+   * same would be a second thing to keep in step.
+   */
+  function openCommandPalette() {
+    const entries = paletteEntries;
+    picker = {
+      titleKey: "palette-title",
+      placeholderKey: "palette-placeholder",
+      emptyKey: "palette-empty",
+      load: async (query: string) => {
+        const wanted = query.trim().toLowerCase();
+        return entries
+          .filter((entry) => entry.label.toLowerCase().includes(wanted))
+          .map((entry) => ({
+            value: entry,
+            label: entry.label,
+            description: entry.binding || undefined,
+          }));
+      },
+      resolve: (value) => {
+        picker = null;
+        // After the picker has gone, so a command that opens another one is
+        // not fighting this for the screen.
+        if (value) (value as { run: () => void }).run();
+      },
+    };
+  }
+
 
   function refreshCommands() {
     commands = runtime.availableCommands();

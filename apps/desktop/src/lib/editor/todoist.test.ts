@@ -18,6 +18,8 @@ import {
   createProject,
   createTask,
   listProjects,
+  checkReach,
+  forgetBase,
   listTasks,
 } from "../../../../../plugins/todoist/src/api";
 
@@ -29,6 +31,9 @@ interface Recorded {
 }
 
 function appReturning(answer: unknown, record: Recorded = {}) {
+  // Each of these stands alone, so which API version a previous one settled on
+  // must not decide what this one exercises.
+  forgetBase();
   return {
     credentials: {
       has: () => Promise.resolve(true),
@@ -160,6 +165,56 @@ describe("writing to Todoist", () => {
       expect(record.url).toContain("/tasks/77/close");
       expect(record.method).toBe("POST");
     });
+  });
+});
+
+describe("which API version answers", () => {
+  it("uses the unified API when it answers", () => {
+    const record: Recorded = {};
+    forgetBase();
+    const app = appReturning(
+      { results: [{ id: "1", name: "Thesis" }] },
+      record,
+    );
+    return listProjects(app).then((projects) => {
+      expect(record.url).toContain("/api/v1/projects");
+      // And reads the wrapped shape it returns.
+      expect(projects).toEqual([{ id: "1", name: "Thesis" }]);
+    });
+  });
+
+  it("reads the bare list the older API returns", () => {
+    forgetBase();
+    const app = appReturning([{ id: "1", name: "Thesis" }]);
+    return expect(listProjects(app)).resolves.toEqual([
+      { id: "1", name: "Thesis" },
+    ]);
+  });
+
+  it("says what went wrong rather than that something did", () => {
+    // Every way this fails used to look identical, which sent somebody to
+    // make a new token that failed the same way.
+    forgetBase();
+    const app = {
+      credentials: {
+        has: () => Promise.resolve(true),
+        fetch: () => Promise.reject({ detail: "401: Forbidden" }),
+      },
+    } as never;
+    return checkReach(app).then((outcome) => {
+      expect(outcome.ok).toBe(false);
+      expect(outcome.reason).toContain("401");
+    });
+  });
+
+  it("has no reason to give when nothing is stored", () => {
+    const app = {
+      credentials: {
+        has: () => Promise.resolve(false),
+        fetch: () => Promise.reject(new Error("should not be called")),
+      },
+    } as never;
+    return expect(checkReach(app)).resolves.toEqual({ ok: false, reason: "" });
   });
 });
 

@@ -24,7 +24,7 @@
 
 import type { App } from "@yaz/api";
 
-import { canReach } from "./api";
+import { checkReach, forgetBase } from "./api";
 
 /** Where a personal API token is found, for the link in the panel. */
 const TOKEN_PAGE = "https://app.todoist.com/app/settings/integrations/developer";
@@ -104,20 +104,30 @@ export function renderSettings(app: App, container: HTMLElement): void {
         field.value = "";
         void app.credentials
           .set(token)
-          // Stored is not signed in. A token can be mistyped, revoked, or
-          // simply the wrong kind of string, and every one of those looked
-          // exactly like "not signed in" from the Connections entry — which is
-          // an unanswerable state to be shown.
-          .then(() => canReach(app))
-          .then((reachable) => {
-            draw(reachable);
+          .then(() => {
+            // A different token may be a different account, which may be on a
+            // different API version.
+            forgetBase();
+            // Stored is not signed in. A token can be mistyped, revoked, or
+            // simply the wrong kind of string, and every one of those looked
+            // exactly like "not signed in" — which is an unanswerable state.
+            return checkReach(app);
+          })
+          .then(({ ok, reason }) => {
+            draw(ok);
             // The whole point of signing in is that everything else can now
             // reach the service, so the Tasks tab and the Connections entry
             // are told rather than left stale until something else asks.
             app.tasks.refresh();
-            app.notices.show(
-              reachable ? "todoist-signed-in" : "todoist-token-refused",
-            );
+            if (ok) {
+              app.notices.show("todoist-signed-in");
+              return;
+            }
+            // What actually happened, not what we guessed. Saying "Todoist
+            // refused it" when the real answer was a firewall or a retired
+            // endpoint sends somebody to make a new token that will fail the
+            // same way — which is exactly what it did.
+            app.notices.show("todoist-token-refused", { reason });
           })
           .catch(() => app.notices.show("todoist-sign-in-failed"));
       };

@@ -770,7 +770,7 @@ todoist-signed-in = Bei Todoist angemeldet.
 todoist-signed-out = Nicht angemeldet.
 todoist-sign-in = Anmelden
 todoist-sign-in-failed = Dieses Token konnte nicht gespeichert werden.
-todoist-token-refused = Das Token wurde gespeichert, aber von Todoist abgelehnt. Prüfen, ob es vollständig kopiert wurde und nicht widerrufen ist.
+todoist-token-refused = Das Token wurde gespeichert, aber die Anfrage schlug fehl: { $reason }
 todoist-token-placeholder = Persönliches API-Token
 todoist-token-where = Ein persönliches API-Token unter { $page } kopieren und hier einfügen. Es wird im Schlüsselbund des Systems abgelegt und von yaz nie wieder angezeigt.
 todoist-forget = Token vergessen
@@ -806,3 +806,18 @@ plugins-installed-count = { $count } installiert. Jedes hat unten einen eigenen 
 plugins-about = Über
 plugins-version = Version
 plugins-version-value = { $version }
+
+## Die Befehlspalette.
+
+palette-title = Befehl ausführen
+palette-placeholder = Zum Filtern tippen
+palette-empty = Nichts gefunden.
+insert-table = Einfügen: Tabelle
+insert-figure = Einfügen: Abbildung
+insert-equation = Einfügen: Formel
+insert-itemize = Einfügen: Aufzählung
+insert-enumerate = Einfügen: nummerierte Liste
+insert-section = Einfügen: Abschnitt
+insert-subsection = Einfügen: Unterabschnitt
+insert-quote = Einfügen: Blockzitat
+insert-footnote = Einfügen: Fußnote

@@ -29,6 +29,8 @@
 
 /** What a shortcut asks the application to do. */
 export type CommandId =
+  // Everything you can do, in one list
+  | "navigate.commands"
   // Views
   | "view.toggleRichText"
   | "view.toggleSource"
@@ -121,6 +123,21 @@ export const SUITES: readonly {
  */
 export const SHORTCUTS: readonly Shortcut[] = [
   // ---- core: without these there is no keyboard ---------------------------
+  {
+    /*
+     * The command palette.
+     *
+     * `Mod-Shift-p` because that is what every editor uses and what everybody's
+     * fingers already do. It also has to be *bound* rather than left free: an
+     * unbound `Ctrl+Shift+P` reaches the webview, which answers it with a print
+     * dialog for the interface — a dialog that prints the wrong thing and has
+     * nothing to do with the document.
+     */
+    id: "navigate.commands",
+    labelKey: "palette-title",
+    keys: "Mod-Shift-p",
+    suites: ["yaz"],
+  },
   {
     id: "document.save",
     labelKey: "menu-file-save",
