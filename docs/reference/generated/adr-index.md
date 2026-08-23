@@ -41,3 +41,4 @@ useful than a tidy directory.
 | [0023 — The preview knows LaTeX; packages are plugins](/adr/0023-latex-vocabulary-boundary) | Accepted |
 | [0024 — The page is a fixed box; content is pushed through it](/adr/0024-page-view-fixed-sheets) | Accepted |
 | [0025 — A generated list is a tab, not pages](/adr/0025-generated-lists-are-tabs) | Accepted |
+| [0026 — A task list is a core tab; a credential is a capability](/adr/0026-task-providers-and-credentials) | Accepted |

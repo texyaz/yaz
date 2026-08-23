@@ -26,7 +26,13 @@
  * overwritten on the next build.
  */
 
-import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -190,6 +196,134 @@ ${rows.join("\n")}
 `;
 }
 
+/**
+ * The bundled plugins, each from its own repository.
+ *
+ * ADR-0016 says a fact lives in one place. A plugin's documentation lives in
+ * the plugin's repository, next to the code it describes, because that is the
+ * copy its author edits and the copy someone reads on GitHub. Copying it into
+ * the site by hand would make the site the stale one within a month —
+ * especially since the plugins are submodules and move on their own schedule
+ * (ADR-0021).
+ *
+ * So the site *includes* it. The manifest supplies the name, the icon, the
+ * version and what it asks for; the README supplies the prose. Neither is
+ * written twice.
+ */
+function generatePlugins() {
+  const dir = join(root, "plugins");
+  const found = [];
+
+  for (const name of readdirSync(dir).sort()) {
+    const manifestPath = join(dir, name, "manifest.json");
+    if (!existsSync(manifestPath)) continue;
+
+    let manifest;
+    try {
+      manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+    } catch {
+      // A submodule that has not been checked out leaves an empty directory.
+      // Skipping is right: the alternative is a docs build that fails on a
+      // fresh clone, which nobody would thank us for.
+      continue;
+    }
+
+    const readmePath = join(dir, name, "README.md");
+    const readme = existsSync(readmePath)
+      ? readFileSync(readmePath, "utf8")
+      : "";
+    found.push({ dir: name, manifest, readme });
+  }
+
+  const pages = {};
+
+  for (const plugin of found) {
+    const { manifest, readme } = plugin;
+    // The README opens with the plugin's own title and a one-line summary,
+    // both of which the manifest already gives — so the page keeps its own
+    // heading and takes the README from the first section after that.
+    const body = intoSiteLinks(
+      readme.replace(/^#[^\n]*\n+/, "").trim(),
+      manifest.repository,
+    );
+
+    const capabilities = (manifest.capabilities ?? [])
+      .map((entry) => `\`${entry.kind}\``)
+      .join(", ");
+
+    pages[`${plugin.dir}.md`] = `${BANNER}
+# ${manifest.icon ? `${manifest.icon} ` : ""}${manifest.name}
+
+> ${manifest.description}
+
+| | |
+| --- | --- |
+| Identifier | \`${manifest.id}\` |
+| Version | ${manifest.version} |
+| Needs yaz | ${manifest.minAppVersion} or newer |
+| Asks for | ${capabilities || "nothing"} |
+| Source | [${repoName(manifest.repository)}](${manifest.repository ?? ""}) |
+
+${body}
+`;
+  }
+
+  const rows = found.map((plugin) => {
+    const { manifest } = plugin;
+    return `| ${manifest.icon ?? ""} | [${manifest.name}](/reference/generated/plugins/${plugin.dir}) | ${manifest.description} |`;
+  });
+
+  pages["index.md"] = `${BANNER}
+# Official plugins
+
+Six plugins ship with yaz. Each is its own repository under the
+[texyaz](https://github.com/texyaz) organisation and its own release
+([ADR-0021](/adr/0021-plugin-distribution)), and each uses only the public
+\`@yaz/api\` — there is no privileged tier for a plugin because it happens to be
+ours ([ADR-0005](/adr/0005-extensibility-tiers)).
+
+That last point is the one worth dwelling on. Zotero support is a plugin, and it
+is written against the same contract anybody else would use. If something here
+cannot be done from outside, that is a hole in the API rather than a reason for
+a back door.
+
+| | Plugin | What it does |
+| --- | --- | --- |
+${rows.join("\n")}
+
+These pages are assembled from each plugin's own \`manifest.json\` and
+\`README.md\`. To change one, change it in the plugin's repository.
+`;
+
+  return pages;
+}
+
+/**
+ * Point a README's relative links back at the repository it came from.
+ *
+ * `[the roadmap](./ROADMAP.md)` is correct where the README lives and a dead
+ * link everywhere else — the file is in the plugin's repository and not on this
+ * site. Rewriting rather than dropping, because somebody following the link
+ * should arrive somewhere.
+ */
+function intoSiteLinks(markdown, repository) {
+  if (!repository) return markdown;
+  const base = `${repository.replace(/\/$/, "")}/blob/main/`;
+  // Anything that is not already absolute and is not an anchor. A README says
+  // both `(ROADMAP.md)` and `(./ROADMAP.md)`, and only matching the second left
+  // the first dead.
+  return markdown.replace(/\]\(([^)#][^)]*)\)/g, (whole, target) => {
+    if (/^(?:[a-z][a-z0-9+.-]*:|\/\/|\/)/i.test(target)) return whole;
+    return `](${base}${target.replace(/^\.\//, "")})`;
+  });
+}
+
+/** `owner/name` out of a repository URL, for a link that reads as one. */
+function repoName(url) {
+  if (!url) return "not published";
+  return url.replace(/^https?:\/\/github\.com\//, "").replace(/\.git$/, "");
+}
+
 const messages = loadMessages();
 mkdirSync(outDir, { recursive: true });
 
@@ -202,4 +336,11 @@ const pages = {
 for (const [name, content] of Object.entries(pages)) {
   writeFileSync(join(outDir, name), content, "utf8");
   console.log(`generated docs/reference/generated/${name}`);
+}
+
+const pluginDir = join(outDir, "plugins");
+mkdirSync(pluginDir, { recursive: true });
+for (const [name, content] of Object.entries(generatePlugins())) {
+  writeFileSync(join(pluginDir, name), content, "utf8");
+  console.log(`generated docs/reference/generated/plugins/${name}`);
 }

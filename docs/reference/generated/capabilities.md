@@ -29,6 +29,7 @@ read the open document. That is by design and is stated plainly in
 | `clipboard` | Read and change the clipboard. | no |
 | `notifications` | Show desktop notifications. | no |
 | `shell:open` | Open links and files with your other applications. | no |
+| `credential` | Keep a sign-in for this service in your system keychain. | yes |
 
 "Sensitive" ones are emphasised in the install dialog. Network access is limited
 to explicitly declared hosts — a wildcard is rejected at manifest validation,

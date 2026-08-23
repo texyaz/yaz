@@ -26,7 +26,7 @@ rather than a fact about writing.
 that reads and writes somebody's entire task list, across every project they
 have — most of which have nothing to do with yaz. This is the first secret the
 application holds, and
-[the Zotero roadmap](../../plugins/zotero/ROADMAP.md) already named it as a
+[the Zotero roadmap](https://github.com/texyaz/yaz-zotero/blob/main/ROADMAP.md) already named it as a
 design question deferred rather than solved.
 
 ## Decision

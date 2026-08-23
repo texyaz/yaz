@@ -1,5 +1,5 @@
 import { defineConfig } from "vitepress";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -47,6 +47,54 @@ function adrSidebar() {
     });
 }
 
+/**
+ * The bundled plugins, from the pages the generator produced.
+ *
+ * Read off the directory rather than listed here, for the same reason the ADRs
+ * are: a plugin added to `plugins/` and forgotten in this file would be a
+ * plugin nobody could find, and the file system already knows the answer
+ * (ADR-0016).
+ */
+function officialPlugins() {
+  const dir = join(docsRoot, "reference", "generated", "plugins");
+  const pages = existsSync(dir)
+    ? readdirSync(dir)
+        .filter((file) => file.endsWith(".md") && file !== "index.md")
+        .sort()
+        .map((file) => {
+          const text = readFileSync(join(dir, file), "utf8");
+          // The heading carries the plugin icon, which is decoration in a
+          // sidebar — the name alone is what is being scanned for.
+          const heading = /^#\s*(.+)$/m.exec(text)?.[1] ?? file;
+          return {
+            text: heading.replace(/^\S+\s+/u, (match) =>
+              /[a-zA-Z]/.test(match) ? match : "",
+            ),
+            link: `/reference/generated/plugins/${file.replace(/\.md$/, "")}`,
+          };
+        })
+    : [];
+
+  return {
+    text: "Official plugins",
+    items: [
+      { text: "Overview", link: "/reference/generated/plugins/" },
+      ...pages,
+    ],
+  };
+}
+
+/** The pages for somebody writing a plugin of their own. */
+function authoring() {
+  return {
+    text: "Writing your own",
+    items: [
+      { text: "Writing a plugin", link: "/plugins/writing-a-plugin" },
+      { text: "Capabilities", link: "/reference/generated/capabilities" },
+    ],
+  };
+}
+
 export default defineConfig({
   title: "yaz",
   description:
@@ -71,7 +119,7 @@ export default defineConfig({
 
     nav: [
       { text: "Guide", link: "/guide/getting-started" },
-      { text: "Plugins", link: "/plugins/writing-a-plugin" },
+      { text: "Plugins", link: "/reference/generated/plugins/" },
       { text: "Reference", link: "/reference/generated/capabilities" },
       { text: "Decisions", link: "/reference/generated/adr-index" },
     ],
@@ -82,19 +130,12 @@ export default defineConfig({
           text: "Guide",
           items: [
             { text: "Getting started", link: "/guide/getting-started" },
+            { text: "Writing in yaz", link: "/guide/writing" },
             { text: "Choosing an engine", link: "/guide/engines" },
           ],
         },
       ],
-      "/plugins/": [
-        {
-          text: "Plugin authors",
-          items: [
-            { text: "Writing a plugin", link: "/plugins/writing-a-plugin" },
-            { text: "Capabilities", link: "/reference/generated/capabilities" },
-          ],
-        },
-      ],
+      "/plugins/": [officialPlugins(), authoring()],
       "/contributing/": [
         {
           text: "Contributing",
@@ -102,6 +143,8 @@ export default defineConfig({
         },
       ],
       "/": [
+        officialPlugins(),
+        authoring(),
         {
           text: "Reference",
           items: [
