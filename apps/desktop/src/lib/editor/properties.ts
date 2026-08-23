@@ -281,3 +281,20 @@ export function setProperty(
       );
   }
 }
+
+/**
+ * Add a `\usepackage` line, if the document has not got one already.
+ *
+ * `null` when it already has it, so a caller can apply the answer without
+ * checking twice and without writing a duplicate line into the preamble.
+ *
+ * A formatting command sometimes needs a package the document does not load —
+ * colour needs `xcolor` — and writing the command without the package produces
+ * a document that no longer compiles. Which is worse than the button not being
+ * there at all, so the button brings the package with it.
+ */
+export function requirePackage(text: string, name: string): Edit | null {
+  if (packageOptions(text, name)) return null;
+  const at = preambleEnd(text);
+  return { from: at, to: at, insert: `\\usepackage{${name}}\n` };
+}
