@@ -58,6 +58,7 @@
   import FormatBar from "./FormatBar.svelte";
   import { placeBar } from "./editor/formatBar";
   import { formatInCell } from "./editor/tableWidget";
+  import { captionOffset, usableImage } from "./editor/pastedImage";
   import {
     appliedFormatting,
     clearFormatting,
@@ -294,6 +295,20 @@
      */
     onReady?: (api: EditorApi | null) => void;
     /**
+     * An image was pasted, as the bytes and the type the clipboard gave.
+     *
+     * Handed up rather than written here: saving a file is the shell's business
+     * and the capability check lives in the Rust process (ADR-0006). The editor
+     * only notices that it happened and says where the caret was.
+     *
+     * Answering with the LaTeX to insert, or `null` if it could not be saved —
+     * in which case the paste does nothing rather than writing a reference to a
+     * file that is not there.
+     */
+    onPasteImage?:
+      | ((bytes: Uint8Array, type: string) => Promise<string | null>)
+      | undefined;
+    /**
      * A formatting edit needs a package the preamble may not have.
      *
      * Reported rather than written: the preamble is often in another file —
@@ -343,6 +358,7 @@
     onCursor,
     onZoom,
     onReady,
+    onPasteImage,
     onRequirePackage,
     formatBar = false,
   }: Props = $props();
@@ -731,6 +747,44 @@
       // has no links to draw.
       stitched(() => onRefused?.()),
       includeLinks((argument) => onOpenInclude?.(argument)),
+      // A picture on the clipboard, pasted.
+      //
+      // The Snipping Tool and every diagram editor put an image there and
+      // nowhere else, so without this the only route into the document is:
+      // save it somewhere, invent a name, and type a `figure` around it.
+      //
+      // Text pastes are untouched — the guard is that the clipboard actually
+      // carries a file, which a copied paragraph does not.
+      EditorView.domEventHandlers({
+        paste: (event, instance) => {
+          const items = [...(event.clipboardData?.items ?? [])];
+          const found = items.find((item) => usableImage(item.type));
+          if (!found) return false;
+
+          const file = found.getAsFile();
+          if (!file) return false;
+          event.preventDefault();
+
+          void (async () => {
+            const bytes = new Uint8Array(await file.arrayBuffer());
+            const figure = await onPasteImage?.(bytes, found.type);
+            if (!figure) return;
+
+            const range = instance.state.selection.main;
+            instance.dispatch({
+              changes: { from: range.from, to: range.to, insert: figure },
+              // In the empty caption, which is the one part only the author
+              // can write and which they will never be better placed to write.
+              selection: {
+                anchor: range.from + captionOffset(figure),
+              },
+              userEvent: "input.paste",
+            });
+            instance.focus();
+          })();
+          return true;
+        },
+      }),
       EditorView.updateListener.of((update) => {
         if (update.docChanged) {
           onChange(update.state.doc.toString(), changesIn(update.changes));

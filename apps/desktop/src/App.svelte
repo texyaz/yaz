@@ -83,6 +83,7 @@
   import * as theming from "./lib/theme";
   import { setLocale, availableLocales, locale, t } from "./lib/i18n";
   import { formatInCell } from "./lib/editor/tableWidget";
+  import { figureFor, nameFor, suffixFor } from "./lib/editor/pastedImage";
   import Search from "./lib/Search.svelte";
   import type { FileMatches } from "./lib/Search.svelte";
   import {
@@ -1458,6 +1459,50 @@
   }
 
 
+  /**
+   * Save a picture pasted onto the editor, and answer with the figure for it.
+   *
+   * The file goes into the project rather than anywhere else, because a `.tex`
+   * that refers to a screenshot in a temp directory is a `.tex` that stops
+   * compiling on the next machine — or after a reboot.
+   *
+   * The name is derived rather than asked for. A dialog per paste is the thing
+   * that stops people pasting, and a name built from the document sorts with
+   * its siblings and still says where it came from next month.
+   *
+   * `null` when there is nowhere to put it, so the paste does nothing rather
+   * than writing a reference to a file that is not there.
+   */
+  async function savePastedImage(
+    bytes: Uint8Array,
+    type: string,
+  ): Promise<string | null> {
+    const suffix = suffixFor(type);
+    if (!suffix) return null;
+    if (!project) {
+      // Without a project there is no "inside the document" to save into, and
+      // guessing at a directory would scatter screenshots across the disk.
+      showNotice(t("paste-image-no-project"));
+      return null;
+    }
+
+    const open = project;
+    const taken = open.files.map((file) => file.relativePath);
+    const path = nameFor(currentFile ?? open.entry, suffix, taken);
+
+    try {
+      await ipc.writeProjectBytes(open.root, path, bytes);
+    } catch (error) {
+      failure = String(error);
+      return null;
+    }
+
+    // Re-read the project, so the next paste counts past this file and the
+    // file list shows it without waiting for the project to be reopened.
+    project = await ipc.openProject(open.root);
+    showNotice(t("paste-image-saved", { file: path }));
+    return figureFor(path);
+  }
 
   /** Settings panels plugins contributed, shown under Settings → Plugins. */
   let pluginPanels = $state<RegisteredSettings[]>([]);
@@ -4069,6 +4114,7 @@ ${entryText}`,
           refreshCommands();
         }}
         formatBar={currentFormat === "latex"}
+        onPasteImage={currentFormat === "latex" ? savePastedImage : undefined}
         onRequirePackage={(name) => void ensurePackage(name)}
       />
     {:else if currentFile}

@@ -91,6 +91,18 @@ Colour is the one command that needs a package. Applying it adds
 `\usepackage{xcolor}` to the preamble — writing `\textcolor` into a document that
 cannot compile it would be a formatting button that breaks the build.
 
+## Pasting a picture
+
+Take a screenshot — the Snipping Tool, a shortcut, a diagram editor — and press
+`Ctrl+V` in the document. yaz saves the image into the project's `images/` and
+writes a whole `figure` around it, with the caret left in the empty `\caption{}`.
+
+The file goes **into the project** rather than anywhere else, because a `.tex`
+referring to a screenshot in a temp directory stops compiling on the next
+machine. The name is derived from the document rather than asked for — a dialog
+per paste is the thing that stops people pasting — and it counts past whatever
+is already there rather than overwriting.
+
 ## The tabs
 
 Opened from **View → Tabs**. None of them opens itself; a pane that appeared
