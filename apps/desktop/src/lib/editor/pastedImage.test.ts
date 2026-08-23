@@ -62,6 +62,26 @@ describe("naming the pasted file", () => {
     );
   });
 
+  it("uses the directory the project keeps its pictures in", () => {
+    // A template dictates this — some want `images/`, some `figures/` — and a
+    // thesis whose supervisor supplied the skeleton does not get to choose.
+    expect(nameFor("methodik.tex", "png", [], "figures")).toBe(
+      "figures/methodik-1.png",
+    );
+  });
+
+  it("tidies a directory however it was typed", () => {
+    // A leading slash, a trailing one, or Windows separators: all of them are
+    // somebody saying the same thing, and none should produce a doubled path.
+    for (const typed of ["/figures/", "figures\\", "figures/"]) {
+      expect(nameFor("m.tex", "png", [], typed)).toBe("figures/m-1.png");
+    }
+  });
+
+  it("falls back to the default when the directory is blank", () => {
+    expect(nameFor("m.tex", "png", [], "  ")).toContain("images/");
+  });
+
   it("falls back to a name rather than an empty one", () => {
     expect(nameFor(".tex", "png", [])).toBe("images/figure-1.png");
   });

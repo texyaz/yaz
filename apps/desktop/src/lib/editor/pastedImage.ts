@@ -25,8 +25,14 @@
 /** A backslash, so the template below reads as what it is. */
 const B = String.fromCharCode(92);
 
-/** Where pasted pictures go, relative to the project root. */
-export const IMAGE_DIRECTORY = "images";
+/**
+ * Where pasted pictures go when a project has not said otherwise.
+ *
+ * `images` rather than `figures` or `img`: it is what the LaTeX templates this
+ * was built against use, and a directory that already exists is one nobody has
+ * to think about. A project that wants another says so in its own settings.
+ */
+export const DEFAULT_IMAGES = "images";
 
 /**
  * The image types worth taking off the clipboard.
@@ -48,40 +54,35 @@ export function usableImage(type: string): boolean {
   return type in SUFFIXES;
 }
 
+/**
+ * The picture on a clipboard, if there is one.
+ *
+ * Both places are looked at, because engines disagree about which they fill:
+ * `items` is what a paste from a screenshot tool populates in Chromium, and
+ * `files` is what some builds give instead — and WebView2 has been seen to do
+ * each. Looking at only one was why a paste could do nothing at all.
+ *
+ * A type LaTeX cannot include is declined here rather than further down, so
+ * that a paste of, say, a copied paragraph falls through to the ordinary text
+ * handling untouched.
+ */
+export function imageOnClipboard(data: DataTransfer | null): File | null {
+  if (!data) return null;
+
+  for (const file of data.files ?? []) {
+    if (usableImage(file.type)) return file;
+  }
+  for (const item of data.items ?? []) {
+    if (item.kind !== "file" || !usableImage(item.type)) continue;
+    const file = item.getAsFile();
+    if (file) return file;
+  }
+  return null;
+}
+
 /** The file extension for a clipboard type, or `null` if it is not one. */
 export function suffixFor(type: string): string | null {
   return SUFFIXES[type] ?? null;
-}
-
-/**
- * A name for the pasted file that will still mean something next month.
- *
- * Built from the document it was pasted into and a count, so a chapter's
- * pictures sort together in the directory listing and the name says where it
- * came from. `pasted-1.png` in a folder of forty says nothing.
- *
- * `taken` is the names already there; the count steps past them rather than
- * overwriting, because a paste that silently replaced last week's figure would
- * be a paste nobody could trust.
- */
-export function nameFor(
-  documentPath: string,
-  suffix: string,
-  taken: readonly string[],
-): string {
-  const base = documentPath
-    .replace(/^.*[\\/]/, "")
-    .replace(/\.[^.]*$/, "")
-    .replace(/[^a-zA-Z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .toLowerCase();
-  const stem = base === "" ? "figure" : base;
-
-  const used = new Set(taken.map((name) => name.toLowerCase()));
-  for (let count = 1; ; count += 1) {
-    const candidate = `${IMAGE_DIRECTORY}/${stem}-${count}.${suffix}`;
-    if (!used.has(candidate.toLowerCase())) return candidate;
-  }
 }
 
 /**
@@ -99,6 +100,49 @@ export function nameFor(
  */
 export function includePath(relativePath: string): string {
   return relativePath.replace(/\\/g, "/");
+}
+
+/**
+ * A name for the pasted file that will still mean something next month.
+ *
+ * Built from the document it was pasted into and a count, so a chapter's
+ * pictures sort together in the directory listing and the name says where it
+ * came from. `pasted-1.png` in a folder of forty says nothing.
+ *
+ * `taken` is the names already there; the count steps past them rather than
+ * overwriting, because a paste that silently replaced last week's figure would
+ * be a paste nobody could trust.
+ *
+ * `directory` is where the project keeps its pictures, which a template often
+ * dictates — some want `images/`, some `figures/`.
+ */
+export function nameFor(
+  documentPath: string,
+  suffix: string,
+  taken: readonly string[],
+  directory: string = DEFAULT_IMAGES,
+): string {
+  const base = documentPath
+    .replace(/^.*[\\/]/, "")
+    .replace(/\.[^.]*$/, "")
+    .replace(/[^a-zA-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase();
+  const stem = base === "" ? "figure" : base;
+
+  // Trimmed of separators, so a directory typed with a leading slash, a
+  // trailing one, or Windows ones still produces one clean path rather than a
+  // doubled or a reversed one.
+  const home = includePath(directory)
+    .trim()
+    .replace(/^\/+|\/+$/g, "");
+  const into = home === "" ? DEFAULT_IMAGES : home;
+
+  const used = new Set(taken.map((name) => name.toLowerCase()));
+  for (let count = 1; ; count += 1) {
+    const candidate = `${into}/${stem}-${count}.${suffix}`;
+    if (!used.has(candidate.toLowerCase())) return candidate;
+  }
 }
 
 /**

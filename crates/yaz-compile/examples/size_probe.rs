@@ -41,6 +41,7 @@ fn main() {
             entry: Utf8PathBuf::from("main.tex"),
             engine: EngineChoice::Tectonic,
             document_locale: None,
+            images: yaz_core::project::default_images(),
         };
         match engine.compile(&project) {
             Ok(output) => println!("succeeded={}", output.succeeded),

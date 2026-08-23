@@ -333,7 +333,7 @@
 
   li {
     display: flex;
-    align-items: baseline;
+    align-items: flex-start;
     gap: var(--yaz-space-2);
     padding: var(--yaz-space-1) var(--yaz-space-3);
     /* Sub-tasks step in rather than being drawn in a list of their own, so the
@@ -356,6 +356,16 @@
   */
   li input[type="checkbox"] {
     appearance: none;
+    /*
+      A form control does not inherit `font-size`.
+
+      This is the whole reason two attempts at aligning it missed: the browser
+      gives a checkbox its own default size — about 13px against the row's 16 —
+      so every `em` here was measuring a smaller em than the text beside it. The
+      box came out four fifths of the size intended and its offset four fifths
+      of the distance, which is exactly the couple of pixels that read as wrong.
+    */
+    font-size: inherit;
     inline-size: 1em;
     block-size: 1em;
     margin: 0;
@@ -374,8 +384,21 @@
       shift, and for the roughly 0.52em x-height of the interface face that is
       (1em - 0.52em) / 2.
     */
-    align-self: baseline;
-    transform: translateY(0.24em);
+    /*
+      Aligned to the *letters*, not to the line box.
+
+      Centring in the line box is the obvious thing and is slightly wrong: a
+      line box is taller than the letters in it and the extra room sits mostly
+      below the baseline, for descenders. What the eye matches is the middle of
+      the lower-case letters.
+
+      For a line of height L: the baseline is at (L - 1em)/2 + 0.8em from the
+      top, taking 0.8em as the ascent; the letters' middle is half an x-height
+      above it, and an x-height is about 0.52em. So the box top is
+      (L - 1em)/2 + 0.8em - 0.26em - 0.5em, and with the 1.5 line height in use
+      that is 0.29em.
+    */
+    margin-block-start: 0.29em;
     flex: none;
     background: var(--yaz-bg-secondary);
     border: 1px solid var(--yaz-border);

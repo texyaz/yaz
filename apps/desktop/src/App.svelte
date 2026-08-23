@@ -1478,7 +1478,13 @@
     type: string,
   ): Promise<string | null> {
     const suffix = suffixFor(type);
-    if (!suffix) return null;
+    if (!suffix) {
+      // Reached only if the clipboard check and this one disagree, which would
+      // be a bug rather than a user's problem — but silence is what made the
+      // first version impossible to diagnose.
+      showNotice(t("paste-image-unsupported"));
+      return null;
+    }
     if (!project) {
       // Without a project there is no "inside the document" to save into, and
       // guessing at a directory would scatter screenshots across the disk.
@@ -2109,6 +2115,9 @@ ${entryText}`,
     showNotice,
     refreshTasks: () => void loadTasks(),
     showDetail: (shown: Detail | null) => (detail = shown),
+    // The same path the clipboard paste takes, so a picture from a plugin
+    // lands where a pasted one does and is named the same way.
+    saveImage: (bytes: Uint8Array, type: string) => savePastedImage(bytes, type),
   });
 
   let commands = $state<ReturnType<PluginRuntime["availableCommands"]>>([]);

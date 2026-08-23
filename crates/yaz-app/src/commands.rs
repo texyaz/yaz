@@ -382,6 +382,9 @@ pub fn compile_project(root: String) -> Result<CompileResult> {
         entry: Utf8PathBuf::from(&info.entry),
         engine: choice,
         document_locale: settings.document_locale,
+        images: settings
+            .images
+            .unwrap_or_else(yaz_core::project::default_images),
     };
 
     let started = std::time::Instant::now();
@@ -524,6 +527,13 @@ pub fn get_project_settings(root: String) -> Result<ProjectSettingsDto> {
         engine_id: settings.engine.map(|e| e.to_id()),
         entry: settings.entry.map(|p| p.to_string()),
         workspace: settings.workspace,
+        // Resolved rather than passed through: the frontend shows this in a
+        // field, and an empty field for "the default" would invite somebody to
+        // type the default in by hand and think they had changed something.
+        images: settings
+            .images
+            .unwrap_or_else(yaz_core::project::default_images)
+            .to_string(),
     })
 }
 
@@ -583,6 +593,38 @@ pub fn set_project_workspace(root: String, workspace: String) -> Result<()> {
     Ok(())
 }
 
+/// Persist where a project keeps its pictures.
+///
+/// Refused rather than sanitised when it points outside the project: a
+/// directory is not the place to discover that `../../..` was accepted, and
+/// silently rewriting what somebody typed is worse than saying no. The check is
+/// the same one every project-relative path goes through, because "which file
+/// may this touch" is not a question the webview gets to answer (ADR-0006).
+#[tauri::command]
+pub fn set_project_images(root: String, images: String) -> Result<()> {
+    let root = canonical_root(Utf8Path::new(&root))?;
+
+    let trimmed = images.trim().replace('\\', "/");
+    let trimmed = trimmed.trim_matches('/');
+    if trimmed.is_empty() {
+        // The same key the path check uses, because it is the same refusal:
+        // an empty directory resolves to the root itself, which is not a place
+        // to put pictures.
+        return Err(CommandError::new(
+            "error-fs-outside-root",
+            "an empty directory is not a directory",
+        ));
+    }
+    // Resolving it is the check: anything climbing out of the root fails here
+    // rather than at the moment somebody pastes a picture.
+    resolve_in_root(&root, trimmed)?;
+
+    let mut settings = ProjectSettings::load(&root)?;
+    settings.images = Some(Utf8PathBuf::from(trimmed));
+    settings.save(&root)?;
+    Ok(())
+}
+
 /// Persist the engine choice for a project, writing `yaz.toml`.
 #[tauri::command]
 pub fn set_project_engine(root: String, engine_id: String) -> Result<()> {
@@ -609,6 +651,8 @@ pub struct ProjectSettingsDto {
     entry: Option<String>,
     /// The pane arrangement, opaque to this layer.
     workspace: Option<String>,
+    /// Where pictures brought into the document are kept, already defaulted.
+    images: String,
 }
 
 #[cfg(test)]

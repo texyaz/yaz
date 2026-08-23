@@ -103,6 +103,17 @@ machine. The name is derived from the document rather than asked for — a dialo
 per paste is the thing that stops people pasting — and it counts past whatever
 is already there rather than overwriting.
 
+Which directory that is lives under **Start → Project**, because a template
+often dictates it: some want `images/`, some `figures/`, and a thesis whose
+supervisor supplied the skeleton does not get to choose. It travels with the
+project in `yaz.toml`, and is created the first time something is put in it.
+
+Dragging an **image annotation** out of Zotero does the same thing and adds the
+citation: the picture is saved into the project and arrives as a figure whose
+caption cites the source. A highlight still arrives as a quotation — an image
+annotation marks a region rather than a passage, so there are no words to
+quote.
+
 ## The tabs
 
 Opened from **View → Tabs**. None of them opens itself; a pane that appeared

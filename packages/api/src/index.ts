@@ -214,6 +214,8 @@ export interface App {
   readonly credentials: CredentialApi;
   /** Task lists, which a to-do plugin fills and the Tasks tab shows. */
   readonly tasks: TasksApi;
+  /** Putting a picture into the project, wherever the project keeps them. */
+  readonly images: ImagesApi;
   /** The Details tab: what the thing under the cursor actually is. */
   readonly details: DetailsApi;
   /** Transient user-facing messages. */
@@ -558,6 +560,32 @@ export interface DetailOption {
   value: string;
   /** What to show. Data, so a string rather than a message key. */
   label: string;
+}
+
+/**
+ * Putting a picture into the project.
+ *
+ * A plugin cannot decide where a project keeps its pictures, and should not
+ * have to: the directory is a per-project setting a template often dictates,
+ * and the naming has to avoid what is already there. So the plugin hands over
+ * the bytes and gets back the path the document should refer to.
+ *
+ * Writing still goes through the capability broker like every other file
+ * operation (ADR-0006) — this is a convenience over `fs`, not a way round it.
+ *
+ * @since 0.4.0
+ */
+export interface ImagesApi {
+  /**
+   * Save a picture into the project, and answer where it went.
+   *
+   * The path is project-relative and uses forward slashes, ready to be written
+   * into an `\includegraphics`. `null` when there is no project open or the
+   * type is one LaTeX cannot include — in which case yaz has already said so,
+   * and the caller should insert nothing rather than a reference to a file that
+   * is not there.
+   */
+  save(bytes: Uint8Array, type: string): Promise<string | null>;
 }
 
 /** Task lists. @since 0.3.0 */
@@ -1224,6 +1252,27 @@ export interface DroppedData {
   readonly text: string;
   /** Where in the buffer it was dropped, as an offset into the raw source. */
   readonly at: number;
+  /**
+   * Pictures the drag carried, already read off the transfer.
+   *
+   * Read eagerly rather than handed over as a `DataTransfer`, because that is
+   * emptied the moment the drop event returns — an asynchronous handler asking
+   * for it later finds nothing. Empty for a drag that carried no image.
+   *
+   * Zotero puts the picture of an image annotation here alongside the citation
+   * text, which is what lets a marked figure arrive as a figure.
+   *
+   * @since 0.4.0
+   */
+  readonly images: readonly DroppedImage[];
+}
+
+/** A picture a drag carried. @since 0.4.0 */
+export interface DroppedImage {
+  /** The MIME type, e.g. `image/png`. */
+  readonly type: string;
+  /** The bytes. */
+  readonly bytes: Uint8Array;
 }
 
 /**

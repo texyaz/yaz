@@ -98,6 +98,13 @@ export interface HostContext {
   refreshTasks(): void;
   /** Show something in the Details tab, or clear it with `null`. */
   showDetail(detail: Detail | null): void;
+  /**
+   * Put a picture into the project, and answer where it went.
+   *
+   * `null` when there is nowhere to put it — no project, or a type LaTeX
+   * cannot include — in which case the shell has already said so.
+   */
+  saveImage(bytes: Uint8Array, type: string): Promise<string | null>;
 }
 
 /** A text format a plugin contributed, and who contributed it. */
@@ -521,6 +528,14 @@ export class PluginRuntime {
 
       tasks: {
         refresh: () => context.refreshTasks(),
+      },
+
+      images: {
+        // Where a project keeps its pictures is a per-project setting a
+        // template often dictates, and the naming has to avoid what is already
+        // there. Neither is a plugin's to decide, so it hands over the bytes
+        // and gets back the path the document should refer to.
+        save: (bytes, type) => context.saveImage(bytes, type),
       },
 
       details: {

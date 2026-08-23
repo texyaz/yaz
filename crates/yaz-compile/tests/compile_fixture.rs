@@ -30,6 +30,7 @@ fn compiles_the_minimal_fixture() {
             engine: engine.engine.clone(),
         },
         document_locale: None,
+        images: yaz_core::project::default_images(),
     };
 
     let output = engine.compile(&project).expect("compile should run");

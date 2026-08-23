@@ -73,6 +73,7 @@ fn main() {
             commands::list_engines,
             commands::get_project_settings,
             commands::set_project_engine,
+            commands::set_project_images,
             commands::set_project_workspace,
             commands::recent_projects,
             appearance::get_appearance,

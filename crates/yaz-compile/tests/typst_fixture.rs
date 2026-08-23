@@ -25,6 +25,7 @@ fn compiles_the_minimal_typst_fixture() {
         entry: Utf8PathBuf::from("main.typ"),
         engine: EngineChoice::Typst,
         document_locale: None,
+        images: yaz_core::project::default_images(),
     };
 
     let engine = TypstEngine::new();
@@ -55,6 +56,7 @@ fn a_syntax_error_is_reported_rather_than_panicking() {
         entry: Utf8PathBuf::from("broken.typ"),
         engine: EngineChoice::Typst,
         document_locale: None,
+        images: yaz_core::project::default_images(),
     };
 
     let output = TypstEngine::new()

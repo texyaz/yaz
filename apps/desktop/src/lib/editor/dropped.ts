@@ -28,12 +28,22 @@
 import { Facet } from "@codemirror/state";
 import type { Extension } from "@codemirror/state";
 import { EditorSelection } from "@codemirror/state";
+
+import { usableImage } from "./pastedImage";
 import { EditorView } from "@codemirror/view";
 
 /** A drop, as a handler sees it. */
 export interface Dropped {
   /** What the drag carried, keyed by MIME type. */
   flavours: Record<string, string>;
+  /**
+   * Pictures the drag carried, read before the transfer was emptied.
+   *
+   * Eagerly, for the same reason the flavours are: a `DataTransfer` is emptied
+   * when the drop event returns, so anything an asynchronous handler asks for
+   * afterwards is gone.
+   */
+  images: { type: string; bytes: Uint8Array }[];
   /** `flavours["text/plain"]`, or the empty string. */
   text: string;
   /** Where it landed, as an offset into the raw source. */
@@ -76,6 +86,17 @@ function flavoursOf(
   return flavours;
 }
 
+/**
+ * The pictures a drag is carrying.
+ *
+ * Zotero puts the image of an image annotation here alongside the citation
+ * text, which is what lets a marked figure arrive as a figure rather than as a
+ * citation with nothing to look at.
+ */
+function imagesOnDrag(transfer: DataTransfer): File[] {
+  return [...(transfer.files ?? [])].filter((file) => usableImage(file.type));
+}
+
 /** Put `text` in at `at`, with the caret after it. */
 function insert(view: EditorView, at: number, text: string): void {
   const where = Math.min(at, view.state.doc.length);
@@ -115,13 +136,25 @@ export function pluginDrops(): Extension {
       const at =
         view.posAtCoords({ x: event.clientX, y: event.clientY }) ??
         view.state.selection.main.head;
-      const dropped: Dropped = {
-        flavours,
-        text: flavours["text/plain"] ?? "",
-        at,
-      };
+      // Taken off the transfer now, because it is emptied the moment this
+      // handler returns — and reading them is asynchronous, so the files
+      // themselves have to be held rather than the transfer.
+      const carried = imagesOnDrag(transfer);
 
       void (async () => {
+        const images = await Promise.all(
+          carried.map(async (file) => ({
+            type: file.type,
+            bytes: new Uint8Array(await file.arrayBuffer()),
+          })),
+        );
+        const dropped: Dropped = {
+          flavours,
+          text: flavours["text/plain"] ?? "",
+          at,
+          images,
+        };
+
         for (const taker of interested) {
           let answer: string | null = null;
           try {

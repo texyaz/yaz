@@ -58,7 +58,7 @@
   import FormatBar from "./FormatBar.svelte";
   import { placeBar } from "./editor/formatBar";
   import { formatInCell } from "./editor/tableWidget";
-  import { captionOffset, usableImage } from "./editor/pastedImage";
+  import { captionOffset, imageOnClipboard } from "./editor/pastedImage";
   import {
     appliedFormatting,
     clearFormatting,
@@ -757,17 +757,16 @@
       // carries a file, which a copied paragraph does not.
       EditorView.domEventHandlers({
         paste: (event, instance) => {
-          const items = [...(event.clipboardData?.items ?? [])];
-          const found = items.find((item) => usableImage(item.type));
-          if (!found) return false;
-
-          const file = found.getAsFile();
+          const file = imageOnClipboard(event.clipboardData);
           if (!file) return false;
           event.preventDefault();
 
           void (async () => {
             const bytes = new Uint8Array(await file.arrayBuffer());
-            const figure = await onPasteImage?.(bytes, found.type);
+            const figure = await onPasteImage?.(bytes, file.type);
+            // `null` means the shell could not save it and has already said
+            // why. Inserting anyway would write a reference to a file that is
+            // not there.
             if (!figure) return;
 
             const range = instance.state.selection.main;

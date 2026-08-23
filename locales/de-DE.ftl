@@ -448,9 +448,12 @@ format-colour-violet = Violett
 format-colour-brown = Braun
 format-colour-gray = Grau
 format-package-added = \usepackage{{ $package }} in { $file } ergänzt
+paste-image-unsupported = Diese Art von Bild lässt sich nicht in ein LaTeX-Dokument einfügen.
 paste-image-saved = Bild als { $file } gespeichert
 paste-image-no-project = Zuerst ein Projekt öffnen — ein eingefügtes Bild wird darin gespeichert.
 ribbon-font = Schrift
+ribbon-project = Projekt
+ribbon-images-directory = Bilder liegen in
 ribbon-paragraph = Absatz
 titlebar-project-menu = Projekt
 

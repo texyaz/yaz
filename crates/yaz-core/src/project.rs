@@ -30,6 +30,24 @@ pub struct Project {
     /// locale. Drives spellcheck, `babel`/`polyglossia`, and quotation marks.
     #[serde(default)]
     pub document_locale: Option<String>,
+
+    /// Where pictures brought into the document are kept, relative to the root.
+    ///
+    /// Per project because a template dictates it: some want `images/`, some
+    /// `figures/`, and a thesis whose supervisor supplied the skeleton does not
+    /// get to choose. Defaulting rather than asking, because a directory a
+    /// paste has to stop and ask about is a paste nobody uses.
+    #[serde(default = "default_images")]
+    pub images: Utf8PathBuf,
+}
+
+/// Where pictures go when the project has not said otherwise.
+///
+/// `images` rather than `figures` or `img`: it is what the LaTeX templates this
+/// was built against use, and a directory that already exists is one nobody has
+/// to think about.
+pub fn default_images() -> Utf8PathBuf {
+    Utf8PathBuf::from("images")
 }
 
 /// Which LaTeX engine a project compiles with.
@@ -163,6 +181,14 @@ pub struct ProjectSettings {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub document_locale: Option<String>,
 
+    /// Where pictures brought into the document are kept.
+    ///
+    /// Absent means the default, so a project that never changed it keeps a
+    /// `yaz.toml` that says nothing about pictures — which is the point of
+    /// every optional field here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub images: Option<Utf8PathBuf>,
+
     /// Which version-control backend records this project, if any.
     ///
     /// Absent means yaz is not recording versions. It deliberately does **not**
@@ -267,6 +293,7 @@ mod tests {
                 engine: "lualatex".to_owned(),
             }),
             document_locale: Some("de-DE".to_owned()),
+            images: Some(Utf8PathBuf::from("figures")),
             version_control: Some("git".to_owned()),
             workspace: Some(r#"{"kind":"leaf","tabs":["editor"]}"#.to_owned()),
             // What a plugin stores about this project — the Todoist project a

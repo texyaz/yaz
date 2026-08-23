@@ -106,6 +106,14 @@ export interface ProjectSettings {
   entry: string | null;
   /** The stored pane arrangement, or null for a project not yet arranged. */
   workspace: string | null;
+  /**
+   * Where pictures brought into the document are kept, relative to the root.
+   *
+   * Already defaulted by the backend, so this is never empty: a field showing
+   * nothing for "the default" invites somebody to type the default in by hand
+   * and believe they have changed something.
+   */
+  images: string;
 }
 
 /**
@@ -129,6 +137,17 @@ export function setProjectEngine(
   engineId: string,
 ): Promise<void> {
   return invoke<void>("set_project_engine", { root, engineId });
+}
+
+/**
+ * Set where this project keeps its pictures.
+ *
+ * Refused by the backend when it points outside the project, rather than being
+ * quietly rewritten — a directory field is not the place to discover that
+ * `../../..` was accepted.
+ */
+export function setProjectImages(root: string, images: string): Promise<void> {
+  return invoke<void>("set_project_images", { root, images });
 }
 
 /**
