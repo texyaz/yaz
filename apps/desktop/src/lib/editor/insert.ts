@@ -55,8 +55,12 @@ export const INSERTIONS: readonly Insertion[] = [
       `  ${B}centering`,
       `  ${B}begin{tabular}{|l|l|}`,
       `    ${B}hline`,
-      `    ${CARET} & ${B}${B}`,
-      `     & ${B}${B}`,
+      // Words in the cells and a rule under the header. Empty cells drew as
+      // very nearly nothing, so an inserted table read as a preview that had
+      // failed rather than as a table waiting to be filled in.
+      `    ${CARET}Spalte & Spalte ${B}${B}`,
+      `    ${B}hline`,
+      `    Wert & Wert ${B}${B}`,
       `    ${B}hline`,
       `  ${B}end{tabular}`,
       `  ${B}caption{}`,

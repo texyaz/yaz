@@ -1720,24 +1720,62 @@ const theme = EditorView.baseTheme({
       pointerEvents: "auto",
     },
   ".cm-yaz-table-rail-columns": {
-    insetBlockStart: "-1.4em",
+    insetBlockStart: "-0.9em",
     insetInlineStart: "0",
     inlineSize: "100%",
     flexDirection: "row",
   },
   ".cm-yaz-table-rail-rows": {
     insetBlockStart: "0",
-    insetInlineEnd: "calc(100% + 0.3em)",
+    insetInlineEnd: "calc(100% + 0.2em)",
     blockSize: "100%",
     flexDirection: "column",
   },
-  ".cm-yaz-table-segment": {
+  /*
+    One boundary per gap, including the outer edges.
+
+    They divide the rail evenly, and each is anchored to the *line* between two
+    columns rather than to a column — which is what makes "add one here"
+    unambiguous. The first and last have only half a share, because a boundary
+    at the edge has a column on one side only.
+  */
+  ".cm-yaz-table-boundary": {
     position: "relative",
     flex: "1 1 0",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    gap: "0.15em",
+  },
+  ".cm-yaz-table-rail-columns .cm-yaz-table-boundary:first-child, .cm-yaz-table-rail-columns .cm-yaz-table-boundary:last-child":
+    { flex: "0.5 1 0" },
+  ".cm-yaz-table-rail-rows .cm-yaz-table-boundary:first-child, .cm-yaz-table-rail-rows .cm-yaz-table-boundary:last-child":
+    { flex: "0.5 1 0" },
+  /*
+    A circled plus, the way a word processor draws it.
+
+    Faint until the boundary itself is hovered, so a table under the pointer
+    shows where its boundaries are without nine of them shouting at once.
+  */
+  ".cm-yaz-table-marker": {
+    position: "absolute",
+    inlineSize: "1.05em",
+    blockSize: "1.05em",
+    padding: "0",
+    display: "grid",
+    placeItems: "center",
+    lineHeight: "1",
+    fontSize: "0.85em",
+    color: "var(--yaz-accent)",
+    background: "var(--yaz-bg-primary)",
+    border: "1px solid var(--yaz-accent)",
+    borderRadius: "50%",
+    cursor: "pointer",
+    opacity: "0.35",
+    transition: "opacity 100ms ease, transform 100ms ease",
+  },
+  ".cm-yaz-table-boundary:hover .cm-yaz-table-marker": {
+    opacity: "1",
+    transform: "scale(1.15)",
   },
   ".cm-yaz-table-control": {
     font: "inherit",
@@ -1883,6 +1921,54 @@ const theme = EditorView.baseTheme({
   },
   ".cm-yaz-math": { cursor: "pointer" },
   ".cm-yaz-math-display": { cursor: "pointer" },
+  /*
+    The corner, where everything that is not "one more, here" lives.
+
+    Outside the table on the same side as the row rail, which is where a word
+    processor puts the handle that means "this whole table".
+  */
+  ".cm-yaz-table-corner": {
+    position: "absolute",
+    insetBlockStart: "-1em",
+    insetInlineEnd: "calc(100% + 0.2em)",
+    zIndex: "3",
+    opacity: "0",
+    transition: "opacity 120ms ease",
+    pointerEvents: "none",
+  },
+  ".cm-yaz-table-frame:hover .cm-yaz-table-corner, .cm-yaz-table-frame:focus-within .cm-yaz-table-corner":
+    { opacity: "1", pointerEvents: "auto" },
+  ".cm-yaz-table-menu": {
+    position: "absolute",
+    insetBlockStart: "100%",
+    insetInlineStart: "0",
+    zIndex: "4",
+    minInlineSize: "12rem",
+    padding: "var(--yaz-space-1)",
+    background: "var(--yaz-bg-secondary)",
+    border: "1px solid var(--yaz-border)",
+    borderRadius: "var(--yaz-radius-sm)",
+    boxShadow: "0 4px 12px rgb(0 0 0 / 30%)",
+  },
+  ".cm-yaz-table-menu-item": {
+    display: "block",
+    inlineSize: "100%",
+    textAlign: "start",
+    font: "inherit",
+    fontSize: "0.85em",
+    padding: "var(--yaz-space-1) var(--yaz-space-2)",
+    color: "var(--yaz-text-primary)",
+    background: "none",
+    border: "none",
+    borderRadius: "var(--yaz-radius-sm)",
+    cursor: "pointer",
+  },
+  ".cm-yaz-table-menu-item:hover": { background: "var(--yaz-bg-hover)" },
+  ".cm-yaz-table-menu-rule": {
+    blockSize: "1px",
+    margin: "var(--yaz-space-1) 0",
+    background: "var(--yaz-border)",
+  },
   ".cm-yaz-table-host": { cursor: "pointer", overflowX: "auto" },
 
   ".cm-yaz-table": {

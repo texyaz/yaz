@@ -1296,3 +1296,76 @@ describe("the source a quotation is attributed to", () => {
     ).not.toBeNull();
   });
 });
+
+describe("a table float", () => {
+  const doc = [
+    "BSLdocumentclass{report}",
+    "BSLbegin{document}",
+    "BSLchapter{Kosten}",
+    "Ein Satz zum Anhalten des Cursors.",
+    "BSLbegin{table}[h]",
+    "  BSLcentering",
+    "  BSLbegin{tabular}{|l|l|}",
+    "    BSLhline",
+    "    Spalte & Spalte BSLBSL",
+    "    BSLhline",
+    "    Wert & Wert BSLBSL",
+    "    BSLhline",
+    "  BSLend{tabular}",
+    "  BSLcaption{Statistische Kostenkennwerte}",
+    "  BSLlabel{tab:kosten}",
+    "BSLend{table}",
+    "BSLend{document}",
+  ]
+    .map((line) =>
+      line
+        .split("BSLBSL")
+        .join(B + B)
+        .split("BSL")
+        .join(B),
+    )
+    .join("\n");
+
+  function reading(): EditorView {
+    const view = mount(doc);
+    caret(view, doc.indexOf("Ein Satz") + 4);
+    return view;
+  }
+
+  it("draws the grid and not the float around it", () => {
+    // The tabular already rendered; what the author saw was it surrounded by
+    // four lines of machinery, which reads as a preview that gave up.
+    const view = reading();
+    expect(view.contentDOM.querySelector("table.cm-yaz-table")).not.toBeNull();
+    const shown = visible(view);
+    expect(shown).not.toContain("begin{table}");
+    expect(shown).not.toContain("centering");
+    expect(shown).not.toContain("end{table}");
+  });
+
+  it("numbers the caption the way LaTeX will", () => {
+    const shown = visible(reading());
+    expect(shown).toContain("Table 1.1");
+    expect(shown).toContain("Statistische Kostenkennwerte");
+  });
+
+  it("takes the wrapper's lines with it rather than leaving them blank", () => {
+    // Hiding the characters and keeping the line put three empty lines around
+    // every table — space the compiled document does not have, and which reads
+    // as though the author left it there.
+    const view = reading();
+    const lines = [...view.contentDOM.querySelectorAll(".cm-line")];
+    const blank = lines.filter((line) => (line.textContent ?? "") === "");
+    expect(blank).toHaveLength(0);
+  });
+
+  it("gives the source back when the caret arrives", () => {
+    const view = mount(doc);
+    caret(view, doc.indexOf("centering"));
+    expect(visible(view)).toContain("centering");
+  });
+
+  it("leaves the buffer exactly as it was", () => {
+    expect(reading().state.doc.toString()).toBe(doc);
+  });
+});

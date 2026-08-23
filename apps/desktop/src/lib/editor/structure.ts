@@ -246,7 +246,7 @@ export interface BraceCommand {
    * The optional `[...]` argument, where the command took one.
    *
    * Offsets of its contents, not of the brackets. Kept because for some
-   * commands it is content rather than configuration: `	extquote`'s optional
+   * commands it is content rather than configuration: `\textquote`'s optional
    * argument is the citation the quotation is attributed to, and dropping it
    * would draw a quotation from nowhere.
    */

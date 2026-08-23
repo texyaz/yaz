@@ -41,6 +41,7 @@ import {
 } from "./semantics";
 import type { Occurrence, Target } from "./semantics";
 import { braceCommands, environments, headings } from "./structure";
+import type { Environment } from "./structure";
 import { environmentsOfKind } from "./vocabulary";
 import {
   ALIGNMENTS,
@@ -201,6 +202,144 @@ function describe(target: Target): string {
   return target.title
     ? `${kind}${number}: ${target.title}`
     : `${kind}${number}`;
+}
+
+/**
+ * How far from a caption a label may be and still be its label.
+ *
+ * `\caption{...}` and `\label{tab:x}` sit on adjacent lines, so a short reach
+ * rather than a search of the whole float — which would attach a table's number
+ * to whatever else happened to be labelled inside it.
+ */
+const CAPTION_REACH = 120;
+
+/**
+ * Draw a caption where its markup was.
+ *
+ * As a *block* replacement when the `\\caption{...}` has its line to itself,
+ * which it almost always does. The widget is a block element, and a block
+ * element inside an inline replacement grows the line box it is in rather than
+ * standing on its own — which drew the caption below its own line with a gap
+ * above it the size of the line it came from.
+ */
+function drawCaption(
+  pass: Pass,
+  from: number,
+  to: number,
+  widget: WidgetType,
+): void {
+  const line = pass.state.doc.lineAt(from);
+  const alone = line.from === from && line.to === to;
+  if (!alone) {
+    replace(pass, from, to, widget);
+    return;
+  }
+  if (!pass.covered.claim(line.from, line.to)) return;
+  pass.ranges.push(
+    Decoration.replace({ widget, block: true }).range(line.from, line.to),
+  );
+}
+
+/**
+ * Hide a range, and the lines it sits on if it has them to itself.
+ *
+ * A plain replacement takes the characters away and leaves the line. For a
+ * `\\begin{table}[h]` on a line of its own that is a blank line on the paper
+ * where the compiled document has nothing at all — three of them around every
+ * table, which is worse than showing the source, because a blank line looks
+ * like the author left one.
+ *
+ * So where the range covers whole lines, the line break goes with them. The
+ * *following* break by preference and the preceding one at the end of the
+ * document, because taking the one in front would join the wrapper's line to
+ * the paragraph above it.
+ */
+function hideWrapper(pass: Pass, from: number, to: number): void {
+  const first = pass.state.doc.lineAt(from);
+  const last = pass.state.doc.lineAt(to);
+  const whole = first.from === from && last.to === to;
+  if (!whole) {
+    replace(pass, from, to);
+    return;
+  }
+
+  // The break *before* the lines, which is how CodeMirror collapses a line
+  // away: a block replacement has to run between line boundaries, and one that
+  // ends at the start of the next line is not a range it will take.
+  const start = first.from > 0 ? first.from - 1 : first.from;
+  const end =
+    start === first.from && last.to < pass.state.doc.length
+      ? last.to + 1
+      : last.to;
+  if (!pass.covered.claim(start, end)) return;
+  pass.ranges.push(Decoration.replace({ block: true }).range(start, end));
+}
+
+/**
+ * Whitespace, as characters rather than as an escape.
+ *
+ * Space, tab, carriage return, newline.
+ */
+const SPACE = String.fromCharCode(32, 9, 13, 10);
+
+/** The alignment commands a float opens with, none of which are its content. */
+const LAYOUT_COMMANDS = [
+  String.fromCharCode(92) + "centering",
+  String.fromCharCode(92) + "raggedright",
+  String.fromCharCode(92) + "raggedleft",
+];
+
+/**
+ * How far a table float's opening machinery reaches.
+ *
+ * Past the environment's name there is the placement it almost always carries
+ * ([h], [!htbp]) and then, nearly as often, a centering command on its own
+ * line. None of that is the table, and all of it printed as source around the
+ * rendered grid, so the hidden range runs to the end of it rather than stopping
+ * at the closing brace.
+ *
+ * Anything else is left showing. Hiding a command because it happens to be near
+ * the top of a float would be hiding the author's own markup on a guess.
+ */
+function afterFloatOpening(text: string, float: Environment): number {
+  let at = float.bodyFrom;
+  if (text[at] === "[") {
+    const close = text.indexOf("]", at);
+    if (close !== -1 && close < float.bodyTo) at = close + 1;
+  }
+
+  let after = at;
+  while (after < float.bodyTo && SPACE.includes(text[after]!)) after += 1;
+  for (const command of LAYOUT_COMMANDS) {
+    if (!text.startsWith(command, after)) continue;
+    let end = after + command.length;
+    while (end < float.bodyTo && SPACE.includes(text[end]!)) end += 1;
+    return end;
+  }
+  // No alignment command, so nothing beyond the placement is machinery.
+  return at;
+}
+
+/** A table's caption, drawn where the markup was. */
+class CaptionWidget extends WidgetType {
+  constructor(
+    readonly text: string,
+    readonly number: string,
+  ) {
+    super();
+  }
+
+  override eq(other: CaptionWidget): boolean {
+    return other.text === this.text && other.number === this.number;
+  }
+
+  override toDOM(): HTMLElement {
+    const node = document.createElement("div");
+    node.className = "cm-yaz-figure-caption";
+    const label = t("figure-caption-table", { number: this.number });
+    node.textContent = this.text ? `${label}: ${this.text}` : label;
+    return node;
+  }
 }
 
 /**
@@ -678,6 +817,66 @@ export function semanticMarkup(pass: Pass): Meaning {
   // looked at on their own account, because the whole environment is claimed.
   drawFigures(pass, floats, found.captions, targeted, resolve);
 
+  /*
+   * A table float's wrapper, hidden.
+   *
+   * A figure is replaced wholesale by a widget; a table cannot be, because the
+   * `tabular` inside it is drawn by a later pass that owns those characters.
+   * So what is hidden here is only the wrapper — `\begin{table}[h]` and its
+   * `\end` — and what is left is the table itself with its caption under it.
+   *
+   * Without this, inserting a table from the palette produced a rendered grid
+   * with `\begin{table}[h]`, `\centering` and `\end{table}` printed around
+   * it, which reads as the preview having failed.
+   */
+  for (const float of floats) {
+    if (!float.name.startsWith("table")) continue;
+    const opening = {
+      from: float.from,
+      to: afterFloatOpening(pass.text, float),
+    };
+    const closing = { from: float.bodyTo, to: float.to };
+    if (drawable(pass, opening.from, opening.to)) {
+      hideWrapper(pass, opening.from, opening.to);
+    }
+    if (drawable(pass, closing.from, closing.to)) {
+      hideWrapper(pass, closing.from, closing.to);
+    }
+  }
+
+  /*
+   * Every caption the floats did not take, drawn as a caption.
+   *
+   * A figure's caption goes inside its widget, so what is left here is a
+   * table's — and a `\caption{Kostenkennwerte}` shown as source is markup in
+   * the middle of a rendered table.
+   */
+  for (const caption of found.captions) {
+    if (!drawable(pass, caption.from, caption.to)) continue;
+    const inTable = floats.some(
+      (float) =>
+        float.name.startsWith("table") &&
+        caption.from >= float.from &&
+        caption.to <= float.to,
+    );
+    if (!inTable) continue;
+    drawCaption(
+      pass,
+      caption.from,
+      caption.to,
+      new CaptionWidget(
+        pass.text.slice(caption.argFrom, caption.argTo),
+        // The number this table will carry, through whichever label names it.
+        [...targeted.values()].find(
+          (target) =>
+            target.kind === "table" &&
+            target.at >= caption.from - CAPTION_REACH &&
+            target.at <= caption.to + CAPTION_REACH,
+        )?.number ?? "",
+      ),
+    );
+  }
+
   // A label is folded into whatever it labels — the heading shows it on hover
   // — so nothing of it is left on screen.
   for (const label of found.labels) {
@@ -1084,7 +1283,9 @@ export const semanticTheme = EditorView.baseTheme({
     wordBreak: "break-all",
   },
   ".cm-yaz-figure-caption": {
-    marginBlockStart: "var(--yaz-space-2)",
+    // No block margin: the caption is a line of its own now, so a margin here
+    // would be a second gap on top of the line's own leading.
+    marginBlockStart: "0",
     fontFamily: "var(--yaz-font-sans)",
     fontSize: "0.9em",
     color: "var(--yaz-text-secondary)",

@@ -12,6 +12,9 @@ import { INSERTIONS, prepare, prepareAt } from "./insert";
 
 const B = String.fromCharCode(92);
 
+/** A line break, named so it can sit inside a template literal. */
+const NEWLINE = String.fromCharCode(10);
+
 /** One insertion by id, for the tests that are about a particular one. */
 function insertion(id: string): string {
   const found = INSERTIONS.find((entry) => entry.id === id);
@@ -90,7 +93,20 @@ describe("where the caret lands", () => {
     // Not on the caption and not at the end: the first thing anybody types
     // into a new table is what goes in the corner.
     const { text, caret } = prepare(insertion("table"));
-    expect(text.slice(caret, caret + 3)).toBe(" & ");
+    expect(text.slice(caret, caret + 6)).toBe("Spalte");
+  });
+
+  it("gives the table a header row and a row under it", () => {
+    // Empty cells drew as very nearly nothing, so an inserted table read as a
+    // failed preview rather than as a table waiting to be filled in.
+    const rows = prepare(insertion("table"))
+      .text.split(NEWLINE)
+      .filter((line) => line.includes("&"));
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      // Two columns, which is what the specification says.
+      expect(row.split("&")).toHaveLength(2);
+    }
   });
 
   it("lands in the path of a figure", () => {
