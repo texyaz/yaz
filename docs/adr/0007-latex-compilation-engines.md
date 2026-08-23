@@ -132,12 +132,12 @@ would silently remove the user's LaTeX engine.
   **The cost is overwhelmingly a Windows one.** The CI probe links the engine on
   every shipping target:
 
-  | Target | Tectonic adds |
-  | --- | ---: |
-  | `windows-x86_64` | 46.34 MB |
-  | `windows-aarch64` | 45.51 MB |
-  | `linux-x86_64` | 14.28 MB |
-  | `linux-aarch64` | 12.55 MB |
+  | Target            | Tectonic adds |
+  | ----------------- | ------------: |
+  | `windows-x86_64`  |      46.34 MB |
+  | `windows-aarch64` |      45.51 MB |
+  | `linux-x86_64`    |      14.28 MB |
+  | `linux-aarch64`   |      12.55 MB |
 
   A factor of three and a half, and the reason is linkage rather than anything
   about the engine. On Windows there is no system package manager, so vcpkg
@@ -147,7 +147,7 @@ would silently remove the user's LaTeX engine.
 
   Two consequences worth holding onto. A Linux packager sees a far smaller
   artefact than the Windows figures suggest — and Typst, being pure Rust and
-  therefore always statically linked, will *not* enjoy the same discount there.
+  therefore always statically linked, will _not_ enjoy the same discount there.
   The engines' relative sizes are platform-dependent, so any comparison has to
   name its platform.
 

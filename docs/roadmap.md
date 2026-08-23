@@ -65,13 +65,13 @@ is behind a feature flag while it is evaluated.
 The obvious pitch is "much smaller", and **that turned out to be wrong**. Built
 on `aarch64-pc-windows-msvc`:
 
-| Build | Binary | Installer | Build time |
-| --- | ---: | ---: | ---: |
-| slim, no embedded engine | 6.5 MB | 2.9 MB | ~3 min |
-| **Typst** | **40.4 MB** | **14.3 MB** | **~12 min** |
-| Tectonic | 50.5 MB | 13.8 MB | ~34 min, plus vcpkg |
+| Build                    |      Binary |   Installer |          Build time |
+| ------------------------ | ----------: | ----------: | ------------------: |
+| slim, no embedded engine |      6.5 MB |      2.9 MB |              ~3 min |
+| **Typst**                | **40.4 MB** | **14.3 MB** |         **~12 min** |
+| Tectonic                 |     50.5 MB |     13.8 MB | ~34 min, plus vcpkg |
 
-Typst's binary is about 20% smaller, and its **installer is slightly *larger***.
+Typst's binary is about 20% smaller, and its **installer is slightly _larger_**.
 Roughly 9.5 MB of it is the embedded font set — New Computer Modern and friends —
 which Tectonic instead fetches on demand into a cache.
 
@@ -86,15 +86,15 @@ So size is not the argument. What is:
 - **Portability.** Pure Rust cross-compiles to every target we ship without
   ceremony, which is a real saving on ARM64 in particular.
 
-A useful correction to carry forward: the pure-Rust stack is *faster and far
-easier to build*, not meaningfully smaller. Anyone reaching for it to save disk
+A useful correction to carry forward: the pure-Rust stack is _faster and far
+easier to build_, not meaningfully smaller. Anyone reaching for it to save disk
 space is reaching for the wrong reason.
 
 And the comparison is platform-dependent, which is easy to miss. The CI probe
 measures Tectonic adding **46 MB on Windows but only 13 MB on Linux**, because
 Windows statically links the vcpkg-built C libraries while Linux uses the
 distribution's shared ones. Typst is pure Rust and therefore always statically
-linked, so it gets no such discount — on Linux it is plausibly the *larger* of
+linked, so it gets no such discount — on Linux it is plausibly the _larger_ of
 the two. Any size claim here has to name its platform to mean anything.
 
 ## The open question: a lean Rust engine
