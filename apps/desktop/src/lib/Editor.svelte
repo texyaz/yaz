@@ -55,6 +55,24 @@
   import { dropTakers, pluginDrops } from "./editor/dropped";
   import type { DropTaker } from "./editor/dropped";
   import type { DocumentView } from "./editor/documentView";
+  import FormatBar from "./FormatBar.svelte";
+  import { placeBar } from "./editor/formatBar";
+  import { formatInCell } from "./editor/tableWidget";
+  import {
+    appliedFormatting,
+    clearFormatting,
+    setColour,
+    setFamily,
+    setSize,
+    toggleInline,
+  } from "./editor/formatting";
+  import type {
+    AppliedFormatting,
+    FontFamily,
+    FontSize,
+    InlineFormat,
+    TextColour,
+  } from "./editor/formatting";
   import { lineNumbering } from "./editor/lineNumbers";
   import type { LineNumbering } from "./editor/lineNumbers";
   import {
@@ -275,6 +293,21 @@
      * destroyed document.
      */
     onReady?: (api: EditorApi | null) => void;
+    /**
+     * A formatting edit needs a package the preamble may not have.
+     *
+     * Reported rather than written: the preamble is often in another file —
+     * main.tex, while a chapter is what is open — and only the shell knows
+     * which file that is.
+     */
+    onRequirePackage?: ((name: string) => void) | undefined;
+    /**
+     * Whether the bar that follows a selection is offered at all.
+     *
+     * Off for a format with no notion of bold: a Markdown or plain-text buffer
+     * would otherwise get a bar writing LaTeX commands into it.
+     */
+    formatBar?: boolean;
   }
 
   let {
@@ -310,7 +343,161 @@
     onCursor,
     onZoom,
     onReady,
+    onRequirePackage,
+    formatBar = false,
   }: Props = $props();
+
+
+  /**
+   * The bar that follows a selection.
+   *
+   * Held here rather than inside CodeMirror because it is a control and not a
+   * decoration: it draws over the document, not into it, and nothing about it
+   * belongs in the buffer (ADR-0004).
+   */
+  let barShown = $state(false);
+  let barLeft = $state(0);
+  let barTop = $state(0);
+  let barApplied = $state<AppliedFormatting>({
+    inline: [],
+    family: null,
+    size: null,
+    colour: null,
+  });
+
+  /** The bar's own measured size, so it can be placed without covering the text. */
+  let barBox: HTMLElement | undefined = $state();
+
+  /**
+   * Work out whether the bar shows, and where.
+   *
+   * Called on every selection change, so it does nothing at all in the common
+   * case — a plain cursor. The measuring is here and the deciding is in
+   * `placeBar`, which is what makes the awkward half testable: jsdom reports
+   * every rectangle as zero.
+   */
+  function updateFormatBar(instance: EditorView) {
+    const range = instance.state.selection.main;
+    if (!formatBar || range.empty) {
+      barShown = false;
+      return;
+    }
+
+    const start = instance.coordsAtPos(range.from);
+    const end = instance.coordsAtPos(range.to);
+    if (!start || !end) {
+      barShown = false;
+      return;
+    }
+
+    const pane = instance.dom.getBoundingClientRect();
+    const selection = {
+      left: Math.min(start.left, end.left) - pane.left,
+      right: Math.max(start.right, end.right) - pane.left,
+      top: Math.min(start.top, end.top) - pane.top,
+      bottom: Math.max(start.bottom, end.bottom) - pane.top,
+    };
+
+    barApplied = appliedFormatting(
+      instance.state.doc.toString(),
+      range.from,
+      range.to,
+    );
+
+    // Its own size, or a sensible guess before it has ever been drawn. The
+    // guess is only used for the first frame; the next selection measures it.
+    const box = barBox?.getBoundingClientRect();
+    const size = {
+      width: box && box.width > 0 ? box.width : 320,
+      height: box && box.height > 0 ? box.height : 34,
+    };
+
+    const placed = placeBar(
+      selection,
+      { width: pane.width, height: pane.height },
+      size,
+    );
+    barLeft = placed.left;
+    barTop = placed.top;
+    barShown = true;
+  }
+
+  /**
+   * Apply a formatting edit from outside — the ribbon, or the palette.
+   *
+   * Exported rather than reached for through `EditorApi`, because `EditorApi`
+   * is the *plugin* contract (ADR-0005) and this is the shell talking to its
+   * own editor. Widening a public interface to save the shell a binding would
+   * be exactly the privileged back door that ADR forbids.
+   */
+  export function format(
+    produce: (
+      text: string,
+      from: number,
+      to: number,
+    ) => {
+      changes: { from: number; to: number; insert: string }[];
+      from: number;
+      to: number;
+      requires?: { package: string } | undefined;
+    },
+  ) {
+    applyFormat(produce);
+  }
+
+  /** What the selection already is, for controls that live outside the pane. */
+  export function formattingNow(): AppliedFormatting {
+    const instance = view;
+    if (!instance) {
+      return { inline: [], family: null, size: null, colour: null };
+    }
+    const range = instance.state.selection.main;
+    return appliedFormatting(
+      instance.state.doc.toString(),
+      range.from,
+      range.to,
+    );
+  }
+
+  /**
+   * Apply a formatting edit to the selection.
+   *
+   * One dispatch, so it is one step of undo — formatting is something the
+   * author did, and taking it back should not need five presses.
+   */
+  function applyFormat(
+    produce: (
+      text: string,
+      from: number,
+      to: number,
+    ) => {
+      changes: { from: number; to: number; insert: string }[];
+      from: number;
+      to: number;
+      requires?: { package: string } | undefined;
+    },
+  ) {
+    const instance = view;
+    if (!instance) return;
+    const range = instance.state.selection.main;
+    const result = produce(
+      instance.state.doc.toString(),
+      range.from,
+      range.to,
+    );
+    if (result.requires) onRequirePackage?.(result.requires.package);
+    if (result.changes.length === 0) return;
+
+    instance.dispatch({
+      changes: result.changes,
+      selection: { anchor: result.from, head: result.to },
+      userEvent: "input.format",
+    });
+    // The selection survives the edit, so the bar stays where the words are —
+    // and a second button can be pressed without selecting again.
+    instance.focus();
+    updateFormatBar(instance);
+  }
 
   /** Whether the text is set on paper. */
   const paged = $derived(documentView === "page");
@@ -552,7 +739,11 @@
         // position rather than the text.
         if (update.selectionSet || update.docChanged) {
           onCursor?.(update.state.selection.main.head);
+          updateFormatBar(update.view);
         }
+        // A scroll moves the text under a bar that is anchored to the pane, so
+        // it is re-placed rather than left behind pointing at nothing.
+        if (update.geometryChanged && barShown) updateFormatBar(update.view);
       }),
     ];
   }
@@ -825,11 +1016,40 @@
   bind:this={host}
 ></div>
 
+<!--
+  Drawn over the document rather than into it: the buffer holds the source and
+  nothing else (ADR-0004), so a control that follows the selection is a sibling
+  of the editor and not a decoration inside it.
+-->
+{#if barShown}
+  <FormatBar
+    bind:element={barBox}
+    applied={barApplied}
+    left={barLeft}
+    top={barTop}
+    oninline={(command: InlineFormat) => {
+      // The cell first: a selection inside a drawn table is a DOM selection,
+      // and the buffer path has nothing to act on there.
+      if (formatInCell(command)) return;
+      applyFormat((text, from, to) => toggleInline(text, from, to, command));
+    }}
+    onfamily={(family: FontFamily | null) =>
+      applyFormat((text, from, to) => setFamily(text, from, to, family))}
+    onsize={(size: FontSize | null) =>
+      applyFormat((text, from, to) => setSize(text, from, to, size))}
+    oncolour={(colour: TextColour | null) =>
+      applyFormat((text, from, to) => setColour(text, from, to, colour))}
+    onclear={() => applyFormat(clearFormatting)}
+  />
+{/if}
+
 <style>
   .editor {
     block-size: 100%;
     inline-size: 100%;
     overflow: hidden;
+    /* The formatting bar is placed in this box's coordinates. */
+    position: relative;
     /* What a page leaves around its text, and what the band undoes to reach
        the paper's edge. */
     --yaz-page-margin: 25mm;

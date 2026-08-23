@@ -4,7 +4,7 @@
   import { open } from "@tauri-apps/plugin-dialog";
   import type { Extension } from "@codemirror/state";
   import type { EditorApi } from "@yaz/api";
-  import type { Menu } from "./lib/MenuBar.svelte";
+  import type { Menu, MenuItem } from "./lib/MenuBar.svelte";
   import Ribbon, {
     type RibbonAction,
     type RibbonControl,
@@ -22,6 +22,7 @@
     PAPER_SIZES,
     isJustified,
     readProperties,
+    requirePackage,
     setProperty,
   } from "./lib/editor/properties";
   import type { Properties } from "./lib/editor/properties";
@@ -80,7 +81,17 @@
   import Prompt from "./lib/Prompt.svelte";
   import ThemeBuilder from "./lib/ThemeBuilder.svelte";
   import * as theming from "./lib/theme";
-  import { setLocale, availableLocales, t } from "./lib/i18n";
+  import { setLocale, availableLocales, locale, t } from "./lib/i18n";
+  import { formatInCell } from "./lib/editor/tableWidget";
+  import Search from "./lib/Search.svelte";
+  import type { FileMatches } from "./lib/Search.svelte";
+  import {
+    findMatches,
+    PLAIN_SEARCH,
+    replaceAll,
+    replaceOne,
+  } from "./lib/editor/search";
+  import type { Match, SearchOptions } from "./lib/editor/search";
   import Pane from "./lib/workspace/Pane.svelte";
   import * as layoutTree from "./lib/workspace/layout";
   import type { Node as LayoutNode, TabId } from "./lib/workspace/layout";
@@ -100,6 +111,8 @@
     ListingKind,
     Task,
     TaskProject,
+    TaskPatch,
+    TaskSection,
   } from "@yaz/api";
   import {
     declaredBibliographies,
@@ -117,6 +130,26 @@
   } from "./lib/editor/bibliography";
   import type { BibEntry } from "./lib/editor/semanticView";
   import {
+    appliedFormatting,
+    clearFormatting,
+    FONT_FAMILIES,
+    FONT_SIZES,
+    setColour,
+    setFamily,
+    setSize,
+    TEXT_COLOURS,
+    toggleEnvironment,
+    toggleHeading,
+    toggleInline,
+  } from "./lib/editor/formatting";
+  import type {
+    AppliedFormatting,
+    FontFamily,
+    FontSize,
+    InlineFormat,
+    TextColour,
+  } from "./lib/editor/formatting";
+  import {
     canPaginate,
     DOCUMENT_VIEWS,
     viewFor,
@@ -128,6 +161,83 @@
   import LearnPlugin from "../../../plugins/learn/src/main";
   import LatexPackagesPlugin from "../../../plugins/latex-packages/src/main";
   import TodoistPlugin from "../../../plugins/todoist/src/main";
+
+  /**
+   * The editor component itself, not the plugin-facing handle.
+   *
+   * The ribbon needs to apply formatting and to read what the selection already
+   * is, and neither belongs in `EditorApi`: that is the plugin contract
+   * (ADR-0005), and widening it so the shell can talk to its own editor would
+   * be the privileged back door the tiers exist to prevent.
+   */
+  let editorComponent = $state<{
+    format: (
+      produce: (
+        text: string,
+        from: number,
+        to: number,
+      ) => {
+        changes: { from: number; to: number; insert: string }[];
+        from: number;
+        to: number;
+        requires?: { package: string } | undefined;
+      },
+    ) => void;
+    formattingNow: () => AppliedFormatting;
+  } | null>(null);
+
+  /**
+   * What the selection is, for the ribbon to show.
+   *
+   * Re-read when the caret moves rather than derived from the text, because
+   * "what is this selection inside" is a question about a position and the text
+   * alone cannot answer it.
+   */
+  let selectionFormat = $state<AppliedFormatting>({
+    inline: [],
+    family: null,
+    size: null,
+    colour: null,
+  });
+
+  /** Apply a formatting edit, from wherever it was asked for. */
+  function applyFormatting(
+    produce: (
+      text: string,
+      from: number,
+      to: number,
+    ) => {
+      changes: { from: number; to: number; insert: string }[];
+      from: number;
+      to: number;
+      requires?: { package: string } | undefined;
+    },
+    /**
+     * Which inline command this is, where it is one.
+     *
+     * Named rather than inferred, because a closure cannot be asked what it
+     * does — and a drawn table cell has to know before it can answer.
+     */
+    command?: InlineFormat,
+  ) {
+    // A selection inside a drawn table cell is a DOM selection and not a
+    // CodeMirror one, so the ordinary path has nothing to act on there. The
+    // cell answers for itself, and says whether it did.
+    if (command && formatInCell(command)) return;
+
+    editorComponent?.format(produce);
+    selectionFormat =
+      editorComponent?.formattingNow() ?? appliedFormatting("", 0, 0);
+  }
+
+  /**
+   * The title bar, so a shortcut can put the caret in its search box.
+   *
+   * A binding rather than a `document.querySelector`: the field belongs to that
+   * component, and finding it by selector would break the first time its markup
+   * gained a wrapper.
+   */
+  let titleBar = $state<{ focusSearch: () => void } | null>(null);
 
   /** The plugin the shell asks about connection status on the user's behalf. */
   const ZOTERO_PLUGIN_ID = "com.yaz.zotero";
@@ -758,6 +868,49 @@
   }
 
   /**
+   * Make sure the document loads a package a formatting edit needs.
+   *
+   * Colour is the case: `	extcolor` is `xcolor`, which is a package and not
+   * the kernel, so applying a colour to a document that does not load it would
+   * produce a document that no longer compiles.
+   *
+   * Written where the preamble actually is. With a chapter open, that is
+   * `main.tex` and not the buffer — the same split the bibliography needed, and
+   * the same answer.
+   */
+  async function ensurePackage(name: string) {
+    const buffer = editorApi?.getText() ?? docText;
+
+    if (ownsPreamble(buffer)) {
+      const edit = requirePackage(buffer, name);
+      if (!edit) return;
+      // Through the editor, so it is one Ctrl+Z away like any other edit.
+      if (editorApi) editorApi.replaceRange(edit.from, edit.to, edit.insert);
+      else if (!joined) {
+        docText =
+          docText.slice(0, edit.from) + edit.insert + docText.slice(edit.to);
+        dirty = true;
+      }
+      return;
+    }
+
+    if (!project) return;
+    const open = project;
+    try {
+      const entry = await ipc.readFile(open.root, open.entry);
+      const edit = requirePackage(entry, name);
+      if (!edit) return;
+      const next =
+        entry.slice(0, edit.from) + edit.insert + entry.slice(edit.to);
+      await ipc.writeFile(open.root, open.entry, next);
+      entryText = next;
+      showNotice(t("format-package-added", { package: name, file: open.entry }));
+    } catch (error) {
+      failure = String(error);
+    }
+  }
+
+  /**
    * Save by itself, once the typing stops.
    *
    * Debounced rather than on every keystroke: a save is a write to disk and,
@@ -820,6 +973,12 @@
           LINE_NUMBERING[
             (LINE_NUMBERING.indexOf(numbering) + 1) % LINE_NUMBERING.length
           ] ?? "absolute";
+        return;
+      case "navigate.search":
+        focusSearch(false);
+        return;
+      case "navigate.replace":
+        focusSearch(true);
         return;
       case "navigate.outline":
         updateLayout(
@@ -944,26 +1103,341 @@
         };
   }
 
-  /** Describe a task for the Details tab. */
+  /**
+   * Sections of the linked list, for moving a task between them.
+   *
+   * Read once when the list loads rather than each time a task is clicked: a
+   * project's sections change rarely and a request per click would make the
+   * Details tab feel like it was thinking.
+   */
+  let taskSections = $state<TaskSection[]>([]);
+
+  /**
+   * When something happened, as a person writes it.
+   *
+   * Todoist stamps its timestamps to the millisecond. Nobody reading "when was
+   * this made" wants `2026-08-01T09:00:00.123456Z`, so it is shown as a day and
+   * a time and the rest is dropped.
+   */
+  function readableMoment(stamp: string): string {
+    const when = new Date(stamp);
+    if (Number.isNaN(when.getTime())) return stamp;
+    return when.toLocaleString(locale(), {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+  }
+
+  /**
+   * What a task actually is, in the Details tab.
+   *
+   * No "mark done" here. The checkbox in the list is where a task is ticked
+   * off, and a second way to do it inside the description of the task is a
+   * destructive button sitting under the reader's eye while they read.
+   *
+   * No project either: a paper is linked to exactly one list, so naming it on
+   * every task says nothing that the tab above does not already say.
+   *
+   * What is here instead is everything the list has no room for, and most of it
+   * can be changed — the title, the description, when it is due, how urgent it
+   * is, and which section it sits in. A pane that could only show those would
+   * be a pane you read and then went to Todoist to act on.
+   */
   function showTaskDetail(task: Task) {
+    const held = taskProvider;
+    const writable = Boolean(held?.provider.updateTask);
+
     detail = {
       source: "yaz",
       kindKey: "details-kind-task",
       title: task.title,
-      subtitle: taskProject?.name,
-      fields: [
-        ...(task.due ? [{ labelKey: "details-task-due", value: task.due }] : []),
-        ...(task.priority !== null
-          ? [{ labelKey: "details-task-priority", value: String(task.priority) }]
+      rename: writable
+        ? (title: string) => changeTask(task, { title })
+        : undefined,
+      fields: task.created
+        ? [
+            {
+              labelKey: "details-task-created",
+              value: readableMoment(task.created),
+            },
+          ]
+        : [],
+      // Always offered, not only when there is something there: a description
+      // you cannot see how to add is a description nobody adds, and the same
+      // for a due date.
+      edits: writable
+        ? [
+            {
+              labelKey: "details-task-description",
+              kind: "paragraph" as const,
+              value: task.notes ?? "",
+              placeholderKey: "details-task-description-empty",
+              save: (notes: string) => changeTask(task, { notes }),
+            },
+            {
+              labelKey: "details-task-due",
+              kind: "date" as const,
+              value: task.due ?? "",
+              placeholderKey: "details-task-due-empty",
+              save: (due: string) => changeTask(task, { due: due || null }),
+            },
+          ]
+        : undefined,
+      choices: [
+        ...(writable
+          ? [
+              {
+                labelKey: "details-task-priority",
+                value: task.priority === null ? null : String(task.priority),
+                options: [1, 2, 3, 4].map((level) => ({
+                  value: String(level),
+                  label: t(`details-task-priority-${level}`),
+                })),
+                choose: (value: string | null) =>
+                  changeTask(task, {
+                    priority: value === null ? null : Number(value),
+                  }),
+              },
+            ]
+          : []),
+        ...(held?.provider.moveTask && taskSections.length > 0
+          ? [
+              {
+                labelKey: "details-task-section",
+                value: task.sectionId ?? null,
+                noneKey: "details-task-section-none",
+                options: taskSections.map((one) => ({
+                  value: one.id,
+                  label: one.name,
+                })),
+                choose: (value: string | null) => moveTask(task, value),
+              },
+            ]
           : []),
       ],
-      actions: [
-        {
-          labelKey: "details-task-complete",
-          run: () => void completeTask(task),
-        },
-      ],
     };
+  }
+
+  /**
+   * Change a task, and show what it became.
+   *
+   * The list is re-read rather than patched in place: the service decides what
+   * a due date of "every Monday" actually becomes, and a pane showing what was
+   * typed instead of what was stored would be a pane that disagrees with
+   * Todoist about the task in front of you.
+   */
+  async function changeTask(task: Task, patch: TaskPatch) {
+    const held = taskProvider;
+    if (!held?.provider.updateTask) return;
+    tasksBusy = true;
+    try {
+      await held.provider.updateTask(task.id, patch);
+      await loadTasks();
+      const shown = tasks.find((one) => one.id === task.id);
+      if (shown) showTaskDetail(shown);
+    } catch (error) {
+      failure = String(error);
+    } finally {
+      tasksBusy = false;
+    }
+  }
+
+  /**
+   * Move a task into a section, and show where it ended up.
+   *
+   * The list is re-read rather than patched: a service may put the task at a
+   * different place in the section's order, and a list that disagrees with the
+   * service about where something is is worse than one that takes a moment.
+   */
+  async function moveTask(task: Task, sectionId: string | null) {
+    const held = taskProvider;
+    if (!held?.provider.moveTask) return;
+    tasksBusy = true;
+    try {
+      await held.provider.moveTask(task.id, sectionId);
+      await loadTasks();
+      const shown = tasks.find((one) => one.id === task.id);
+      if (shown) showTaskDetail(shown);
+    } catch (error) {
+      failure = String(error);
+    } finally {
+      tasksBusy = false;
+    }
+  }
+
+
+  /**
+   * Searching, and replacing.
+   *
+   * The query lives here rather than in the title bar because two places show
+   * it — the box and the tab — and a second copy would be a second thing to
+   * keep in step.
+   */
+  let searchOptions = $state<SearchOptions>({ ...PLAIN_SEARCH });
+  let replacing = $state(false);
+  let replacement = $state("");
+  let searchResults = $state<FileMatches[]>([]);
+  let searchBusy = $state(false);
+  let searchCapped = $state(false);
+
+  /**
+   * How many matches to look for in total.
+   *
+   * A one-letter query on a thesis is tens of thousands, and nobody is going to
+   * read them. Stopping is honest as long as it is *said* — the tab says so —
+   * whereas a window that stops responding says nothing.
+   */
+  const SEARCH_LIMIT = 500;
+
+  /** Which files are worth reading. A `.pdf` is not text. */
+  function searchable(path: string): boolean {
+    return /\.(tex|bib|md|txt|toml|yaml|yml|cls|sty|json)$/i.test(path);
+  }
+
+  /** Matches in the open buffer, which is the copy that may be unsaved. */
+  const searchHere = $derived(
+    search === "" ? [] : findMatches(docText, search, searchOptions, SEARCH_LIMIT),
+  );
+
+  /** How many the box shows, which is the whole project once it has read it. */
+  const searchCount = $derived(
+    searchResults.reduce((count, group) => count + group.matches.length, 0),
+  );
+
+  /**
+   * Run the search over the project.
+   *
+   * The open buffer first and from memory, so results appear as fast as they
+   * can be drawn; the other files after, read from disk. Debounced, because a
+   * project of forty files read on every keystroke is forty reads per letter.
+   */
+  let searchRun = 0;
+  async function runSearch() {
+    const mine = (searchRun += 1);
+    if (search === "") {
+      searchResults = [];
+      searchBusy = false;
+      searchCapped = false;
+      return;
+    }
+
+    const groups: FileMatches[] = [];
+    let budget = SEARCH_LIMIT;
+
+    if (currentFile) {
+      const here = searchHere.slice(0, budget);
+      budget -= here.length;
+      if (here.length > 0) {
+        groups.push({ file: currentFile, open: true, matches: here });
+      }
+    }
+    searchResults = groups;
+    searchBusy = project !== null;
+    searchCapped = false;
+    if (!project) {
+      searchBusy = false;
+      return;
+    }
+
+    const open = project;
+    for (const file of open.files) {
+      // A newer query started while this one was reading; its results are the
+      // ones the user is waiting for.
+      if (mine !== searchRun) return;
+      if (file.relativePath === currentFile) continue;
+      if (!searchable(file.relativePath)) continue;
+      if (budget <= 0) {
+        searchCapped = true;
+        break;
+      }
+
+      let text: string;
+      try {
+        text = await ipc.readFile(open.root, file.relativePath);
+      } catch {
+        // A file that cannot be read is one result missing, not a failed
+        // search. Reporting each would be a wall of notices for a `.gitignore`.
+        continue;
+      }
+      const found = findMatches(text, search, searchOptions, budget);
+      if (found.length === 0) continue;
+      budget -= found.length;
+      searchResults = [
+        ...searchResults,
+        { file: file.relativePath, open: false, matches: found },
+      ];
+    }
+
+    if (mine === searchRun) searchBusy = false;
+  }
+
+  /**
+   * Re-run when the query, the switches or the document change.
+   *
+   * Debounced on the query and immediate on the switches: typing is a stream
+   * and a toggle is a decision.
+   */
+  let searchTimer: ReturnType<typeof setTimeout> | undefined;
+  $effect(() => {
+    // Read so the effect depends on them.
+    void search;
+    void searchOptions;
+    void docText;
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => void runSearch(), 200);
+    return () => clearTimeout(searchTimer);
+  });
+
+  /** Put the caret in the search box, and open the results beside it. */
+  function focusSearch(withReplace: boolean) {
+    if (withReplace) replacing = true;
+    titleBar?.focusSearch();
+    if (!layoutTree.isOpen(layout, "search")) {
+      updateLayout(layoutTree.openTab(layout, "search"));
+    }
+  }
+
+  /** Go to a match, opening the file it is in when it is not the one open. */
+  async function goToMatch(file: string, match: Match) {
+    if (file !== currentFile) await openFile(file);
+    editorApi?.revealRange(match.from, match.to);
+  }
+
+  /**
+   * Replace the first match in the open file.
+   *
+   * Only the open file: replacing in a file you are not looking at is a change
+   * you cannot see, and doing it one at a time is the case where seeing it is
+   * the point.
+   */
+  function replaceOnce() {
+    const at = editorApi?.getSelection()?.from ?? 0;
+    const next =
+      searchHere.find((match) => match.from >= at) ?? searchHere[0];
+    if (!next || !editorApi) return;
+
+    const change = replaceOne(next, replacement, searchOptions);
+    editorApi.replaceRange(change.from, change.to, change.insert);
+    editorApi.revealRange(
+      change.from,
+      change.from + change.insert.length,
+    );
+  }
+
+  /**
+   * Replace every match in the open file, as one edit.
+   *
+   * Applied from the end backwards so that each change leaves the offsets of
+   * the ones not yet applied alone — and through the editor, so the whole lot
+   * is one Ctrl+Z rather than four hundred.
+   */
+  function replaceEvery() {
+    if (!editorApi || searchHere.length === 0) return;
+    const changes = replaceAll(searchHere, replacement, searchOptions);
+    for (const change of [...changes].reverse()) {
+      editorApi.replaceRange(change.from, change.to, change.insert);
+    }
+    showNotice(t("search-replaced", { count: changes.length }));
   }
 
   /** Settings panels plugins contributed, shown under Settings → Plugins. */
@@ -1029,9 +1503,17 @@
       tasks = taskProject
         ? await held.provider.listTasks(taskProject.id)
         : [];
+      // Sections are the provider's option to have, and a failure to read them
+      // only costs the Details tab its dropdown — so it is not a failure of
+      // loading the list, which is what somebody opened the tab for.
+      taskSections =
+        taskProject && held.provider.listSections
+          ? await held.provider.listSections(taskProject.id).catch(() => [])
+          : [];
     } catch (error) {
       failure = String(error);
       tasks = [];
+      taskSections = [];
     } finally {
       tasksBusy = false;
     }
@@ -1681,39 +2163,48 @@ ${entryText}`,
    * contribute a command without the shell growing a button for it — and without
    * the shell knowing what the command does.
    */
-  const menus = $derived<Menu[]>([
+  /**
+   * What can be done with the project as a whole.
+   *
+   * On the yaz mark in the corner rather than in the ribbon, because opening,
+   * closing and reopening a project is not part of writing one — it is what you
+   * do before and after. Every application with a mark in that corner puts the
+   * same three things behind it, so it is where somebody looks first.
+   */
+  const projectMenu = $derived<MenuItem[]>([
     {
-      labelKey: "ribbon-start",
-      items: [
-        { labelKey: "menu-file-open-folder",
-          icon: "folder" as const,
-          group: "group-project", action: chooseProject },
-        {
-          labelKey: "menu-file-open-recent",
-          icon: "clock" as const,
-          group: "group-project",
-          // Titles here are folder names, which are data rather than interface
-          // copy, so they are passed through as labels and not message keys.
-          items:
-            recent.length > 0
-              ? recent.map((entry) => ({
-                  labelKey: entry.name,
-                  literalLabel: true,
-                  tooltip: entry.root,
-                  action: () => openProjectAt(entry.root),
-                }))
-              : [{ labelKey: "menu-file-no-recent", disabled: true }],
-        },
-        {
-          labelKey: "menu-file-close-project",
-          icon: "close" as const,
-          group: "group-project",
-          action: closeProject,
-          disabled: !project,
-          separatorBefore: true,
-        },
-      ],
+      labelKey: "menu-file-open-folder",
+      icon: "folder" as const,
+      group: "group-project",
+      action: chooseProject,
     },
+    {
+      labelKey: "menu-file-open-recent",
+      icon: "clock" as const,
+      group: "group-project",
+      // Titles here are folder names, which are data rather than interface
+      // copy, so they are passed through as labels and not message keys.
+      items:
+        recent.length > 0
+          ? recent.map((entry) => ({
+              labelKey: entry.name,
+              literalLabel: true,
+              tooltip: entry.root,
+              action: () => openProjectAt(entry.root),
+            }))
+          : [{ labelKey: "menu-file-no-recent", disabled: true }],
+    },
+    {
+      labelKey: "menu-file-close-project",
+      icon: "close" as const,
+      group: "group-project",
+      action: closeProject,
+      disabled: !project,
+      separatorBefore: true,
+    },
+  ]);
+
+  const menus = $derived<Menu[]>([
     {
       labelKey: "menu-view",
       items: [
@@ -1927,6 +2418,7 @@ ${entryText}`,
                   "editor",
                   "pdf",
                   "outline",
+                  "search",
                   "citations",
                   "tasks",
                   "details",
@@ -2117,6 +2609,34 @@ ${entryText}`,
    * someone set a paper size or an author without knowing that those are a
    * package option and a preamble command, which is the whole point.
    */
+  /**
+   * The on-or-off formatting buttons, in the order a ribbon puts them.
+   *
+   * `emph` is missing on purpose, though it is the command a LaTeX author
+   * should usually reach for: two buttons that both look like italic is a
+   * choice nobody wants to make mid-sentence. The button writes `\\textit`, and
+   * `\\emph` is still understood when the document already has it.
+   */
+  const INLINE_FORMATS: {
+    command: InlineFormat;
+    labelKey: string;
+    icon: "text" | "heading" | "code";
+  }[] = [
+    { command: "textbf", labelKey: "format-bold", icon: "text" },
+    { command: "textit", labelKey: "format-italic", icon: "text" },
+    { command: "underline", labelKey: "format-underline", icon: "text" },
+    { command: "textsc", labelKey: "format-small-caps", icon: "text" },
+    { command: "texttt", labelKey: "format-monospace", icon: "code" },
+  ];
+
+  /**
+   * Whether the formatting controls can do anything.
+   *
+   * A `.md` or a `.bib` has no `\\textbf`, and buttons that write LaTeX into one
+   * would be buttons that damage the file rather than format it.
+   */
+  const canFormat = $derived(Boolean(currentFile) && currentFormat === "latex");
+
   const ribbonTabs = $derived<RibbonTab[]>(
     orderTabs([
     ...menus.map((menu) => ({
@@ -2124,6 +2644,128 @@ ${entryText}`,
       labelKey: menu.labelKey,
       groups: intoGroups(menu),
     })),
+    {
+      /*
+       * Formatting, where somebody who learnt Word will look for it.
+       *
+       * The same commands as the bar that follows a selection, and the same
+       * three-family, ten-size lists — because those are what LaTeX has. Two
+       * ways to reach one set of commands is not duplication: it is the
+       * difference between the person who selects text and expects something to
+       * appear, and the person who selects text and looks up.
+       */
+      id: "start",
+      labelKey: "ribbon-start",
+      groups: [
+        {
+          titleKey: "ribbon-font",
+          controls: [
+            ...INLINE_FORMATS.map((format) => ({
+              kind: "action" as const,
+              labelKey: format.labelKey,
+              icon: format.icon,
+              checked: selectionFormat.inline.includes(format.command),
+              disabled: !canFormat,
+              onclick: () =>
+                applyFormatting(
+                  (text, from, to) =>
+                    toggleInline(text, from, to, format.command),
+                  format.command,
+                ),
+            })),
+            {
+              kind: "select" as const,
+              labelKey: "format-family",
+              icon: "text" as const,
+              value: selectionFormat.family ?? "",
+              options: [
+                { value: "", label: t("format-family-default") },
+                ...FONT_FAMILIES.map((family) => ({
+                  value: family,
+                  label: t(`format-family-${family}`),
+                })),
+              ],
+              onchange: (value: string) =>
+                applyFormatting((text, from, to) =>
+                  setFamily(text, from, to, (value || null) as FontFamily | null),
+                ),
+            },
+            {
+              kind: "select" as const,
+              labelKey: "format-size",
+              icon: "heading" as const,
+              value: selectionFormat.size ?? "",
+              options: [
+                { value: "", label: t("format-size-default") },
+                ...FONT_SIZES.map((size) => ({
+                  value: size,
+                  label: t(`format-size-${size}`),
+                })),
+              ],
+              onchange: (value: string) =>
+                applyFormatting((text, from, to) =>
+                  setSize(text, from, to, (value || null) as FontSize | null),
+                ),
+            },
+            {
+              kind: "menu" as const,
+              labelKey: "format-colour",
+              icon: "sun" as const,
+              items: [
+                ...TEXT_COLOURS.map((colour) => ({
+                  labelKey: `format-colour-${colour}`,
+                  group: "group-colours",
+                  checked: selectionFormat.colour === colour,
+                  action: () =>
+                    applyFormatting((text, from, to) =>
+                      setColour(text, from, to, colour as TextColour),
+                    ),
+                })),
+                {
+                  labelKey: "format-colour-none",
+                  group: "group-colours",
+                  separatorBefore: true,
+                  action: () =>
+                    applyFormatting((text, from, to) =>
+                      setColour(text, from, to, null),
+                    ),
+                },
+              ],
+            },
+            {
+              kind: "action" as const,
+              labelKey: "format-clear",
+              icon: "close" as const,
+              disabled: !canFormat,
+              onclick: () => applyFormatting(clearFormatting),
+            },
+          ],
+        },
+        {
+          titleKey: "ribbon-paragraph",
+          controls: [
+            ...([1, 2, 3] as const).map((level) => ({
+              kind: "action" as const,
+              labelKey: `format-heading-${level}`,
+              icon: "heading" as const,
+              disabled: !canFormat,
+              onclick: () =>
+                applyFormatting((text, from) => toggleHeading(text, from, level)),
+            })),
+            {
+              kind: "action" as const,
+              labelKey: "format-quote",
+              icon: "book" as const,
+              disabled: !canFormat,
+              onclick: () =>
+                applyFormatting((text, from, to) =>
+                  toggleEnvironment(text, from, to, "quote"),
+                ),
+            },
+          ],
+        },
+      ],
+    },
     {
       id: "layout",
       labelKey: "ribbon-layout",
@@ -2770,7 +3412,9 @@ ${entryText}`,
       // plugin with no name at all would fall back to.
       labelKey: "settings-section-plugins",
       label: plugin.name,
-      glyph: "◈",
+      // Its own mark where its manifest gave one, so a list of six plugins is
+      // six recognisable rows rather than six identical diamonds.
+      glyph: plugin.icon ?? "◈",
       // Only the first carries the rule, so it reads as one boundary rather
       // than a line between every plugin.
       separated: index === 0,
@@ -3351,12 +3995,21 @@ ${entryText}`,
         onUnresolvedCitation={(key) => void explainCitation(key)}
         listings={listingHomes}
         onOpenListing={openListing}
-        onCursor={(offset) => (cursor = offset)}
+        onCursor={(offset) => {
+          cursor = offset;
+          // Read rather than derived: "what is this selection inside" is a
+          // question about a position, and the text alone cannot answer it.
+          selectionFormat =
+            editorComponent?.formattingNow() ?? selectionFormat;
+        }}
         onZoom={(percent) => (zoom = percent)}
+        bind:this={editorComponent}
         onReady={(api) => {
           editorApi = api;
           refreshCommands();
         }}
+        formatBar={currentFormat === "latex"}
+        onRequirePackage={(name) => void ensurePackage(name)}
       />
     {:else if currentFile}
       <p class="empty">{t("editor-loading")}</p>
@@ -3380,6 +4033,14 @@ ${entryText}`,
         // views — so this works identically in rich text.
         editorApi?.revealRange(heading.titleFrom, heading.titleTo);
       }}
+    />
+  {:else if tab === "search"}
+    <Search
+      query={search}
+      results={searchResults}
+      busy={searchBusy}
+      capped={searchCapped}
+      onnavigate={(file, match) => void goToMatch(file, match)}
     />
   {:else if tab === "citations"}
     <Citations
@@ -3449,6 +4110,7 @@ ${entryText}`,
        it is what you reach for without thinking about which part of the
        application it belongs to; everything else went to the ribbon. -->
   <TitleBar
+    bind:this={titleBar}
     title={windowTitle}
     {dirty}
     canSave={Boolean(currentFile)}
@@ -3459,6 +4121,16 @@ ${entryText}`,
     onredo={() => showNotice(t("menu-not-implemented"))}
     {search}
     onsearch={(value) => (search = value)}
+    options={searchOptions}
+    onoptions={(next) => (searchOptions = next)}
+    matches={searchCount}
+    {replacing}
+    onreplacing={(open) => (replacing = open)}
+    {replacement}
+    onreplacement={(value) => (replacement = value)}
+    onreplaceone={replaceOnce}
+    onreplaceall={replaceEvery}
+    {projectMenu}
   />
 
   {#if !ribbonVertical}

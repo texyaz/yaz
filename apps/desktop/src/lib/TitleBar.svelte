@@ -21,6 +21,9 @@
 <script lang="ts">
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { t } from "./i18n";
+  import { ICONS } from "./icons";
+  import type { MenuItem } from "./MenuBar.svelte";
+  import type { SearchOptions } from "./editor/search";
 
   interface Props {
     /** Shown in the middle, where a title bar puts it. */
@@ -37,6 +40,28 @@
     /** What is in the search box. */
     search: string;
     onsearch: (value: string) => void;
+    /** How the query is read. */
+    options: SearchOptions;
+    onoptions: (options: SearchOptions) => void;
+    /** How many matches there are, for the count beside the box. */
+    matches: number;
+    /** Whether the replace row is showing. */
+    replacing: boolean;
+    onreplacing: (open: boolean) => void;
+    /** What is in the replace box. */
+    replacement: string;
+    onreplacement: (value: string) => void;
+    /** Replace the match nearest the caret, or every one. */
+    onreplaceone: () => void;
+    onreplaceall: () => void;
+    /**
+     * What can be done with the project as a whole.
+     *
+     * Behind the mark in the corner, which is where every application with a
+     * mark in that corner puts opening and closing — and where somebody who has
+     * just installed yaz looks first, before they know there is a ribbon.
+     */
+    projectMenu: MenuItem[];
   }
 
   let {
@@ -50,7 +75,80 @@
     onredo,
     search,
     onsearch,
+    options,
+    onoptions,
+    matches,
+    replacing,
+    onreplacing,
+    replacement,
+    onreplacement,
+    onreplaceone,
+    onreplaceall,
+    projectMenu,
   }: Props = $props();
+
+  /**
+   * The search field, so a shortcut can put the caret in it.
+   *
+   * Bound out to the shell rather than reached for by id: the field is this
+   * component's, and finding it by selector would break the first time the
+   * markup gained a wrapper.
+   */
+  let field = $state<HTMLInputElement>();
+
+  export function focusSearch(): void {
+    field?.focus();
+    field?.select();
+  }
+
+  /**
+   * The three switches, drawn as letters rather than as icons.
+   *
+   * `Aa`, `ab|` and `.*` are what every editor uses for these, and they read
+   * as what they do without a legend — which a drawn glyph for "whole word"
+   * does not.
+   */
+  const SWITCHES: {
+    key: keyof SearchOptions;
+    mark: string;
+    labelKey: string;
+  }[] = [
+    { key: "matchCase", mark: "Aa", labelKey: "search-match-case" },
+    { key: "wholeWord", mark: "ab", labelKey: "search-whole-word" },
+    { key: "regex", mark: ".*", labelKey: "search-regex" },
+  ];
+
+  /** Whether the project menu is showing, and which flyout inside it. */
+  let menuOpen = $state(false);
+  let flyout = $state<string | null>(null);
+
+  function choose(item: MenuItem) {
+    if (item.disabled) return;
+    if (item.items) {
+      flyout = flyout === item.labelKey ? null : item.labelKey;
+      return;
+    }
+    menuOpen = false;
+    flyout = null;
+    void item.action?.();
+  }
+
+  /**
+   * Close on a click anywhere else.
+   *
+   * On the window rather than on a backdrop element: a backdrop would swallow
+   * the click that closed it, so dismissing the menu and pressing the button
+   * underneath would take two clicks.
+   */
+  $effect(() => {
+    if (!menuOpen) return;
+    const dismiss = () => {
+      menuOpen = false;
+      flyout = null;
+    };
+    window.addEventListener("click", dismiss);
+    return () => window.removeEventListener("click", dismiss);
+  });
 
   const appWindow = getCurrentWindow();
   let maximized = $state(false);
@@ -75,7 +173,87 @@
 </script>
 
 <header class="bar">
-  <span class="logo" aria-hidden="true">y</span>
+  <div class="mark-host">
+    <button
+      type="button"
+      class="logo"
+      aria-haspopup="menu"
+      aria-expanded={menuOpen}
+      title={t("titlebar-project-menu")}
+      aria-label={t("titlebar-project-menu")}
+      onclick={(event) => {
+        event.stopPropagation();
+        menuOpen = !menuOpen;
+        flyout = null;
+      }}
+    >
+      y
+    </button>
+
+    {#if menuOpen}
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+      <div
+        class="menu"
+        role="menu"
+        tabindex="-1"
+        onclick={(event) => event.stopPropagation()}
+        onkeydown={(event) => {
+          if (event.key === "Escape") {
+            menuOpen = false;
+            flyout = null;
+          }
+        }}
+      >
+        {#each projectMenu as item (item.labelKey)}
+          {#if item.separatorBefore}
+            <span class="separator"></span>
+          {/if}
+          <button
+            type="button"
+            class="item"
+            role="menuitem"
+            disabled={item.disabled}
+            title={item.tooltip}
+            aria-haspopup={item.items ? "menu" : undefined}
+            aria-expanded={item.items ? flyout === item.labelKey : undefined}
+            onclick={() => choose(item)}
+          >
+            <span class="glyph" aria-hidden="true">
+              {#if item.icon && ICONS[item.icon]}
+                <svg viewBox="0 0 16 16"><path d={ICONS[item.icon]} /></svg>
+              {/if}
+            </span>
+            <span class="label">{t(item.labelKey)}</span>
+            {#if item.items}<span class="more" aria-hidden="true">›</span>{/if}
+          </button>
+
+          {#if item.items && flyout === item.labelKey}
+            <!-- Opened downward rather than sideways: the mark is in the very
+                 corner, so a flyout to the left would be off the window. -->
+            <div class="flyout" role="menu">
+              {#each item.items as entry (entry.labelKey)}
+                <button
+                  type="button"
+                  class="item"
+                  role="menuitem"
+                  disabled={entry.disabled}
+                  title={entry.tooltip}
+                  onclick={() => choose(entry)}
+                >
+                  <span class="glyph" aria-hidden="true"></span>
+                  <span class="label"
+                    >{entry.literalLabel
+                      ? entry.labelKey
+                      : t(entry.labelKey)}</span
+                  >
+                </button>
+              {/each}
+            </div>
+          {/if}
+        {/each}
+      </div>
+    {/if}
+  </div>
 
   <div class="tools">
     <!-- Saving by itself is a mode, so it is a toggle that shows which state
@@ -139,18 +317,99 @@
     <span class="title-text" data-tauri-drag-region>{title}</span>
   </h1>
 
-  <label class="search">
-    <span class="visually-hidden">{t("menu-edit-find")}</span>
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M7 2.5a4.5 4.5 0 100 9 4.5 4.5 0 000-9zM10.5 10.5L14 14" />
-    </svg>
-    <input
-      type="search"
-      value={search}
-      placeholder={t("titlebar-search")}
-      oninput={(event) => onsearch(event.currentTarget.value)}
-    />
-  </label>
+  <!--
+    The switches live inside the field, where every editor puts them, and the
+    replace row hangs below it rather than beside it — a second box on the same
+    line would halve the width of both on a narrow window.
+  -->
+  <div class="finder">
+    <label class="search">
+      <span class="visually-hidden">{t("menu-edit-find")}</span>
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M7 2.5a4.5 4.5 0 100 9 4.5 4.5 0 000-9zM10.5 10.5L14 14" />
+      </svg>
+      <input
+        bind:this={field}
+        type="search"
+        value={search}
+        placeholder={t("titlebar-search")}
+        oninput={(event) => onsearch(event.currentTarget.value)}
+        onkeydown={(event) => {
+          if (event.key === "Escape") onsearch("");
+        }}
+      />
+
+      {#if search}
+        <!-- How many there are, which is the first thing anybody wants to know
+             and the thing a results tab makes them look away to find. -->
+        <span class="count">{matches}</span>
+      {/if}
+
+      {#each SWITCHES as toggle (toggle.key)}
+        <button
+          type="button"
+          class="switch"
+          class:on={options[toggle.key]}
+          aria-pressed={options[toggle.key]}
+          title={t(toggle.labelKey)}
+          aria-label={t(toggle.labelKey)}
+          onclick={() =>
+            onoptions({ ...options, [toggle.key]: !options[toggle.key] })}
+        >
+          {toggle.mark}
+        </button>
+      {/each}
+
+      <button
+        type="button"
+        class="switch"
+        class:on={replacing}
+        aria-pressed={replacing}
+        aria-expanded={replacing}
+        title={t("search-replace-toggle")}
+        aria-label={t("search-replace-toggle")}
+        onclick={() => onreplacing(!replacing)}
+      >
+        ⇄
+      </button>
+    </label>
+
+    {#if replacing}
+      <label class="replace">
+        <span class="visually-hidden">{t("search-replace")}</span>
+        <input
+          type="text"
+          value={replacement}
+          placeholder={t("search-replace")}
+          oninput={(event) => onreplacement(event.currentTarget.value)}
+          onkeydown={(event) => {
+            if (event.key === "Enter") onreplaceone();
+            if (event.key === "Escape") onreplacing(false);
+          }}
+        />
+        <button
+          type="button"
+          class="switch"
+          disabled={matches === 0}
+          title={t("search-replace-one")}
+          aria-label={t("search-replace-one")}
+          onclick={onreplaceone}
+        >
+          ⇥
+        </button>
+        <button
+          type="button"
+          class="switch"
+          disabled={matches === 0}
+          title={t("search-replace-all")}
+          aria-label={t("search-replace-all")}
+          onclick={onreplaceall}
+        >
+          ⇉
+        </button>
+      </label>
+    {/if}
+  </div>
 
   <!-- A stub, and drawn as one: there is no account behind it. It holds the
        space so that adding one later does not move everything else. -->
@@ -210,7 +469,82 @@
     user-select: none;
   }
 
+  .mark-host {
+    position: relative;
+    /* The bar is draggable; this is not, or the menu could not be opened. */
+    -webkit-app-region: no-drag;
+  }
+
+  .menu {
+    position: absolute;
+    inset-block-start: calc(100% + var(--yaz-space-1));
+    inset-inline-start: 0;
+    z-index: 20;
+    min-inline-size: 14rem;
+    padding: var(--yaz-space-1);
+    background: var(--yaz-bg-secondary);
+    border: 1px solid var(--yaz-border);
+    border-radius: var(--yaz-radius-sm);
+    box-shadow: 0 4px 12px rgb(0 0 0 / 30%);
+  }
+
+  .menu .item {
+    inline-size: 100%;
+    display: grid;
+    grid-template-columns: 1.2em 1fr auto;
+    align-items: center;
+    gap: var(--yaz-space-2);
+    font: inherit;
+    text-align: start;
+    padding: var(--yaz-space-1) var(--yaz-space-2);
+    color: var(--yaz-text-primary);
+    background: none;
+    border: none;
+    border-radius: var(--yaz-radius-sm);
+    cursor: pointer;
+  }
+
+  .menu .item:hover:not(:disabled) {
+    background: var(--yaz-bg-hover);
+  }
+
+  .menu .item:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  .menu .glyph svg {
+    inline-size: 1em;
+    block-size: 1em;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.4;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .menu .more {
+    color: var(--yaz-text-muted);
+  }
+
+  .separator {
+    display: block;
+    block-size: 1px;
+    margin: var(--yaz-space-1) 0;
+    background: var(--yaz-border);
+  }
+
+  /* Indented rather than beside: see the comment on the markup. */
+  .flyout {
+    padding-inline-start: var(--yaz-space-4);
+  }
+
   .logo {
+    font: inherit;
+    padding: 0 var(--yaz-space-1);
+    background: none;
+    border: none;
+    cursor: pointer;
     font-family: var(--yaz-font-prose);
     font-size: 1.25rem;
     font-weight: 700;
@@ -285,6 +619,86 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  /*
+    The field and its replace row, stacked.
+
+    Absolutely positioned below the bar rather than growing it: a title bar
+    that changed height when the replace row opened would move the ribbon, the
+    tab strip and the document with it.
+  */
+  .finder {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    -webkit-app-region: no-drag;
+  }
+
+  .replace {
+    position: absolute;
+    inset-block-start: calc(100% + var(--yaz-space-1));
+    inset-inline: 0;
+    z-index: 15;
+    display: flex;
+    align-items: center;
+    gap: var(--yaz-space-1);
+    padding: var(--yaz-space-1);
+    background: var(--yaz-bg-secondary);
+    border: 1px solid var(--yaz-border);
+    border-radius: var(--yaz-radius-sm);
+    box-shadow: 0 2px 8px rgb(0 0 0 / 25%);
+  }
+
+  .replace input {
+    flex: 1;
+    min-inline-size: 0;
+    font: inherit;
+    font-size: var(--yaz-font-size-sm);
+    padding: 0 var(--yaz-space-1);
+    color: var(--yaz-text-primary);
+    background: var(--yaz-bg-primary);
+    border: 1px solid var(--yaz-border);
+    border-radius: var(--yaz-radius-sm);
+  }
+
+  /* How many matches, quietly: it is a number you glance at, not read. */
+  .count {
+    font-size: var(--yaz-font-size-sm);
+    color: var(--yaz-text-muted);
+    padding-inline: var(--yaz-space-1);
+    white-space: nowrap;
+  }
+
+  .switch {
+    font: inherit;
+    font-size: 0.75rem;
+    line-height: 1;
+    min-inline-size: 1.6em;
+    padding: 0.25em;
+    color: var(--yaz-text-muted);
+    background: none;
+    border: 1px solid transparent;
+    border-radius: var(--yaz-radius-sm);
+    cursor: pointer;
+  }
+
+  .switch:hover:not(:disabled) {
+    background: var(--yaz-bg-hover);
+    color: var(--yaz-text-primary);
+  }
+
+  /* On, rather than merely hovered — the state of these is what the results
+     depend on, so it has to be readable at a glance. */
+  .switch.on {
+    color: var(--yaz-text-primary);
+    background: var(--yaz-bg-hover);
+    border-color: var(--yaz-accent);
+  }
+
+  .switch:disabled {
+    opacity: 0.4;
+    cursor: default;
   }
 
   .search {
