@@ -5,11 +5,21 @@
   "minAppVersion": "0.3.0",
   "author": "yaz",
   "description": "Keep a paper's task list in Todoist, and see it beside the writing.",
+  "icon": "✓",
   "repository": "https://github.com/texyaz/yaz-todoist",
   "capabilities": [
-    { "kind": "credential" },
-    { "kind": "net", "hosts": ["api.todoist.com"] },
-    { "kind": "fs-project" }
+    {
+      "kind": "credential"
+    },
+    {
+      "kind": "net",
+      "hosts": [
+        "api.todoist.com"
+      ]
+    },
+    {
+      "kind": "fs-project"
+    }
   ],
   "updates": {
     "source": "github",

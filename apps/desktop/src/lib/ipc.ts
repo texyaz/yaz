@@ -430,6 +430,13 @@ export interface CorePlugin {
   id: string;
   name: string;
   description: string;
+  /**
+   * A single character standing for it, from its manifest.
+   *
+   * `null` where the manifest gave none, in which case the interface draws a
+   * generic mark rather than a gap.
+   */
+  icon: string | null;
   /** Capability identifiers its manifest declares. */
   capabilities: string[];
   /**

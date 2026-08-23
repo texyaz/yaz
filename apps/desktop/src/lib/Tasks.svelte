@@ -19,6 +19,13 @@
   A thesis and a conference paper are different work with different lists. The
   link lives in `yaz.toml`, so it travels with the project rather than being
   re-made on every machine.
+
+  # Why there is no way to change the list from here
+
+  Linking a paper to a list is done once, under Connections in the ribbon,
+  beside linking it to a library. A second way to do it, sitting permanently
+  above the list, is a button whose only use is the one time it is not needed
+  again — and a click away from a list somebody meant to read.
 -->
 <script lang="ts">
   import { t } from "./i18n";
@@ -74,16 +81,92 @@
     onadd(title);
   }
 
-  /** Overdue and today first, then the rest in the order the service gave. */
-  const ordered = $derived(
-    [...tasks].sort((left, right) => {
-      const due = Number(right.due !== null) - Number(left.due !== null);
+  /** A task and whatever hangs off it. */
+  interface Node {
+    task: Task;
+    children: Node[];
+  }
+
+  /** Dated first, then by urgency. Applied at every level of the nesting. */
+  function order(nodes: Node[]): Node[] {
+    return [...nodes].sort((left, right) => {
+      const due =
+        Number(right.task.due !== null) - Number(left.task.due !== null);
       if (due !== 0) return due;
-      if (left.due && right.due) return left.due.localeCompare(right.due);
-      return (right.priority ?? 0) - (left.priority ?? 0);
-    }),
-  );
+      if (left.task.due && right.task.due) {
+        return left.task.due.localeCompare(right.task.due);
+      }
+      // 1 is the most urgent, so the smaller number comes first. A task with
+      // no priority sorts as the least urgent rather than as the most.
+      return (left.task.priority ?? 5) - (right.task.priority ?? 5);
+    });
+  }
+
+  /**
+   * The list, nested.
+   *
+   * Every service returns its tasks flat with a parent id on each, so the
+   * nesting is done here rather than asked for. A task whose parent is not in
+   * the list — filtered out, or already completed — is shown at the top level
+   * rather than hidden, because a sub-task nobody can see is one nobody does.
+   */
+  const tree = $derived.by(() => {
+    const nodes = new Map<string, Node>();
+    for (const task of tasks) nodes.set(task.id, { task, children: [] });
+
+    const roots: Node[] = [];
+    for (const node of nodes.values()) {
+      const parent = node.task.parentId
+        ? nodes.get(node.task.parentId)
+        : undefined;
+      if (parent && parent !== node) parent.children.push(node);
+      else roots.push(node);
+    }
+    for (const node of nodes.values()) node.children = order(node.children);
+    return order(roots);
+  });
+
+  /**
+   * Which urgency class a task gets, if any.
+   *
+   * The scale is the contract's: 1 is the most urgent. Only the three that mean
+   * something get a colour — a list where every row is coloured is a list where
+   * no colour is read.
+   */
+  function urgency(task: Task): string {
+    const value = task.priority;
+    if (value === 1) return "urgent";
+    if (value === 2) return "soon";
+    if (value === 3) return "later";
+    return "";
+  }
 </script>
+
+{#snippet rows(nodes: Node[], depth: number)}
+  {#each nodes as node (node.task.id)}
+    <li class={urgency(node.task)} style="--depth: {depth}">
+      <!-- A checkbox, because completing is what a task list is for and
+           anything else would be a click to find the way to do it. -->
+      <input
+        type="checkbox"
+        checked={node.task.done}
+        disabled={busy}
+        aria-label={node.task.title}
+        onchange={() => oncomplete(node.task)}
+      />
+      <!-- The row is the way into the details; the checkbox beside it is the
+           way to be done with the task. Two things to click, because they are
+           two different intentions. -->
+      <button type="button" class="body" onclick={() => onselect(node.task)}>
+        <span class="title">{node.task.title}</span>
+        {#if node.task.due}
+          <span class="due">{node.task.due}</span>
+        {/if}
+      </button>
+    </li>
+    {@render rows(node.children, depth + 1)}
+  {/each}
+{/snippet}
 
 <div class="tasks">
   {#if !hasProject}
@@ -114,9 +197,6 @@
       >
         {t("tasks-refresh")}
       </button>
-      <button type="button" class="quiet" onclick={onlink} disabled={busy}>
-        {t("tasks-relink")}
-      </button>
     </div>
 
     <form
@@ -138,32 +218,11 @@
       </button>
     </form>
 
-    {#if ordered.length === 0}
+    {#if tree.length === 0}
       <p class="empty">{t("tasks-empty")}</p>
     {:else}
       <ul>
-        {#each ordered as task (task.id)}
-          <li>
-            <!-- A checkbox, because completing is what a task list is for and
-                 anything else would be a click to find the way to do it. -->
-            <input
-              type="checkbox"
-              checked={task.done}
-              disabled={busy}
-              aria-label={task.title}
-              onchange={() => oncomplete(task)}
-            />
-            <!-- The row is the way into the details; the checkbox beside it
-                 is the way to be done with the task. Two things to click,
-                 because they are two different intentions. -->
-            <button type="button" class="body" onclick={() => onselect(task)}>
-              <span class="title">{task.title}</span>
-              {#if task.due}
-                <span class="due">{task.due}</span>
-              {/if}
-            </button>
-          </li>
-        {/each}
+        {@render rows(tree, 0)}
       </ul>
     {/if}
   {/if}
@@ -277,10 +336,81 @@
     align-items: flex-start;
     gap: var(--yaz-space-2);
     padding: var(--yaz-space-1) var(--yaz-space-3);
+    /* Sub-tasks step in rather than being drawn in a list of their own, so the
+       whole thing stays one column of rows the eye can run down. */
+    padding-inline-start: calc(
+      var(--yaz-space-3) + var(--depth, 0) * var(--yaz-space-4)
+    );
   }
 
   li:hover {
     background: var(--yaz-bg-hover);
+  }
+
+  /*
+    The checkbox, drawn rather than left to the platform.
+
+    A native checkbox is the one control that ignores every theme token and
+    paints itself in the operating system's own blue, which on a dark theme is
+    the brightest thing in the window.
+  */
+  li input[type="checkbox"] {
+    appearance: none;
+    inline-size: 1em;
+    block-size: 1em;
+    margin: 0;
+    /*
+      Centred on the first line of the title rather than sat at the top of it.
+
+      A 1em box aligned to the top of a line box sits above the middle of the
+      text it stands beside, which reads as the title hanging low. `lh` is the
+      line's own height, so this stays right if the theme changes it; the plain
+      value above is the same sum for the line height in use today.
+    */
+    margin-block-start: 0.25em;
+    margin-block-start: calc((1lh - 1em) / 2);
+    flex: none;
+    background: var(--yaz-bg-secondary);
+    border: 1px solid var(--yaz-border);
+    border-radius: var(--yaz-radius-sm);
+    cursor: pointer;
+    display: grid;
+    place-content: center;
+  }
+
+  li input[type="checkbox"]:hover:not(:disabled) {
+    border-color: var(--yaz-accent);
+  }
+
+  li input[type="checkbox"]:focus-visible {
+    outline: 2px solid var(--yaz-focus-ring);
+    outline-offset: 1px;
+  }
+
+  li input[type="checkbox"]:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  li input[type="checkbox"]::before {
+    /* The tick, as a shape rather than a glyph: a character would be set in
+       whatever font the row inherited and sit differently in each. */
+    content: "";
+    inline-size: 0.6em;
+    block-size: 0.35em;
+    border-inline-start: 2px solid var(--yaz-bg-primary);
+    border-block-end: 2px solid var(--yaz-bg-primary);
+    transform: rotate(-45deg) translate(0.05em, -0.1em);
+    opacity: 0;
+  }
+
+  li input[type="checkbox"]:checked {
+    background: var(--yaz-accent);
+    border-color: var(--yaz-accent);
+  }
+
+  li input[type="checkbox"]:checked::before {
+    opacity: 1;
   }
 
   .body {
@@ -304,5 +434,36 @@
   .due {
     font-size: 0.8em;
     color: var(--yaz-text-muted);
+  }
+
+  /*
+    Urgency as colour, on the checkbox's edge and on the title.
+
+    On the edge because that is where the eye already is when it runs down a
+    column of checkboxes, and not on the whole row because three urgent tasks
+    would then be a wall of red with nothing standing out of it.
+  */
+  .urgent input[type="checkbox"]:not(:checked) {
+    border-color: var(--yaz-error);
+  }
+
+  .urgent .title {
+    color: var(--yaz-error);
+  }
+
+  .soon input[type="checkbox"]:not(:checked) {
+    border-color: var(--yaz-warning);
+  }
+
+  .soon .title {
+    color: var(--yaz-warning);
+  }
+
+  .later input[type="checkbox"]:not(:checked) {
+    border-color: var(--yaz-info);
+  }
+
+  .later .title {
+    color: var(--yaz-info);
   }
 </style>

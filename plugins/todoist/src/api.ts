@@ -31,7 +31,13 @@
  * plugin that empties the tab because a response gained a field is not.
  */
 
-import type { App, Task, TaskProject } from "@yaz/api";
+import type {
+  App,
+  Task,
+  TaskPatch,
+  TaskProject,
+  TaskSection,
+} from "@yaz/api";
 
 /** The unified API, which is where Todoist is going. */
 const V1 = "https://api.todoist.com/api/v1";
@@ -150,6 +156,22 @@ function dueOf(task: unknown): string | null {
   return text(due, "date") ?? text(due, "string");
 }
 
+/**
+ * Todoist's priority, on the scale the tab colours by.
+ *
+ * Todoist's API numbers its *highest* priority 4 and its lowest 1, which is the
+ * reverse of what it calls them in its own interface (p1 is the urgent one) and
+ * the reverse of what `Task.priority` means. Translating here is the whole
+ * reason that scale is fixed in the contract: a tab that coloured the raw
+ * number would paint Todoist's trivial tasks red.
+ */
+function priorityOf(raw: unknown): number | null {
+  const value = number(raw, "priority");
+  if (value === null) return null;
+  if (value < 1 || value > 4) return null;
+  return 5 - value;
+}
+
 /** One Todoist task, as the core tab needs it. */
 function asTask(raw: unknown): Task | null {
   const id = text(raw, "id");
@@ -162,8 +184,13 @@ function asTask(raw: unknown): Task | null {
     // Both APIs return open tasks; a completed one stops appearing.
     done: false,
     due: dueOf(raw),
-    priority: number(raw, "priority"),
+    priority: priorityOf(raw),
     url: text(raw, "url"),
+    parentId: text(raw, "parent_id"),
+    notes: text(raw, "description"),
+    sectionId: text(raw, "section_id"),
+    // v1 spells it `added_at`, v2 `created_at`.
+    created: text(raw, "added_at") ?? text(raw, "created_at"),
   };
 }
 
@@ -260,4 +287,92 @@ export async function checkReach(
 /** Whether the stored token works. See {@link checkReach} for why not. */
 export async function canReach(app: App): Promise<boolean> {
   return (await checkReach(app)).ok;
+}
+
+/** One Todoist section. */
+function asSection(raw: unknown): TaskSection | null {
+  const id = text(raw, "id");
+  const name = text(raw, "name");
+  return id && name ? { id, name } : null;
+}
+
+/** The sections a project is divided into. */
+export async function listSections(
+  app: App,
+  projectId: string,
+): Promise<TaskSection[]> {
+  const body = await request(
+    app,
+    `/sections?project_id=${encodeURIComponent(projectId)}`,
+  );
+  return rows(body)
+    .map(asSection)
+    .filter((entry): entry is TaskSection => entry !== null);
+}
+
+/**
+ * Move a task into a section, or out of every one.
+ *
+ * v1 has a move endpoint; v2 moves by updating the task. Which one is in use is
+ * already known by the time anybody can click this, so the shape follows it.
+ */
+export async function moveTask(
+  app: App,
+  taskId: string,
+  sectionId: string | null,
+): Promise<void> {
+  const id = encodeURIComponent(taskId);
+  if (base === V1) {
+    await request(app, `/tasks/${id}/move`, {
+      method: "POST",
+      body: { section_id: sectionId },
+    });
+    return;
+  }
+  await request(app, `/tasks/${id}`, {
+    method: "POST",
+    body: { section_id: sectionId },
+  });
+}
+
+/**
+ * Change a task.
+ *
+ * Only what the patch names is sent, so changing a due date cannot blank a
+ * description the caller never read.
+ *
+ * The due date goes as `due_string` — the words, not a parsed date. Todoist
+ * understands "every Monday" and "next Tuesday", and turning those into a
+ * single day here would quietly throw away the recurrence the user asked for.
+ * An empty string means no date, which Todoist spells "no date" rather than
+ * with a null.
+ */
+export async function updateTask(
+  app: App,
+  taskId: string,
+  patch: TaskPatch,
+): Promise<void> {
+  const body: Record<string, unknown> = {};
+  if (patch.title !== undefined) body["content"] = patch.title;
+  if (patch.notes !== undefined) body["description"] = patch.notes;
+  if (patch.due !== undefined) {
+    body["due_string"] = patch.due === null || patch.due === "" ? "no date" : patch.due;
+  }
+  if (patch.priority !== undefined) {
+    // Back to Todoist's own numbering, which runs the other way. See
+    // `priorityOf` for why the contract fixes the direction.
+    body["priority"] =
+      patch.priority === null ? 1 : 5 - clamp(patch.priority, 1, 4);
+  }
+  if (Object.keys(body).length === 0) return;
+
+  await request(app, `/tasks/${encodeURIComponent(taskId)}`, {
+    method: "POST",
+    body,
+  });
+}
+
+/** Keep a number inside a range, so a bad value cannot reach the service. */
+function clamp(value: number, low: number, high: number): number {
+  return Math.min(high, Math.max(low, Math.round(value)));
 }

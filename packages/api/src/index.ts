@@ -451,8 +451,31 @@ export interface Detail {
   title: string;
   /** A second line, where there is one worth having. */
   subtitle?: string | undefined;
+  /**
+   * Longer prose about it — a task's description, a note on a source.
+   *
+   * Separate from {@link fields} because a paragraph in a labelled row wraps
+   * into a column three words wide, and because its own line breaks are the
+   * author's and are kept.
+   *
+   * @since 0.4.0
+   */
+  body?: string | undefined;
   /** Labelled rows, in the order they should read. */
   fields?: DetailField[] | undefined;
+  /**
+   * Rename it from here, where renaming makes sense.
+   *
+   * Absent for a thing whose name is not the user's to change — a citation key
+   * belongs to the `.bib`, and a glossary term to the document.
+   *
+   * @since 0.4.0
+   */
+  rename?: ((title: string) => void | Promise<void>) | undefined;
+  /** Rows that can be typed into. @since 0.4.0 */
+  edits?: DetailEdit[] | undefined;
+  /** What can be changed about it from here. @since 0.4.0 */
+  choices?: DetailChoice[] | undefined;
   /** What can be done about it from here. */
   actions?: DetailAction[] | undefined;
 }
@@ -470,6 +493,71 @@ export interface DetailAction {
   /** Message key for the button. */
   labelKey: string;
   run(): void | Promise<void>;
+}
+
+/**
+ * A labelled row the reader can type into.
+ *
+ * Separate from {@link DetailField}, which is what the thing *is* and cannot be
+ * changed here, and from {@link DetailChoice}, which offers a fixed set of
+ * answers. This one takes whatever is typed.
+ *
+ * @since 0.4.0
+ */
+export interface DetailEdit {
+  /** Message key for the label — interface text (ADR-0011). */
+  labelKey: string;
+  /** What is there now. Data, so a string rather than a message key. */
+  value: string;
+  /**
+   * How it is edited.
+   *
+   * `text` is one line. `paragraph` is several. `date` is **both** a day
+   * picker and a text field over the same value, because a service that
+   * understands "every Monday" is a service where the picker cannot express
+   * what the user means, and one that only takes text is one where choosing
+   * next Tuesday means knowing the date.
+   */
+  kind: "text" | "paragraph" | "date";
+  /** Message key for the placeholder, where an empty value needs explaining. */
+  placeholderKey?: string | undefined;
+  /** Write it back. Called when the field is left, not on every keystroke. */
+  save(value: string): void | Promise<void>;
+}
+
+/**
+ * A labelled dropdown the reader can change.
+ *
+ * Separate from {@link DetailField} because a field is what the thing *is* and
+ * a choice is something about it that can be moved. The tab is otherwise a
+ * place to read, so what can be changed from it has to look different from
+ * what cannot.
+ *
+ * @since 0.4.0
+ */
+export interface DetailChoice {
+  /** Message key for the label — interface text (ADR-0011). */
+  labelKey: string;
+  /** Which option is chosen, by value, or `null` for none of them. */
+  value: string | null;
+  /** What can be chosen. */
+  options: DetailOption[];
+  /**
+   * Message key for an empty option — a task in no section at all.
+   *
+   * Omitted where the choice is not optional, in which case no empty option is
+   * offered.
+   */
+  noneKey?: string | undefined;
+  /** Make the change. Called with `null` when the empty option is chosen. */
+  choose(value: string | null): void | Promise<void>;
+}
+
+/** One answer a {@link DetailChoice} offers. @since 0.4.0 */
+export interface DetailOption {
+  value: string;
+  /** What to show. Data, so a string rather than a message key. */
+  label: string;
 }
 
 /** Task lists. @since 0.3.0 */
@@ -515,6 +603,54 @@ export interface TaskProvider {
   createTask(projectId: string, title: string): Promise<Task>;
   /** Tick one off. */
   completeTask(taskId: string): Promise<void>;
+  /**
+   * The sections this project is divided into.
+   *
+   * Optional: a service without sections does not implement it, and nothing
+   * offers to move a task between them.
+   *
+   * @since 0.4.0
+   */
+  listSections?(projectId: string): Promise<TaskSection[]>;
+  /**
+   * Move a task into a section, or out of every one.
+   *
+   * @since 0.4.0
+   */
+  moveTask?(taskId: string, sectionId: string | null): Promise<void>;
+  /**
+   * Change a task.
+   *
+   * Only the fields present in the patch are touched, so a caller changing a
+   * due date does not have to know what the description currently says — and
+   * cannot blank it by not sending it.
+   *
+   * @since 0.4.0
+   */
+  updateTask?(taskId: string, patch: TaskPatch): Promise<void>;
+}
+
+/**
+ * What to change about a task.
+ *
+ * Every field optional and absent-means-leave-alone. `null` is a real value
+ * where the field can be cleared — a task with no due date.
+ *
+ * @since 0.4.0
+ */
+export interface TaskPatch {
+  title?: string;
+  notes?: string;
+  /**
+   * When it is due, as the user typed it.
+   *
+   * Passed through rather than parsed here: a service that understands "every
+   * Monday" should get the chance, and a date this turned into an ISO string
+   * first would lose the recurrence.
+   */
+  due?: string | null;
+  /** On the contract's scale, where 1 is the most urgent. */
+  priority?: number | null;
 }
 
 /** A project in the to-do service, which a paper can be linked to. @since 0.3.0 */
@@ -540,10 +676,61 @@ export interface Task {
   done: boolean;
   /** When it is due, as the service formats it. `null` when it is not. */
   due: string | null;
-  /** Higher is more urgent, or `null` where the service has no notion. */
+  /**
+   * How urgent, on a scale where **1 is the most urgent** and 4 the least.
+   *
+   * The scale is fixed here rather than passed through, because services
+   * disagree about which end is which — Todoist's API numbers its highest
+   * priority 4 — and a tab that coloured whatever number arrived would colour
+   * one service's urgent tasks the way it colours another's trivial ones. A
+   * provider translates into this scale; `null` where it has no notion.
+   *
+   * @since 0.4.0
+   */
   priority: number | null;
   /** Where to open it in the service itself, when it can be opened. */
   url: string | null;
+  /**
+   * The task this one is a sub-task of, or `null` at the top level.
+   *
+   * Enough for the tab to nest a list that arrives flat, which is how every
+   * service returns one.
+   *
+   * @since 0.4.0
+   */
+  parentId?: string | null;
+  /**
+   * Whatever longer text the task carries — Todoist's description, another
+   * service's notes. `null` when it has none.
+   *
+   * @since 0.4.0
+   */
+  notes?: string | null;
+  /**
+   * The section of the project it sits in, where the service has sections.
+   *
+   * @since 0.4.0
+   */
+  sectionId?: string | null;
+  /**
+   * When it was created, as the service formats it.
+   *
+   * @since 0.4.0
+   */
+  created?: string | null;
+}
+
+/**
+ * A division within a project — Todoist's sections, another service's lists.
+ *
+ * Optional throughout: a provider whose service has no such notion returns
+ * none, and nothing offers to move a task into one.
+ *
+ * @since 0.4.0
+ */
+export interface TaskSection {
+  id: string;
+  name: string;
 }
 
 /** Panes, tabs and views. @since 0.1.0 */

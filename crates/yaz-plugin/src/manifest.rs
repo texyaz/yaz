@@ -31,6 +31,17 @@ pub struct Manifest {
     pub author: String,
     /// Short description shown in the plugin list.
     pub description: String,
+    /// A single character standing for the plugin, shown beside its name.
+    ///
+    /// A character rather than an image file: the settings list, the docs and a
+    /// future registry all show it, and a glyph needs no loading, no capability
+    /// and no second copy at another size. It also inherits the theme's colour,
+    /// which a bitmap could not (ADR-0010).
+    ///
+    /// Optional, because a plugin without one is not broken — it falls back to
+    /// a generic mark.
+    #[serde(default)]
+    pub icon: Option<String>,
     /// Source repository, used for update checks.
     #[serde(default)]
     pub repository: Option<Url>,
@@ -182,6 +193,7 @@ mod tests {
             min_app_version: Version::parse(min_app).expect("a version"),
             author: "Someone".to_owned(),
             description: "An example.".to_owned(),
+            icon: None,
             repository: None,
             capabilities: Vec::new(),
             provides: Provides::default(),

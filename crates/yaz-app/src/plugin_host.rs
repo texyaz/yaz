@@ -77,6 +77,8 @@ pub struct CorePlugin {
     id: String,
     name: String,
     description: String,
+    /// The single character standing for it, where the manifest gave one.
+    icon: Option<String>,
     /// What it says it is, so an update can be compared against it.
     version: String,
     /// Capability identifiers, for the interface to explain what it can do.
@@ -270,6 +272,7 @@ impl PluginHost {
                         id: manifest.id,
                         name: manifest.name,
                         description: manifest.description,
+                        icon: manifest.icon,
                         version: manifest.version.to_string(),
                         capabilities,
                         tools,

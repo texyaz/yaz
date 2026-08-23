@@ -12,6 +12,8 @@
 
 import { describe, expect, it } from "vitest";
 
+import type { App } from "@yaz/api";
+
 import {
   canReach,
   completeTask,
@@ -21,6 +23,7 @@ import {
   checkReach,
   forgetBase,
   listTasks,
+  updateTask,
 } from "../../../../../plugins/todoist/src/api";
 
 /** An `App` with only what the API client actually reaches for. */
@@ -84,6 +87,10 @@ describe("reading Todoist's tasks", () => {
         due: { date: "2026-09-01", string: "1 Sep" },
         priority: 3,
         url: "https://app.todoist.com/app/task/77",
+        parent_id: "70",
+        description: "Page 8, table 2.",
+        section_id: "5",
+        added_at: "2026-08-01T09:00:00Z",
       },
     ]);
     return expect(listTasks(app, "220")).resolves.toEqual([
@@ -92,10 +99,32 @@ describe("reading Todoist's tasks", () => {
         title: "Chase the DIN 277 page number",
         done: false,
         due: "2026-09-01",
-        priority: 3,
+        // Todoist's 3 is its second-most urgent, which is 2 on the scale the
+        // contract fixes. See the test below.
+        priority: 2,
         url: "https://app.todoist.com/app/task/77",
+        parentId: "70",
+        notes: "Page 8, table 2.",
+        sectionId: "5",
+        created: "2026-08-01T09:00:00Z",
       },
     ]);
+  });
+
+  it("turns Todoist's priority the right way round", async () => {
+    // Todoist's API numbers its *most* urgent priority 4 and calls it p1; the
+    // contract's scale has 1 as the most urgent. Getting this backwards would
+    // paint every trivial task red and leave the urgent ones plain, which is
+    // worse than no colour at all.
+    const app = appReturning([
+      { id: "1", content: "p1", priority: 4 },
+      { id: "2", content: "p2", priority: 3 },
+      { id: "3", content: "p3", priority: 2 },
+      { id: "4", content: "p4", priority: 1 },
+      { id: "5", content: "none" },
+    ]);
+    const read = await listTasks(app, "220");
+    expect(read.map((task) => task.priority)).toEqual([1, 2, 3, 4, null]);
   });
 
   it("falls back to the words when there is no plain date", () => {
@@ -243,5 +272,72 @@ describe("whether the token works", () => {
 
   it("is ready when the service answers", () => {
     return expect(canReach(appReturning([]))).resolves.toBe(true);
+  });
+});
+
+describe("changing a task", () => {
+  /** An app that records the request instead of making one. */
+  function recording(): {
+    app: App;
+    sent: { url: string; options: unknown }[];
+  } {
+    const sent: { url: string; options: unknown }[] = [];
+    const app = {
+      credentials: {
+        has: () => Promise.resolve(true),
+        fetch: (url: string, options: unknown) => {
+          sent.push({ url, options });
+          return Promise.resolve({});
+        },
+      },
+    } as unknown as App;
+    return { app, sent };
+  }
+
+  /** The body of the one request that was made. */
+  function body(sent: { options: unknown }[]): Record<string, unknown> {
+    const options = sent.at(-1)?.options as
+      { body?: Record<string, unknown> } | undefined;
+    return options?.body ?? {};
+  }
+
+  it("sends only what the patch names", async () => {
+    // A caller changing a due date has not read the description, and must not
+    // be able to blank it by not sending it.
+    const { app, sent } = recording();
+    await updateTask(app, "77", { due: "2026-09-01" });
+    expect(Object.keys(body(sent))).toEqual(["due_string"]);
+  });
+
+  it("turns the priority back the way Todoist counts it", async () => {
+    // The contract's 1 is the most urgent; Todoist's 4 is. Getting this
+    // backwards would make "urgent" mean "whenever" on the way out, which no
+    // test of the read path would catch.
+    const { app, sent } = recording();
+    await updateTask(app, "77", { priority: 1 });
+    expect(body(sent)["priority"]).toBe(4);
+
+    await updateTask(app, "77", { priority: 4 });
+    expect(body(sent)["priority"]).toBe(1);
+  });
+
+  it("sends the words of a due date rather than a parsed day", async () => {
+    // Todoist understands "every Monday". Parsing it here would turn a
+    // recurring task into a single one, silently.
+    const { app, sent } = recording();
+    await updateTask(app, "77", { due: "every Monday" });
+    expect(body(sent)["due_string"]).toBe("every Monday");
+  });
+
+  it("clears a due date rather than sending an empty one", async () => {
+    const { app, sent } = recording();
+    await updateTask(app, "77", { due: null });
+    expect(body(sent)["due_string"]).toBe("no date");
+  });
+
+  it("makes no request at all for an empty patch", async () => {
+    const { app, sent } = recording();
+    await updateTask(app, "77", {});
+    expect(sent).toHaveLength(0);
   });
 });

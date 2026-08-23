@@ -34,6 +34,43 @@
   /** Whether an action is running, so a second click cannot start it twice. */
   let running = $state<string | null>(null);
 
+  /** The title, while it is being renamed. `null` when it is not. */
+  let renaming = $state<string | null>(null);
+
+  /**
+   * Save the title and stop editing.
+   *
+   * On blur as well as on Return, because a field left open is a change the
+   * user believes they made.
+   */
+  async function commitTitle() {
+    const next = renaming?.trim();
+    renaming = null;
+    if (!next || !detail?.rename || next === detail.title) return;
+    await detail.rename(next);
+  }
+
+  /**
+   * The value a day picker can show, or nothing.
+   *
+   * A picker only understands `yyyy-mm-dd`. "every Monday" is a perfectly good
+   * due date and is not one of those, so the picker is left empty rather than
+   * being given something it would silently mangle — the text field beside it
+   * is still showing the words.
+   */
+  function asDay(value: string): string {
+    return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : "";
+  }
+
+  /** Save an edited row, if it actually changed. */
+  async function commitEdit(
+    edit: { value: string; save: (value: string) => unknown },
+    next: string,
+  ) {
+    if (next === edit.value) return;
+    await edit.save(next);
+  }
+
   async function run(action: { labelKey: string; run: () => unknown }) {
     running = action.labelKey;
     try {
@@ -50,11 +87,44 @@
   {:else}
     <div class="head">
       <span class="kind">{t(detail.kindKey)}</span>
-      <h2>{detail.title}</h2>
+      {#if renaming !== null}
+        <!-- svelte-ignore a11y_autofocus -->
+        <input
+          class="rename"
+          type="text"
+          autofocus
+          bind:value={renaming}
+          aria-label={t("details-rename")}
+          onblur={() => void commitTitle()}
+          onkeydown={(event) => {
+            if (event.key === "Enter") void commitTitle();
+            if (event.key === "Escape") renaming = null;
+          }}
+        />
+      {:else}
+        <!-- Double-click to rename, which is how a name is changed in a file
+             list, a browser tab and everywhere else. A single click would make
+             the title unreadable the moment you looked at it. -->
+        <h2
+          class:renameable={Boolean(detail.rename)}
+          title={detail.rename ? t("details-rename") : undefined}
+          ondblclick={() => {
+            if (detail?.rename) renaming = detail.title;
+          }}
+        >
+          {detail.title}
+        </h2>
+      {/if}
       {#if detail.subtitle}
         <p class="subtitle">{detail.subtitle}</p>
       {/if}
     </div>
+
+    {#if detail.body}
+      <!-- The author's own words, with their own line breaks. A description
+           folded into one paragraph is a description rewritten. -->
+      <p class="body">{detail.body}</p>
+    {/if}
 
     {#if detail.fields && detail.fields.length > 0}
       <dl>
@@ -63,6 +133,89 @@
           <dd>{field.value}</dd>
         {/each}
       </dl>
+    {/if}
+
+    {#if detail.edits && detail.edits.length > 0}
+      <div class="edits">
+        {#each detail.edits as edit, index (index)}
+          <label>
+            <span>{t(edit.labelKey)}</span>
+            {#if edit.kind === "paragraph"}
+              <textarea
+                rows="3"
+                value={edit.value}
+                placeholder={edit.placeholderKey ? t(edit.placeholderKey) : ""}
+                onblur={(event) =>
+                  void commitEdit(edit, event.currentTarget.value)}
+              ></textarea>
+            {:else if edit.kind === "date"}
+              <!--
+                Both, over one value, because neither alone is enough: a picker
+                cannot say "every Monday", and a text field means knowing what
+                date next Tuesday is. What is typed wins, because it is the one
+                that can carry a recurrence.
+              -->
+              <span class="pair">
+                <input
+                  type="text"
+                  value={edit.value}
+                  placeholder={edit.placeholderKey
+                    ? t(edit.placeholderKey)
+                    : ""}
+                  onblur={(event) =>
+                    void commitEdit(edit, event.currentTarget.value)}
+                />
+                <input
+                  type="date"
+                  value={asDay(edit.value)}
+                  aria-label={t(edit.labelKey)}
+                  onchange={(event) =>
+                    void commitEdit(edit, event.currentTarget.value)}
+                />
+              </span>
+            {:else}
+              <input
+                type="text"
+                value={edit.value}
+                placeholder={edit.placeholderKey ? t(edit.placeholderKey) : ""}
+                onblur={(event) =>
+                  void commitEdit(edit, event.currentTarget.value)}
+              />
+            {/if}
+          </label>
+        {/each}
+      </div>
+    {/if}
+
+    {#if detail.choices && detail.choices.length > 0}
+      <!-- What can be moved, below what can only be read: the tab is a place
+           to look at a thing first and change it second. -->
+      <div class="choices">
+        {#each detail.choices as choice, index (index)}
+          <label>
+            <span>{t(choice.labelKey)}</span>
+            <select
+              value={choice.value ?? ""}
+              disabled={running !== null}
+              onchange={(event) =>
+                void run({
+                  labelKey: choice.labelKey,
+                  run: () =>
+                    choice.choose(
+                      (event.currentTarget as HTMLSelectElement).value || null,
+                    ),
+                })}
+            >
+              {#if choice.noneKey}
+                <option value="">{t(choice.noneKey)}</option>
+              {/if}
+              {#each choice.options as option (option.value)}
+                <option value={option.value}>{option.label}</option>
+              {/each}
+            </select>
+          </label>
+        {/each}
+      </div>
     {/if}
 
     {#if detail.actions && detail.actions.length > 0}
@@ -120,6 +273,104 @@
     margin: var(--yaz-space-1) 0 0;
     color: var(--yaz-text-secondary);
     font-size: 0.9em;
+  }
+
+  .body {
+    margin: 0;
+    padding: var(--yaz-space-3) var(--yaz-space-3) 0;
+    color: var(--yaz-text-secondary);
+    font-size: 0.9em;
+    /* The author's line breaks, kept. */
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .rename {
+    inline-size: 100%;
+    font: inherit;
+    font-size: var(--yaz-font-size-base);
+    margin-block-start: var(--yaz-space-1);
+    padding: 0;
+    color: var(--yaz-text-primary);
+    background: none;
+    border: none;
+    border-block-end: 1px solid var(--yaz-accent);
+  }
+
+  /* Only a hint that it can be: a title that looked like a field would be a
+     title nobody read as a title. */
+  h2.renameable {
+    cursor: text;
+  }
+
+  .edits {
+    display: flex;
+    flex-direction: column;
+    gap: var(--yaz-space-2);
+    padding: var(--yaz-space-3);
+    border-block-start: 1px solid var(--yaz-border);
+  }
+
+  .edits label {
+    display: flex;
+    flex-direction: column;
+    gap: var(--yaz-space-1);
+    font-size: 0.9em;
+    color: var(--yaz-text-muted);
+  }
+
+  .edits input,
+  .edits textarea {
+    font: inherit;
+    inline-size: 100%;
+    min-inline-size: 0;
+    padding: var(--yaz-space-1) var(--yaz-space-2);
+    color: var(--yaz-text-primary);
+    background: var(--yaz-bg-secondary);
+    border: 1px solid var(--yaz-border);
+    border-radius: var(--yaz-radius-sm);
+    resize: vertical;
+  }
+
+  .edits .pair {
+    display: flex;
+    gap: var(--yaz-space-2);
+  }
+
+  .edits .pair input[type="date"] {
+    inline-size: auto;
+    flex: none;
+  }
+
+  .choices {
+    display: flex;
+    flex-direction: column;
+    gap: var(--yaz-space-2);
+    padding: var(--yaz-space-3);
+    border-block-start: 1px solid var(--yaz-border);
+  }
+
+  .choices label {
+    display: flex;
+    align-items: center;
+    gap: var(--yaz-space-3);
+    font-size: 0.9em;
+    color: var(--yaz-text-muted);
+  }
+
+  .choices select {
+    flex: 1;
+    min-inline-size: 0;
+    font: inherit;
+    padding: var(--yaz-space-1) var(--yaz-space-2);
+    color: var(--yaz-text-primary);
+    background: var(--yaz-bg-secondary);
+    border: 1px solid var(--yaz-border);
+    border-radius: var(--yaz-radius-sm);
+  }
+
+  .choices select:disabled {
+    opacity: 0.5;
   }
 
   dl {

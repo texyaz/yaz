@@ -39,7 +39,7 @@
  */
 
 import { Plugin } from "@yaz/api";
-import type { Task, TaskProject } from "@yaz/api";
+import type { Task, TaskPatch, TaskProject } from "@yaz/api";
 
 import {
   canReach,
@@ -47,7 +47,10 @@ import {
   createProject,
   createTask,
   listProjects,
+  listSections,
   listTasks,
+  moveTask,
+  updateTask,
 } from "./api";
 import { renderSettings } from "./settings";
 import { SETTINGS_STYLE } from "./style";
@@ -91,6 +94,11 @@ export default class TodoistPlugin extends Plugin {
       createTask: (projectId: string, title: string) =>
         createTask(this.app, projectId, title),
       completeTask: (taskId: string) => completeTask(this.app, taskId),
+      listSections: (projectId: string) => listSections(this.app, projectId),
+      moveTask: (taskId: string, sectionId: string | null) =>
+        moveTask(this.app, taskId, sectionId),
+      updateTask: (taskId: string, patch: TaskPatch) =>
+        updateTask(this.app, taskId, patch),
     });
 
     this.addSettingsTab({
