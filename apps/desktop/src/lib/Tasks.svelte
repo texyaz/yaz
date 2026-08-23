@@ -333,7 +333,7 @@
 
   li {
     display: flex;
-    align-items: flex-start;
+    align-items: baseline;
     gap: var(--yaz-space-2);
     padding: var(--yaz-space-1) var(--yaz-space-3);
     /* Sub-tasks step in rather than being drawn in a list of their own, so the
@@ -360,21 +360,34 @@
     block-size: 1em;
     margin: 0;
     /*
-      Centred on the first line of the title rather than sat at the top of it.
+      Aligned to the *text*, not to the line box.
 
-      A 1em box aligned to the top of a line box sits above the middle of the
-      text it stands beside, which reads as the title hanging low. `lh` is the
-      line's own height, so this stays right if the theme changes it; the plain
-      value above is the same sum for the line height in use today.
+      Centring a 1em box in the line box is the obvious thing and it is wrong:
+      a line box is taller than the letters in it, and the extra room is mostly
+      below the baseline for descenders. So the box came out a couple of pixels
+      high and the title read as hanging low.
+
+      What the eye matches is the middle of the lower-case letters. With the box
+      sitting on the baseline — which is what `align-items: baseline` gives an
+      empty inline-block — its centre is half its height above the baseline, and
+      the letters' centre is half the x-height above it. The difference is the
+      shift, and for the roughly 0.52em x-height of the interface face that is
+      (1em - 0.52em) / 2.
     */
-    margin-block-start: 0.25em;
-    margin-block-start: calc((1lh - 1em) / 2);
+    align-self: baseline;
+    transform: translateY(0.24em);
     flex: none;
     background: var(--yaz-bg-secondary);
     border: 1px solid var(--yaz-border);
     border-radius: var(--yaz-radius-sm);
     cursor: pointer;
-    display: grid;
+    /*
+      Inline-grid, not grid, and the difference is the whole point: an element
+      with no line box in it takes its baseline from its bottom margin edge only
+      when it is inline-level. A block grid has no baseline to align to, and the
+      shift below would be measured from somewhere the browser chose.
+    */
+    display: inline-grid;
     place-content: center;
   }
 

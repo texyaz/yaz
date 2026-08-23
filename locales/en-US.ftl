@@ -555,6 +555,7 @@ group-panes = Panes
 group-editing = Editing
 group-connections = Connections
 group-versions = Versions
+group-capture = Capture
 group-learn = Learn
 group-about = About
 
@@ -852,6 +853,7 @@ details-task-due = Due
 details-task-priority = Priority
 details-task-created = Created
 details-rename = Rename
+details-pick-date = Pick a date
 details-task-description = Description
 details-task-description-empty = Nothing written yet
 details-task-due-empty = No date

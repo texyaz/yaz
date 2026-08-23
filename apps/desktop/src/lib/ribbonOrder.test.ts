@@ -24,14 +24,16 @@ const built = [
 const ids = (tabs: { id: string }[]) => tabs.map((tab) => tab.id);
 
 describe("orderTabs", () => {
-  it("puts Start first and Help last, with View beside it", () => {
+  it("puts Start first, then the document tabs, then Connections and Help", () => {
+    // Connections is set up once and then left alone, so it sits at the end
+    // with View and Help rather than among the tabs used while writing.
     expect(ids(orderTabs(built))).toEqual([
       "ribbon-start",
-      "ribbon-connections",
       "layout",
       "document",
       "work",
       "menu-view",
+      "ribbon-connections",
       "menu-help",
     ]);
   });

@@ -150,10 +150,14 @@
               ></textarea>
             {:else if edit.kind === "date"}
               <!--
-                Both, over one value, because neither alone is enough: a picker
-                cannot say "every Monday", and a text field means knowing what
-                date next Tuesday is. What is typed wins, because it is the one
-                that can carry a recurrence.
+                One field, with a picker on the end of it.
+
+                Two fields side by side asked the reader which one was the real
+                answer. This has one: what is typed is the value, and the picker
+                writes into it. That keeps "every Monday" expressible — a picker
+                cannot say it, and a service that understands it should get the
+                chance — while sparing anybody who just wants next Tuesday from
+                knowing what date that is.
               -->
               <span class="pair">
                 <input
@@ -165,13 +169,43 @@
                   onblur={(event) =>
                     void commitEdit(edit, event.currentTarget.value)}
                 />
+                <!--
+                  The native picker, opened by the button and never shown as a
+                  field of its own. `showPicker` is what browsers give for
+                  exactly this; where it is missing the input is still reachable
+                  by clicking it, so the control degrades to a small date box
+                  rather than to nothing.
+                -->
                 <input
+                  class="picker"
                   type="date"
                   value={asDay(edit.value)}
-                  aria-label={t(edit.labelKey)}
+                  tabindex="-1"
+                  aria-hidden="true"
                   onchange={(event) =>
                     void commitEdit(edit, event.currentTarget.value)}
                 />
+                <button
+                  type="button"
+                  class="calendar"
+                  title={t("details-pick-date")}
+                  aria-label={t("details-pick-date")}
+                  onclick={(event) => {
+                    const picker = (
+                      event.currentTarget as HTMLElement
+                    ).previousElementSibling as HTMLInputElement | null;
+                    if (!picker) return;
+                    if (typeof picker.showPicker === "function") {
+                      picker.showPicker();
+                    } else {
+                      picker.click();
+                    }
+                  }}
+                >
+                  <svg viewBox="0 0 16 16" aria-hidden="true">
+                    <path d="M2.5 4h11v9.5h-11zM2.5 6.5h11M5.5 2.5v3M10.5 2.5v3" />
+                  </svg>
+                </button>
               </span>
             {:else}
               <input
@@ -333,13 +367,56 @@
   }
 
   .edits .pair {
+    position: relative;
     display: flex;
-    gap: var(--yaz-space-2);
+    gap: var(--yaz-space-1);
   }
 
-  .edits .pair input[type="date"] {
-    inline-size: auto;
+  /*
+    The picker itself takes no room.
+
+    It has to stay in the layout for `showPicker` to have somewhere to anchor —
+    `display: none` makes the call throw — so it is a zero-width sliver behind
+    the button rather than a second field the reader has to interpret.
+  */
+  .edits .pair .picker {
+    position: absolute;
+    inset-block-end: 0;
+    inset-inline-end: 0;
+    inline-size: 1px;
+    block-size: 1px;
+    padding: 0;
+    border: none;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .edits .calendar {
     flex: none;
+    display: grid;
+    place-items: center;
+    inline-size: 2em;
+    font: inherit;
+    color: var(--yaz-text-muted);
+    background: var(--yaz-bg-secondary);
+    border: 1px solid var(--yaz-border);
+    border-radius: var(--yaz-radius-sm);
+    cursor: pointer;
+  }
+
+  .edits .calendar:hover {
+    color: var(--yaz-text-primary);
+    background: var(--yaz-bg-hover);
+  }
+
+  .edits .calendar svg {
+    inline-size: 1em;
+    block-size: 1em;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.3;
+    stroke-linecap: round;
+    stroke-linejoin: round;
   }
 
   .choices {

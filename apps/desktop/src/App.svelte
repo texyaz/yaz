@@ -242,6 +242,23 @@
   /** The plugin the shell asks about connection status on the user's behalf. */
   const ZOTERO_PLUGIN_ID = "com.yaz.zotero";
 
+  /** The plugins whose commands the shell puts somewhere particular. */
+  const TODOIST_PLUGIN_ID = "com.yaz.todoist";
+  const LEARN_PLUGIN_ID = "com.yaz.learn";
+
+  /**
+   * The commands one plugin contributes.
+   *
+   * The shell places a handful of plugins' commands deliberately — beside the
+   * connection they need, or in the tab whose job they do. Everything else a
+   * plugin adds is reachable from the command palette without the shell knowing
+   * anything about it, which is the arrangement ADR-0005 asks for: this is a
+   * courtesy for the bundled few, not a privilege they depend on.
+   */
+  function commandsOf(pluginId: string) {
+    return commands.filter((command) => command.pluginId === pluginId);
+  }
+
   /**
    * The editor is loaded when a file is first opened, not at startup.
    *
@@ -1440,6 +1457,8 @@
     showNotice(t("search-replaced", { count: changes.length }));
   }
 
+
+
   /** Settings panels plugins contributed, shown under Settings → Plugins. */
   let pluginPanels = $state<RegisteredSettings[]>([]);
 
@@ -2469,10 +2488,13 @@ ${entryText}`,
           disabled: connectionsBusy,
           action: connectZotero,
         },
-        // What the Zotero plugin contributes. Its commands belong beside the
-        // connection they need rather than in a general-purpose menu — every
-        // one of them fails without it.
-        ...commands.map((command) => ({
+        // What the *Zotero* plugin contributes, and only that. Its commands
+        // belong beside the connection they need — every one of them fails
+        // without it — but that reasoning is exactly why another plugin's
+        // commands do not belong here. This used to take every command from
+        // every plugin, so capturing a screenshot and adding a task both
+        // appeared under Zotero.
+        ...commandsOf(ZOTERO_PLUGIN_ID).map((command) => ({
           labelKey: command.nameKey,
           icon: "book" as const,
           group: "connections-zotero-group",
@@ -2501,6 +2523,14 @@ ${entryText}`,
                 disabled: connectionsBusy || !tasksReady || !project,
                 action: () => void linkTasks(),
               },
+              // What the to-do plugin contributes, beside its own connection
+              // for the same reason Zotero's are beside Zotero's.
+              ...commandsOf(TODOIST_PLUGIN_ID).map((command) => ({
+                labelKey: command.nameKey,
+                icon: "calendar" as const,
+                group: "connections-tasks-group",
+                action: () => runCommand(command.id),
+              })),
               // Said rather than left to be guessed from a disabled button:
               // "sign in first" is a different problem from "no project open".
               ...(tasksReady
@@ -2528,6 +2558,16 @@ ${entryText}`,
     {
       labelKey: "menu-help",
       items: [
+        // Capturing part of the application is documentation work: it is how
+        // the manual gets its pictures. It needs no connection to anything, so
+        // it has no business under Connections — which is where it was, because
+        // that tab used to take every plugin's commands.
+        ...commandsOf(LEARN_PLUGIN_ID).map((command) => ({
+          labelKey: command.nameKey,
+          icon: "page" as const,
+          group: "group-capture",
+          action: () => runCommand(command.id),
+        })),
         { labelKey: "menu-help-documentation",
           icon: "book" as const,
           group: "group-learn", action: notImplemented, disabled: true },

@@ -552,6 +552,7 @@ group-panes = Bereiche
 group-editing = Bearbeiten
 group-connections = Verbindungen
 group-versions = Versionen
+group-capture = Aufnehmen
 group-learn = Lernen
 group-about = Über
 
@@ -849,6 +850,7 @@ details-task-due = Fällig
 details-task-priority = Priorität
 details-task-created = Erstellt
 details-rename = Umbenennen
+details-pick-date = Datum wählen
 details-task-description = Beschreibung
 details-task-description-empty = Noch nichts geschrieben
 details-task-due-empty = Kein Datum

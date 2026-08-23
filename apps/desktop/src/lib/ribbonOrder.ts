@@ -1,10 +1,10 @@
 /**
  * What order the ribbon's tabs appear in.
  *
- * Start, then the tabs about the document, then View and Help. That is Word's
- * own order and it is not arbitrary: the first tab is where a session begins,
- * the last two are about the application rather than the paper, and people
- * find both without reading the strip.
+ * Start, then the tabs about the document, then Connections, View and Help.
+ * That is close to Word's own order and it is not arbitrary: the first tab is
+ * where a session begins, and the last few are set up once and then left
+ * alone, which is not what the tabs between them are for.
  *
  * # Why this is sorted rather than arranged
  *
@@ -28,8 +28,14 @@ export interface Orderable {
 /** Pinned to the front, in this order. */
 export const FIRST_TABS = ["ribbon-start"];
 
-/** Pinned to the back, in this order. */
-export const LAST_TABS = ["menu-view", "menu-help"];
+/**
+ * Pinned to the back, in this order.
+ *
+ * Connections sits between View and Help. It is about the paper rather than
+ * about the application, so it does not belong *after* Help — but it is set up
+ * once and then left alone, which is not what the tabs before it are for.
+ */
+export const LAST_TABS = ["menu-view", "ribbon-connections", "menu-help"];
 
 /**
  * Sort tabs into the strip's order.
