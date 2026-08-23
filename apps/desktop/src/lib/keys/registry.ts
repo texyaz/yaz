@@ -60,6 +60,7 @@ export type CommandId =
   // Navigation
   | "navigate.outline"
   | "navigate.search"
+  | "navigate.replace"
   | "edit.complete";
 
 /**
@@ -146,11 +147,21 @@ export const SHORTCUTS: readonly Shortcut[] = [
     editor: true,
   },
   {
+    // At the window rather than in the editor, because it puts the caret in
+    // the search box — which is not in the editor, and has to be reachable
+    // when the caret is in a pane that is not the document either.
     id: "navigate.search",
     labelKey: "menu-edit-find",
     keys: "Mod-f",
     suites: ["core"],
-    editor: true,
+    editor: false,
+  },
+  {
+    id: "navigate.replace",
+    labelKey: "search-replace-toggle",
+    keys: "Mod-h",
+    suites: ["core"],
+    editor: false,
   },
   {
     // Displaced from Ctrl+Space, which is now the prefix every yaz shortcut
