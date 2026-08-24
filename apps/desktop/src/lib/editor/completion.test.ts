@@ -33,10 +33,12 @@ describe("noticing a command being typed", () => {
     expect(found?.query).toBe("sec");
   });
 
-  it("fires on the bare backslash, before anything is typed", () => {
-    // Which is the moment it is most useful: somebody who knows they want a
-    // command and not which one.
-    expect(trigger(`Ein ${B}‸`)?.kind).toBe("command");
+  it("waits for the first letter", () => {
+    // Every command yaz knows, alphabetically, is not a list anybody reads —
+    // it is a list they dismiss. One letter cuts it to something worth
+    // looking at.
+    expect(trigger(`Ein ${B}‸`)).toBeNull();
+    expect(trigger(`Ein ${B}s‸`)?.kind).toBe("command");
   });
 
   it("replaces the name, not the backslash", () => {
@@ -59,7 +61,9 @@ describe("noticing a command being typed", () => {
 describe("noticing an argument being typed", () => {
   it("knows a citation from a label from a glossary term", () => {
     expect(trigger(`${B}cite{‸`)?.argument).toBe("citation");
-    expect(trigger(`${B}ref{‸`)?.argument).toBe("label");
+    // A reference is asked in two steps; the empty brace is still the first.
+    expect(trigger(`${B}ref{‸`)?.argument).toBe("labelKind");
+    expect(trigger(`${B}ref{sec:‸`)?.argument).toBe("label");
     expect(trigger(`${B}gls{‸`)?.argument).toBe("glossary");
     expect(trigger(`${B}begin{‸`)?.argument).toBe("environment");
   });

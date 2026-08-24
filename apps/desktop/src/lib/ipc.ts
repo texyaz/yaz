@@ -822,3 +822,30 @@ export async function setKeyPreferences(
 ): Promise<void> {
   return invoke("set_key_preferences", { preferences });
 }
+
+/**
+ * The switches under View, as they were left.
+ *
+ * Per install rather than per project: whether somebody reads with the comments
+ * on is a fact about them, not about the paper.
+ */
+export interface ViewPreferences {
+  richText: boolean;
+  documentView: string;
+  lineNumbering: string;
+  wrap: boolean;
+  comments: boolean;
+  lineBreaks: boolean;
+  machinery: boolean;
+  tablesLocked: boolean;
+  paperLight: boolean;
+  zoom: number;
+}
+
+export function getViewPreferences(): Promise<ViewPreferences> {
+  return invoke<ViewPreferences>("get_view_preferences");
+}
+
+export function setViewPreferences(view: ViewPreferences): Promise<void> {
+  return invoke("set_view_preferences", { view });
+}

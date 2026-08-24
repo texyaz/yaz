@@ -38,6 +38,13 @@ compile-diagnostics =
        *[other] { $count } Probleme
     }
 completion-package-known = yaz kennt dieses
+completion-label-section = Abschnitt
+completion-label-figure = Abbildung
+completion-label-table = Tabelle
+completion-label-equation = Gleichung
+completion-label-chapter = Kapitel
+completion-label-appendix = Anhang
+completion-label-listing = Listing
 compile-engine-unavailable = Dieses Projekt ist auf { $engine } eingestellt, was nicht installiert ist. Installieren Sie eine TeX-Distribution oder stellen Sie das Projekt auf die eingebaute Tectonic-Engine um.
 
 ## Engines

@@ -78,6 +78,8 @@ fn main() {
             commands::recent_projects,
             appearance::get_appearance,
             appearance::set_appearance,
+            appearance::get_view_preferences,
+            appearance::set_view_preferences,
             appearance::list_themes,
             appearance::theme_stylesheet,
             appearance::export_theme,

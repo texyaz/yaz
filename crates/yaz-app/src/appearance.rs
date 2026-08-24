@@ -19,7 +19,7 @@
 use camino::{Utf8Path, Utf8PathBuf};
 use serde::{Deserialize, Serialize};
 use yaz_core::Error;
-use yaz_core::settings::{ColourMode, FormatPreferences, KeyPreferences, Settings};
+use yaz_core::settings::{ColourMode, FormatPreferences, KeyPreferences, Settings, ViewPreferences};
 
 use crate::commands::{CommandError, Result};
 
@@ -340,4 +340,24 @@ pub fn set_development_plugin(path: Option<String>) -> Result<Option<String>> {
     settings.development_plugin = chosen.clone();
     settings.save(&directory)?;
     Ok(chosen.map(|path| path.to_string()))
+}
+
+/// What View is set to.
+///
+/// A separate pair of commands from the appearance ones even though both live
+/// in the same file: appearance is what yaz looks like and this is what the
+/// *document* looks like, and a caller wanting one has no business writing the
+/// other back.
+#[tauri::command]
+pub fn get_view_preferences() -> Result<ViewPreferences> {
+    Ok(Settings::load(&config_dir()?).view)
+}
+
+/// Remember what View is set to.
+#[tauri::command]
+pub fn set_view_preferences(view: ViewPreferences) -> Result<()> {
+    let directory = config_dir()?;
+    let mut settings = Settings::load(&directory);
+    settings.view = view;
+    Ok(settings.save(&directory)?)
 }

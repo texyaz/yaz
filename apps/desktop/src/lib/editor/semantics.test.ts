@@ -132,6 +132,32 @@ describe("sectionNumbers", () => {
     ]);
   });
 
+  it("numbers an article from its own top level", () => {
+    // No `\chapter`, so the chapter counter never moves. Counting it anyway
+    // numbered the first section "0.1" — everywhere a number is shown.
+    const article = headings(
+      [
+        `${B}section{Eins}`,
+        `${B}section{Zwei}`,
+        `${B}subsection{Zwei Eins}`,
+      ].join("\n"),
+    );
+    const numbers = sectionNumbers(article);
+    expect(article.map((heading) => numbers.get(heading.from))).toEqual([
+      "1",
+      "2",
+      "2.1",
+    ]);
+  });
+
+  it("keeps a zero the document actually means", () => {
+    // A subsection before any section really does print "1.0.1" in LaTeX.
+    const odd = headings(
+      [`${B}chapter{Eins}`, `${B}subsection{Ohne Abschnitt}`].join("\n"),
+    );
+    expect(sectionNumbers(odd).get(odd[1]!.from)).toBe("1.0.1");
+  });
+
   it("leaves \\paragraph unnumbered, as the standard classes do", () => {
     const deep = headings(`${B}chapter{Eins}\n${B}paragraph{Ein Absatz}`);
     expect(sectionNumbers(deep).get(deep[1]!.from)).toBeUndefined();

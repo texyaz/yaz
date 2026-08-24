@@ -57,6 +57,14 @@ pub struct Settings {
     #[serde(default)]
     pub formats: FormatPreferences,
 
+    /// How the document is shown: the switches under View in the ribbon.
+    ///
+    /// Per install rather than per project. Whether somebody reads with the
+    /// comments on is a fact about them, not about the paper — and a preference
+    /// that had to be set again in every project would be one nobody sets.
+    #[serde(default)]
+    pub view: ViewPreferences,
+
     /// A plugin directory being worked on, loaded from disk as it is.
     ///
     /// The developer's way in, and deliberately not the user's: yaz reads this
@@ -126,6 +134,7 @@ impl Default for Settings {
             // Empty means every format's own support is on, which is what a
             // format added in a later version has to arrive as.
             formats: FormatPreferences::default(),
+            view: ViewPreferences::default(),
             development_plugin: None,
             plugins: BTreeMap::new(),
         }
@@ -301,5 +310,55 @@ mod tests {
         settings.remember_project(Utf8Path::new("/gone"));
         settings.forget_project(Utf8Path::new("/gone"));
         assert!(settings.recent_projects.is_empty());
+    }
+}
+
+/**
+ * The switches under View, remembered.
+ *
+ * Every one of them defaults to what a first run should look like rather than
+ * to the type's own default, which is why they are spelled out: `false` for
+ * `comments` would hide the author's own notes on a fresh install, and nobody
+ * would know they had been hidden.
+ */
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ViewPreferences {
+    /// Whether LaTeX is drawn as styled text rather than shown as source.
+    pub rich_text: bool,
+    /// How the text is set: `plain`, `continuous` or `page`.
+    pub document_view: String,
+    /// How the gutter numbers lines: `absolute`, `relative` or `none`.
+    pub line_numbering: String,
+    /// Whether a line too long for the pane comes back round.
+    pub wrap: bool,
+    /// Whether the author's own comments are on screen.
+    pub comments: bool,
+    /// Whether an explicit line break shows as itself.
+    pub line_breaks: bool,
+    /// Whether the document's machinery is on screen.
+    pub machinery: bool,
+    /// Whether a table stays drawn while the caret is inside it.
+    pub tables_locked: bool,
+    /// Whether the page is drawn as white paper whatever the interface is.
+    pub paper_light: bool,
+    /// How large the text is drawn, as a percentage.
+    pub zoom: u32,
+}
+
+impl Default for ViewPreferences {
+    fn default() -> Self {
+        Self {
+            rich_text: false,
+            document_view: "continuous".to_owned(),
+            line_numbering: "absolute".to_owned(),
+            wrap: true,
+            comments: true,
+            line_breaks: false,
+            machinery: false,
+            tables_locked: false,
+            paper_light: false,
+            zoom: 100,
+        }
     }
 }

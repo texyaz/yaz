@@ -31,6 +31,8 @@ const B = String.fromCharCode(92);
 
 /** What kind of thing an argument wants. */
 export type ArgumentKind =
+  /** The *kind* of thing being referred to: `sec`, `fig`, `tab`. */
+  | "labelKind"
   | "label"
   | "citation"
   | "glossary"
@@ -115,6 +117,21 @@ const ARGUMENTS: Record<string, ArgumentKind> = {
 const REACH = 120;
 
 /**
+ * How much text behind the caret {@link triggerAt} needs to see.
+ *
+ * Everything it does looks backwards and stops at {@link REACH}, so a caller
+ * holding a large document can hand over a window of this size instead of the
+ * whole thing. That matters: deciding "this is prose, offer nothing" is the
+ * answer on almost every keystroke, and it should not cost a copy of the
+ * thesis to arrive at (ADR-0027).
+ *
+ * Two characters more than the reach, because the check for `\\` — a line
+ * break rather than the start of a command — reads one character further back
+ * than the name it rejects.
+ */
+export const LOOKBEHIND = REACH + 2;
+
+/**
  * What is being typed at `at`, or `null` if it is not worth offering anything.
  *
  * `null` is the common answer and costs almost nothing: prose is not a trigger.
@@ -123,7 +140,14 @@ export function triggerAt(text: string, at: number): Trigger | null {
   return commandTrigger(text, at) ?? argumentTrigger(text, at);
 }
 
-/** A command name being typed after a backslash. */
+/**
+ * A command name being typed after a backslash.
+ *
+ * Not on the bare backslash. There are hundreds of commands and the first
+ * screenful of them alphabetically is no use to anybody — a list that appears
+ * saying `ac`, `acrfull`, `acrlong` the moment you press `\\` is a list you
+ * dismiss rather than read. One letter cuts it to something worth looking at.
+ */
 function commandTrigger(text: string, at: number): Trigger | null {
   let start = at;
   while (start > 0 && /[a-zA-Z]/.test(text[start - 1] ?? "")) start -= 1;
@@ -132,7 +156,10 @@ function commandTrigger(text: string, at: number): Trigger | null {
   // `\\` is a line break, not the start of a command name.
   if (text[start - 2] === B) return null;
 
-  return { kind: "command", from: start, query: text.slice(start, at) };
+  const query = text.slice(start, at);
+  if (query === "") return null;
+
+  return { kind: "command", from: start, query };
 }
 
 /** An argument being typed inside the braces of a command that takes one. */
@@ -179,19 +206,53 @@ function argumentTrigger(text: string, at: number): Trigger | null {
   const comma = query.lastIndexOf(",");
   if (query.includes("{") || query.includes("}")) return null;
 
-  return {
-    kind: "argument",
-    argument,
-    command,
-    from: open + 1 + comma + 1,
-    query: query.slice(comma + 1),
-  };
+  const typed = query.slice(comma + 1);
+  const from = open + 1 + comma + 1;
+
+  // A reference is asked in two steps. `\ref{` on its own offers the *kinds*
+  // of thing that can be referred to — a section, a figure, a table — because
+  // "which of the forty labels" is a question nobody can answer from a list,
+  // and "am I referring to a section or a figure" is one everybody can. Once
+  // the colon is there, the labels of that kind arrive.
+  if (argument === "label") {
+    const colon = typed.indexOf(":");
+    if (colon === -1) {
+      return {
+        kind: "argument",
+        argument: "labelKind",
+        command,
+        from,
+        query: typed,
+      };
+    }
+    return { kind: "argument", argument: "label", command, from, query: typed };
+  }
+
+  return { kind: "argument", argument, command, from, query: typed };
 }
 
 /** One thing that can be offered. */
 export interface Suggestion {
-  /** What is inserted. */
+  /** What is inserted, and what typing is matched against. */
   label: string;
+  /**
+   * What is shown, where that differs from what is inserted.
+   *
+   * A citation key is a handle rather than a name — `spielbauer2020` tells
+   * nobody which of four books it is — so the list reads "Spielbauer 2020" and
+   * the document still gets the key. Matching stays on the label, because
+   * somebody typing `spiel` means the key.
+   */
+  display?: string | undefined;
+  /**
+   * Whether choosing this should ask the next question straight away.
+   *
+   * A label prefix is half an answer: picking "Section" means `sec:` and then
+   * the very list that could not usefully have been shown before. Closing the
+   * tooltip there would make the two-step feel like an obstacle rather than a
+   * narrowing.
+   */
+  reopen?: boolean | undefined;
   /** The right-hand column: what it is, or where it came from. */
   detail?: string | undefined;
   /** The longer explanation, shown beside the list. */
@@ -199,6 +260,28 @@ export interface Suggestion {
   /** Sorts above the rest, for the handful that are usually what is wanted. */
   boost?: number | undefined;
 }
+
+/**
+ * The prefixes a label conventionally carries, and what each one names.
+ *
+ * `\ref{` on its own offers these rather than every label in the document,
+ * because "which of the forty labels" is a question nobody can answer from a
+ * list and "am I referring to a section or a figure" is one everybody can. The
+ * labels themselves arrive once the colon is typed.
+ *
+ * The list is the convention rather than a rule: a document may label anything
+ * anything, and one that does still gets its labels offered — they simply
+ * arrive under whatever prefix it used.
+ */
+export const LABEL_PREFIXES: { prefix: string; kindKey: string }[] = [
+  { prefix: "sec", kindKey: "completion-label-section" },
+  { prefix: "fig", kindKey: "completion-label-figure" },
+  { prefix: "tab", kindKey: "completion-label-table" },
+  { prefix: "eq", kindKey: "completion-label-equation" },
+  { prefix: "ch", kindKey: "completion-label-chapter" },
+  { prefix: "app", kindKey: "completion-label-appendix" },
+  { prefix: "lst", kindKey: "completion-label-listing" },
+];
 
 /**
  * Every `\label{...}` in the text.
@@ -211,7 +294,10 @@ export interface Suggestion {
  * Labels inside a comment are skipped: `% \label{old}` is not a label, and
  * offering it sends somebody to a reference that will not resolve.
  */
-export function labelsIn(text: string): Suggestion[] {
+export function labelsIn(
+  text: string,
+  named: ReadonlyMap<number, string> = new Map(),
+): Suggestion[] {
   const found: Suggestion[] = [];
   const seen = new Set<string>();
 
@@ -219,17 +305,43 @@ export function labelsIn(text: string): Suggestion[] {
   for (const match of text.matchAll(pattern)) {
     const key = (match[1] ?? "").trim();
     if (!key || seen.has(key)) continue;
-    if (commented(text, match.index ?? 0)) continue;
+    const at = match.index ?? 0;
+    if (commented(text, at)) continue;
     seen.add(key);
 
     found.push({
       label: key,
-      // What the label is attached to, which is what tells `fig:ablauf` from
-      // `tab:ablauf` at a glance.
-      detail: kindOfLabel(key),
+      // What it is attached to: "3.2 Kosten" rather than `sec:kosten`. The key
+      // is what goes in the document and the title is what tells somebody
+      // whether it is the one they meant — a list of forty keys is a list
+      // nobody can choose from.
+      detail: nearest(named, at) ?? kindOfLabel(key),
     });
   }
   return found;
+}
+
+/**
+ * What the nearest thing above an offset is called.
+ *
+ * A `\\label` follows whatever it labels, so the last entry at or before it is
+ * the one it names. Linear rather than a search: the map is small — one entry
+ * per heading and caption — and building an index of it would cost more than
+ * walking it.
+ */
+function nearest(
+  named: ReadonlyMap<number, string>,
+  at: number,
+): string | undefined {
+  let best: string | undefined;
+  let bestAt = -1;
+  for (const [where, title] of named) {
+    if (where <= at && where > bestAt) {
+      bestAt = where;
+      best = title;
+    }
+  }
+  return best;
 }
 
 /** Whether an offset is inside a comment — a `%` earlier on the same line. */

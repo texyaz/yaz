@@ -396,9 +396,15 @@
    * Joining is a different document even though the file has not changed —
    * a buffer of seven files is not the file it started from, and the editor
    * has to replace the text rather than fold the change into what is there.
+   *
+   * The project's root is part of it because the *name* is not enough: nearly
+   * every project has a `main.tex`, so opening a second one left the first
+   * one's text on screen — the editor was told the document had not changed.
    */
   const editorDocId = $derived(
-    joined && project ? `joined:${project.entry}` : (currentFile ?? ""),
+    joined && project
+      ? `joined:${project.root}:${project.entry}`
+      : `${project?.root ?? ""}:${currentFile ?? ""}`,
   );
 
   /**
@@ -788,6 +794,24 @@
       try {
         appearance = await ipc.getAppearance();
         themes = await ipc.listThemes();
+
+        // What View was left at. Applied before anything is drawn, so the
+        // document does not appear as source and then flip to preview.
+        const view = await ipc.getViewPreferences();
+        richText = view.richText;
+        chosenView = view.documentView as DocumentView;
+        numbering = view.lineNumbering as LineNumbering;
+        wrap = view.wrap;
+        comments = view.comments;
+        lineBreaks = view.lineBreaks;
+        machinery = view.machinery;
+        tablesLocked = view.tablesLocked;
+        paperLight = view.paperLight;
+        zoom = view.zoom;
+        // Only now may the effect above write: before this it would have
+        // overwritten the file with the defaults it had not yet replaced.
+        viewLoaded = true;
+
         // The stored suites are strings: a settings file written by a later
         // version can name a group this one has never heard of, and the
         // registry ignores what it does not recognise rather than refusing to
@@ -1509,6 +1533,48 @@
     showNotice(t("paste-image-saved", { file: path }));
     return figureFor(path);
   }
+
+  /**
+   * The View switches, as they were left last time.
+   *
+   * Written back whenever one changes rather than on close: yaz can be closed
+   * by the window manager, by a crash, or by an update, and a preference that
+   * only survived a graceful exit would be one that mostly did not.
+   *
+   * Debounced, because the zoom control fires on every wheel notch and a write
+   * to disk per notch is a write per notch.
+   */
+  let viewLoaded = $state(false);
+  let viewTimer: ReturnType<typeof setTimeout> | undefined;
+
+  $effect(() => {
+    // Read so the effect depends on each of them.
+    const preferences: ipc.ViewPreferences = {
+      richText,
+      documentView: chosenView,
+      lineNumbering: numbering,
+      wrap,
+      comments,
+      lineBreaks,
+      machinery,
+      tablesLocked,
+      paperLight,
+      zoom,
+    };
+    // Not before they have been read: the first run of this effect happens with
+    // the defaults still in place, and writing those back would overwrite what
+    // is on disk with what has not been loaded from it yet.
+    if (!viewLoaded) return;
+
+    clearTimeout(viewTimer);
+    viewTimer = setTimeout(() => {
+      void ipc.setViewPreferences(preferences).catch(() => {
+        // A preference that could not be written is not worth interrupting
+        // somebody's writing for. It will be written again on the next change.
+      });
+    }, 400);
+    return () => clearTimeout(viewTimer);
+  });
 
   /** Settings panels plugins contributed, shown under Settings → Plugins. */
   let pluginPanels = $state<RegisteredSettings[]>([]);
@@ -4123,6 +4189,7 @@ ${entryText}`,
           refreshCommands();
         }}
         formatBar={currentFormat === "latex"}
+        latex={currentFormat === "latex"}
         onPasteImage={currentFormat === "latex" ? savePastedImage : undefined}
         onRequirePackage={(name) => void ensurePackage(name)}
       />

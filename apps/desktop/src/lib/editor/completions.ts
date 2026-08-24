@@ -25,7 +25,7 @@
 
 import { Facet } from "@codemirror/state";
 import type { Extension, Text } from "@codemirror/state";
-import { autocompletion } from "@codemirror/autocomplete";
+import { autocompletion, startCompletion } from "@codemirror/autocomplete";
 import type {
   Completion,
   CompletionContext,
@@ -34,7 +34,9 @@ import type {
 
 import { t } from "../i18n";
 import {
+  LABEL_PREFIXES,
   labelsIn,
+  LOOKBEHIND,
   rank,
   STANDARD_CLASSES,
   STRUCTURAL_COMMANDS,
@@ -42,6 +44,9 @@ import {
 } from "./completion";
 import type { Suggestion, Trigger } from "./completion";
 import { glossaryEntries } from "./generated";
+import type { Entry } from "./generated";
+import { sectionNumbers } from "./semantics";
+import { braceCommands, headings, plainText } from "./structure";
 import { bibliography } from "./semanticView";
 import { environmentsOfKind, knownCommands } from "./vocabulary";
 
@@ -94,18 +99,73 @@ function readDocument(doc: Text): Cached {
   if (remembered) return remembered;
 
   const text = doc.toString();
+  // What each heading and caption in the text is called, with the number LaTeX
+  // will print in front of it, so a label can say "3.2 Kosten" rather than
+  // `sec:kosten`. The numbering comes from the same walk the outline uses.
   const found: Cached = {
-    labels: labelsIn(text),
-    glossary: glossaryEntries(text).map((entry) => ({
-      // A glossary entry is cited by its key, not by what it prints — `\gls{BIM}`
-      // where the entry reads "Building Information Modeling".
-      label: entry.key ?? entry.label,
-      detail: entry.label,
-      info: entry.detail ?? undefined,
-    })),
+    labels: labelsIn(text, namedThings(text)),
+    glossary: glossaryEntries(text).map(glossarySuggestion),
   };
   cache.set(doc, found);
   return found;
+}
+
+/**
+ * One glossary entry, as something worth reading in a list.
+ *
+ * A glossary entry has up to three parts and the key is the least informative
+ * of them: it is what `\gls{}` takes, and that is all. So the key is the label
+ * — it is what gets inserted and what typing is matched against — and the line
+ * beside it carries whichever of the other two actually says something.
+ *
+ * For `\newacronym{AIA}{AIA}{Auftraggeber-Informationsanforderungen}` the name
+ * *is* the key, which is how the list came to read "AIA — AIA". The expansion
+ * is the only part that tells anybody anything, so that is what shows.
+ */
+function glossarySuggestion(entry: Entry): Suggestion {
+  const key = entry.key ?? entry.label;
+  const name = entry.label;
+  const description = entry.detail ?? undefined;
+
+  // The name where it adds something, the description where the name does not.
+  const beside = name !== key ? name : description;
+  const suggestion: Suggestion = { label: key };
+  if (beside !== undefined) suggestion.detail = beside;
+  // Only when it is not already what is on the line.
+  if (description !== undefined && description !== beside) {
+    suggestion.info = description;
+  }
+  return suggestion;
+}
+
+/**
+ * What each heading and caption in the text is called, by where it starts.
+ *
+ * Headings carry the number LaTeX will print, from the same function the
+ * outline uses, so the two cannot disagree. Captions carry their words, which
+ * is what tells one figure from another.
+ *
+ * Read on a trigger like everything else here, never on a change.
+ */
+function namedThings(text: string): Map<number, string> {
+  const named = new Map<number, string>();
+
+  const found = headings(text);
+  const numbers = sectionNumbers(found);
+  for (const heading of found) {
+    const number = numbers.get(heading.from);
+    const title = plainText(heading.title);
+    named.set(heading.from, number ? `${number} ${title}` : title);
+  }
+
+  for (const caption of braceCommands(text, ["caption"])) {
+    named.set(
+      caption.from,
+      plainText(text.slice(caption.argFrom, caption.argTo)),
+    );
+  }
+
+  return named;
 }
 
 /**
@@ -181,14 +241,23 @@ function candidatesFor(
 
   const state = context.state;
   switch (trigger.argument) {
+    case "labelKind":
+      // The kinds first: "which of the forty labels" is a question nobody can
+      // answer from a list, and "a section or a figure" is one everybody can.
+      return labelKinds(readDocument(state.doc).labels);
+
     case "label":
       return readDocument(state.doc).labels;
 
     case "citation":
       return [...state.facet(bibliography).values()].map((entry) => ({
         label: entry.key,
-        detail: entry.label,
-        info: entry.detail,
+        // What the list reads as. A citation key is a handle, not a name —
+        // `spielbauer2020` tells nobody which of four books it is — so the
+        // author, year and title go where the eye lands. The key is still what
+        // goes into the document.
+        display: entry.label,
+        detail: entry.detail,
       }));
 
     case "glossary":
@@ -217,6 +286,46 @@ function candidatesFor(
   }
 }
 
+/**
+ * The kinds of thing this document refers to, as prefixes.
+ *
+ * The conventional ones, and whatever else the document actually uses: a paper
+ * that labels its figures `bild:` gets `bild:` offered, because the convention
+ * is a convention and not a rule.
+ *
+ * Each says how many there are, which is the other half of the question — "12
+ * sections" is a different answer from "no sections yet".
+ */
+function labelKinds(labels: readonly Suggestion[]): Suggestion[] {
+  const counts = new Map<string, number>();
+  for (const label of labels) {
+    const colon = label.label.indexOf(":");
+    if (colon <= 0) continue;
+    const prefix = label.label.slice(0, colon);
+    counts.set(prefix, (counts.get(prefix) ?? 0) + 1);
+  }
+
+  const found: Suggestion[] = [];
+  for (const { prefix, kindKey } of LABEL_PREFIXES) {
+    const count = counts.get(prefix);
+    // The colon comes with it: choosing "section" leaves the cursor after
+    // `sec:` and the labels themselves open straight away.
+    found.push({
+      label: `${prefix}:`,
+      display: t(kindKey),
+      reopen: true,
+      ...(count === undefined ? {} : { detail: String(count) }),
+    });
+    counts.delete(prefix);
+  }
+
+  // Whatever else the document uses, after the ones everybody knows.
+  for (const [prefix, count] of [...counts].sort()) {
+    found.push({ label: `${prefix}:`, detail: String(count), reopen: true });
+  }
+  return found;
+}
+
 /** The packages yaz understands, which is not the same as the ones installed. */
 function packageSuggestions(): Suggestion[] {
   const providers = new Set<string>();
@@ -232,9 +341,28 @@ function packageSuggestions(): Suggestion[] {
 /** Turn a suggestion into what CodeMirror draws. */
 function asCompletion(suggestion: Suggestion): Completion {
   const completion: Completion = { label: suggestion.label };
+  // What is shown, where it differs from what is inserted: a citation reads as
+  // "Spielbauer 2020" and inserts `spielbauer2020`. CodeMirror still filters on
+  // the label, which is right — somebody typing `spiel` means the key.
+  if (suggestion.display !== undefined) {
+    completion.displayLabel = suggestion.display;
+  }
   // Assigned rather than spread: under `exactOptionalPropertyTypes` a property
   // set to `undefined` is not the same as an absent one, and CodeMirror's
   // types ask for absent.
+  if (suggestion.reopen) {
+    completion.apply = (view, _completion, from, to) => {
+      view.dispatch({
+        changes: { from, to, insert: suggestion.label },
+        selection: { anchor: from + suggestion.label.length },
+        userEvent: "input.complete",
+      });
+      // The prefix answered "what kind of thing"; the labels answer "which
+      // one", and that is the question the author now has. Asking it takes a
+      // fresh pass because the trigger has changed underneath.
+      startCompletion(view);
+    };
+  }
   if (suggestion.detail !== undefined) completion.detail = suggestion.detail;
   if (suggestion.info !== undefined) completion.info = suggestion.info;
   if (suggestion.boost !== undefined) completion.boost = suggestion.boost;
@@ -252,19 +380,18 @@ function asCompletion(suggestion: Suggestion): Completion {
 function latexCompletions(context: CompletionContext): CompletionResult | null {
   if (!context.state.facet(latexBuffer)) return null;
 
-  const trigger = triggerAt(context.state.doc.toString(), context.pos);
-  if (!trigger) return null;
+  // A window rather than the document. This runs on the keystroke path and its
+  // usual answer is "nothing is being typed here" — paying for a copy of a
+  // half-megabyte thesis to reach that answer is what made the suggestions feel
+  // slow. Everything the trigger inspects is behind the caret and within
+  // `LOOKBEHIND` of it, so a window that size gives the same answer.
+  const floor = Math.max(0, context.pos - LOOKBEHIND);
+  const window = context.state.doc.sliceString(floor, context.pos);
 
-  // Explicit means the palette shortcut was pressed. Then an empty query is a
-  // request to see everything; while typing it is somebody who has not started.
-  if (
-    trigger.query === "" &&
-    trigger.kind === "argument" &&
-    !context.explicit
-  ) {
-    // Offer anyway for arguments: `\ref{` with nothing typed is exactly when
-    // the list is most useful, because the keys are not memorable.
-  }
+  const found = triggerAt(window, context.pos - floor);
+  if (!found) return null;
+  // Back into the document's own coordinates.
+  const trigger: Trigger = { ...found, from: found.from + floor };
 
   const options = rank(candidatesFor(trigger, context), trigger.query).map(
     asCompletion,
@@ -276,7 +403,14 @@ function latexCompletions(context: CompletionContext): CompletionResult | null {
     options,
     // The list stays open and filters as more is typed, rather than closing and
     // reopening, for as long as what is typed could still be part of a key.
-    validFor: /^[\w:.\-/]*$/,
+    // This is what keeps the document scan to once per list rather than once
+    // per character.
+    //
+    // The colon is the exception, and deliberately: it is what turns "which
+    // kind of thing" into "which section", and those are different questions
+    // with different answers. Letting it through would leave `\ref{sec:` still
+    // showing the seven prefixes.
+    validFor: trigger.argument === "labelKind" ? /^[\w.\-]*$/ : /^[\w:.\-/]*$/,
   };
 }
 
@@ -290,9 +424,11 @@ export function completions(): Extension {
       // stray `\se` becomes `\setlength` in somebody's document.
       defaultKeymap: true,
       selectOnOpen: false,
-      // Off the keystroke path by construction, but this also stops a burst of
-      // typing from asking on every character.
-      activateOnTypingDelay: 80,
+      // Short enough not to be felt, long enough that a burst of fast typing
+      // asks once rather than once per character. It was 80ms, which read as a
+      // hesitation — the work behind it is a windowed read and a scan that
+      // happens once per list, so there is nothing here worth waiting for.
+      activateOnTypingDelay: 25,
     }),
   ];
 }

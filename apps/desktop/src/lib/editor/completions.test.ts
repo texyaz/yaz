@@ -90,6 +90,15 @@ describe("completion in a mounted editor", () => {
   });
 });
 
+/** What the list says beside one of its entries. */
+async function detailOf(
+  view: EditorView,
+  label: string,
+): Promise<string | undefined> {
+  const found = await optionsOf(view);
+  return found.find((one) => one.label === label)?.detail;
+}
+
 /** Drive the real completion machinery and read what it produced. */
 async function startAndRead(view: EditorView): Promise<string[]> {
   const { startCompletion, currentCompletions } =
@@ -105,14 +114,87 @@ async function startAndRead(view: EditorView): Promise<string[]> {
   return currentCompletions(view.state).map((option) => option.label);
 }
 
+/** The same, but the whole option rather than only what it inserts. */
+async function optionsOf(view: EditorView) {
+  const { startCompletion, currentCompletions } =
+    await import("@codemirror/autocomplete");
+  view.focus();
+  startCompletion(view);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  return currentCompletions(view.state);
+}
+
 describe("what it offers", () => {
-  it("offers the labels a document has", async () => {
-    const view = mount(
+  it("offers the kinds of thing first, then the labels", async () => {
+    const kinds = mount(
       [`${B}section{Kosten}${B}label{sec:kosten}`, `Siehe ${B}ref{‸`].join(
         "\n",
       ),
     );
-    expect(await startAndRead(view)).toContain("sec:kosten");
+    // Not the labels yet: "which of the forty keys" is a question nobody can
+    // answer from a list, and "a section or a figure" is one everybody can.
+    const offered = await startAndRead(kinds);
+    expect(offered).toContain("sec:");
+    expect(offered).not.toContain("sec:kosten");
+
+    const labels = mount(
+      [`${B}section{Kosten}${B}label{sec:kosten}`, `Siehe ${B}ref{sec:‸`].join(
+        "\n",
+      ),
+    );
+    expect(await startAndRead(labels)).toContain("sec:kosten");
+  });
+
+  it("says what a label names, with the number it will print", async () => {
+    // `sec:kosten` is a handle. "2 Kosten" is what tells somebody it is the
+    // section they meant.
+    const view = mount(
+      [
+        `${B}section{Einleitung}`,
+        `${B}section{Kosten}${B}label{sec:kosten}`,
+        `Siehe ${B}ref{sec:‸`,
+      ].join("\n"),
+    );
+    expect(await detailOf(view, "sec:kosten")).toBe("2 Kosten");
+  });
+
+  it("expands an acronym rather than repeating it", async () => {
+    // `\newacronym{AIA}{AIA}{...}` makes the short form the key, so a list
+    // built from the key and the name reads "AIA — AIA". The expansion is the
+    // only part of the entry that tells anybody anything.
+    const view = mount(
+      [
+        `${B}newacronym{AIA}{AIA}{Auftraggeber-Informationsanforderungen}`,
+        `Die ${B}gls{‸`,
+      ].join("\n"),
+    );
+    expect(await detailOf(view, "AIA")).toBe(
+      "Auftraggeber-Informationsanforderungen",
+    );
+  });
+
+  it("shows a glossary entry's name, with its description behind it", async () => {
+    const view = mount(
+      [
+        `${B}newglossaryentry{BIM}{name={Building Information Modeling},`,
+        `  description={Ein Verfahren zur Planung}}`,
+        `Das ${B}gls{‸`,
+      ].join("\n"),
+    );
+    const found = await optionsOf(view);
+    const bim = found.find((one) => one.label === "BIM");
+    expect(bim?.detail).toBe("Building Information Modeling");
+    expect(bim?.info).toBe("Ein Verfahren zur Planung");
+  });
+
+  it("shows a work rather than its key, and still inserts the key", async () => {
+    const view = mount(`Wie in ${B}cite{‸`);
+    const found = await optionsOf(view);
+    const spielbauer = found.find((one) => one.label === "spielbauer2020");
+    // The key is what goes in the document and what typing is matched
+    // against. It is not what anybody can read, so it is not what is shown.
+    expect(spielbauer?.displayLabel).toBe("Spielbauer 2020");
+    expect(spielbauer?.detail).toBe("BKI Baukosten");
   });
 
   it("offers the citation keys the shell loaded", async () => {

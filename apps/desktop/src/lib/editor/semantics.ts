@@ -165,7 +165,17 @@ export function sectionNumbers(
     ) {
       counters[deeper] = 0;
     }
-    numbers.set(heading.from, counters.slice(1, heading.level + 1).join("."));
+    // Leading zeros are levels the document does not use. An article has no
+    // `\chapter`, so its chapter counter never moves, and including it numbered
+    // the first section "0.1" — in the outline and in every cross-reference.
+    // LaTeX prints "1", because in `article` the section *is* the top level.
+    //
+    // Only leading ones are dropped. A `\subsection` that appears before any
+    // `\section` really does print "1.0.1", and that zero is the document
+    // saying something rather than the counter never having started.
+    const parts = counters.slice(1, heading.level + 1);
+    while (parts.length > 1 && parts[0] === 0) parts.shift();
+    numbers.set(heading.from, parts.join("."));
   }
 
   return numbers;

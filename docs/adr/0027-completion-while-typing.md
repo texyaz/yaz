@@ -72,6 +72,19 @@ So the document is scanned **on trigger, not on change** — when somebody types
 the `{` of `\ref{`, not on every character — and the result is cached against
 the document _object_, so filtering as they keep typing does not scan again.
 
+**Deciding whether a trigger fired must not read the document either.** This is
+the part the first implementation got wrong, and it is worth naming because it
+looks like nothing: the source began by turning the whole document into a string
+so it could look at the twenty characters behind the caret. That runs on every
+keystroke — the usual answer being "this is prose, offer nothing" — so the cheap
+half of the design was paying the expensive half's cost, and on a real thesis it
+was the whole reason the suggestions felt slow.
+
+Everything a trigger inspects is behind the caret and within a fixed reach of
+it, so the source reads a window of that size and shifts the offsets back. The
+scan-on-trigger rule is about the _document_ read; this is about the read nobody
+counted as one.
+
 Against the object rather than a fingerprint of it: CodeMirror's document is
 immutable, so a change produces a different one and a stale answer is impossible
 rather than merely unlikely. A fingerprint of length and line count would have
@@ -92,7 +105,46 @@ else.
 This is not only cheaper. Popping a list up mid-word while somebody writes prose
 is the behaviour people switch off.
 
-### 4. One source now, a registry when there is a second
+### 4. A list nobody can read is not a feature
+
+Three of the sources answer with keys, and a key is a handle rather than a name.
+This is not a presentation detail — it decides whether the feature works:
+
+- `\cite{` offering `spielbauer2020`, `spielbauer2021`, `spielbauer2021a` asks
+  the author to remember which book is which. The list shows **the work** —
+  author, year, title — and inserts the key. CodeMirror separates the two
+  (`displayLabel` against `label`), and matching stays on the key, because
+  somebody typing `spiel` means the key.
+- `\gls{` offering `AIA — AIA` is what you get from an acronym whose short form
+  is its own key, which is most of them. The **expansion** is the only part of
+  the entry that says anything, so that is what shows.
+- `\ref{` offering forty labels asks a question nobody can answer from a list.
+
+The last one is different in kind, and gets a different answer.
+
+### 5. A reference is asked in two steps
+
+"Which of the forty labels" is unanswerable from a list. "Am I referring to a
+section or a figure" is answerable by everybody. So `\ref{` offers the _kinds_
+of thing — section, figure, table — and the labels arrive once the colon is
+there. Choosing a kind inserts `sec:` and asks the next question immediately, so
+the two steps read as one narrowing rather than as an obstacle.
+
+Each kind says how many there are, because "12 sections" and "no figures yet"
+are different answers to the same question.
+
+The prefixes are a convention rather than a rule — nothing in LaTeX requires
+`sec:` — so a document that labels its figures `bild:` gets `bild:` offered too,
+read from what it actually uses. The conventional seven come first; what the
+document invented follows.
+
+And a label shows **what it names**, not its key: `3.2 Kosten`, with the number
+LaTeX will print, taken from the same walk that numbers the outline so the two
+cannot disagree. Doing that turned up a real defect in that shared walk — an
+article, having no `\chapter`, was numbering its first section `0.1`, in the
+outline and in every cross-reference.
+
+### 6. One source now, a registry when there is a second
 
 Today there is exactly one source and it is core's. It is mounted through
 CodeMirror's `override`, which takes a list — so a second is a line, not a
@@ -137,12 +189,14 @@ how a slow source gets blamed on typing, or worse, hides behind it.
 ## Consequences
 
 **Good.** Completion covers most of what a LaTeX author types on day one, with
-no new dependency, no subprocess and no capability. Building it turned up a real
-gap on the way: the vocabulary registry answers "how is this drawn" and so does
-not list `\section`, which the preview draws from the document's structure — a
-list of commands to _offer_ is a different list, and it is now written down as
-one. It works offline and on a
-machine with no TeX installed. The sources are pure functions over data and a
+no new dependency, no subprocess and no capability. Building it turned up two
+real defects on the way. The vocabulary registry answers "how is this drawn" and
+so does not list `\section`, which the preview draws from the document's
+structure — a list of commands to _offer_ is a different list, and it is now
+written down as one. And the heading numbering, asked for the first time by
+something other than the outline, was numbering an article's first section
+`0.1`: the chapter counter it does not use was being counted anyway. It works
+offline and on a machine with no TeX installed. The sources are pure functions over data and a
 position, so they are tested directly rather than by driving an editor.
 
 **Bad.** No plugin can add a source yet, so a language server cannot be tried
@@ -152,7 +206,12 @@ single-file mode — joined mode has it, because then the labels are in the
 buffer. Neither is fixed without reading the filesystem, which is the language
 server's job when it arrives.
 
-**Watch.** The trigger table is a second place that knows `\cite` takes a
+**Watch.** The two-step reference assumes a prefix is where the kind lives. A
+document that labels everything `label1`, `label2` gets a list of one useless
+prefix and has to type through it — no worse than the flat list it replaced, but
+no better either. Worth revisiting if anybody writes one.
+
+The trigger table is a second place that knows `\cite` takes a
 citation key, and the vocabulary registry is the first. If those drift,
 completion offers the wrong thing for a command the preview draws correctly. The
 right fix is for the vocabulary to carry its argument kind — worth doing when

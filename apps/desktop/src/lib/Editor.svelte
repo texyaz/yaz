@@ -106,6 +106,17 @@
     vimMode: boolean;
     /** Render LaTeX as styled text. Decorations over the same buffer. */
     rich: boolean;
+    /**
+     * Whether this buffer holds LaTeX at all.
+     *
+     * Not the same question as {@link rich}, which asks how the text is
+     * *drawn*. Suggestions are about what is being written, so they belong in
+     * the source view exactly as much as in the preview — someone editing the
+     * raw source is the person with the most use for them. Tying the two
+     * together meant completion vanished the moment the preview was switched
+     * off, which was backwards.
+     */
+    latex?: boolean;
     /** How the gutter numbers lines, if at all. */
     numbering: LineNumbering;
     /**
@@ -374,6 +385,7 @@
     onRequirePackage,
     files = [],
     formatBar = false,
+    latex = false,
   }: Props = $props();
 
 
@@ -709,7 +721,7 @@
         // Whether this buffer is LaTeX, and what the project holds. Both change
         // under a view that is not rebuilt — opening a `.md`, adding a picture
         // — so both are reconfigured rather than fixed here.
-        latexBuffer.of(untrack(() => rich)),
+        latexBuffer.of(untrack(() => latex)),
         projectFiles.of(untrack(() => files)),
       ]),
       highlightSelectionMatches(),
@@ -1052,7 +1064,7 @@
   $effect(() => {
     view?.dispatch({
       effects: completionCompartment.reconfigure([
-        latexBuffer.of(rich),
+        latexBuffer.of(latex),
         projectFiles.of(files),
       ]),
     });
