@@ -17,10 +17,34 @@ export default defineConfig({
     alias: {
       "@yaz/api": new URL("../../packages/api/src/index.ts", import.meta.url)
         .pathname,
+      // The same loan the application makes at build time, for the same
+      // reason: a bundled plugin's own directory has no `node_modules`, and a
+      // test that exercises the plugin's source has to resolve what the
+      // application would resolve for it. Kept in step with `vite.config.ts`
+      // by hand — the two lists are short, and a test that cannot import what
+      // the build can is a test that fails immediately rather than quietly.
+      // The ES module, named exactly, not the package directory. Aliasing the
+      // directory resolves `main` — which is the CommonJS build — while every
+      // ordinary import gets `module`, and the two are different copies. What
+      // that looks like is CodeMirror rejecting its own extensions, because an
+      // `instanceof` across two copies of a library is always false.
+      "@codemirror/state": new URL(
+        "./node_modules/@codemirror/state/dist/index.js",
+        import.meta.url,
+      ).pathname,
+      "@codemirror/view": new URL(
+        "./node_modules/@codemirror/view/dist/index.js",
+        import.meta.url,
+      ).pathname,
     },
     // Svelte components under test need the browser build, or lifecycle and
     // effects do not run.
     conditions: ["browser"],
+    // One copy of each, or the alias above resolves a second instance and
+    // every `instanceof` check inside CodeMirror starts failing — an extension
+    // built against one copy is not an extension as far as the other is
+    // concerned. `vite.config.ts` dedupes the same three for the same reason.
+    dedupe: ["@codemirror/state", "@codemirror/view", "@codemirror/language"],
   },
   test: {
     environment: "jsdom",

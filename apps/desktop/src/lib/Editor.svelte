@@ -107,6 +107,17 @@
     /** Render LaTeX as styled text. Decorations over the same buffer. */
     rich: boolean;
     /**
+     * The current format's preview, already loaded, or null.
+     *
+     * Passed in rather than loaded here: which format this buffer is and
+     * whether its plugin is switched on are the shell's business, and an
+     * editor that resolved them would be a second place that knows.
+     *
+     * Mounted only while {@link rich} is on. Absent for LaTeX, whose preview
+     * is the editor's own.
+     */
+    formatPreview?: Extension | null;
+    /**
      * Whether this buffer holds LaTeX at all.
      *
      * Not the same question as {@link rich}, which asks how the text is
@@ -386,6 +397,7 @@
     files = [],
     formatBar = false,
     latex = false,
+    formatPreview = null,
   }: Props = $props();
 
 
@@ -649,6 +661,18 @@
   const bibCompartment = new Compartment();
   const completionCompartment = new Compartment();
   const languageCompartment = new Compartment();
+  /**
+   * The format's own preview, where it has one and preview is on.
+   *
+   * A compartment rather than something the extension reads, which is the
+   * whole design: the plugin writes its decorations as though preview were
+   * always on, and yaz takes them away by reconfiguring this to nothing. There
+   * is no flag for two people to disagree about.
+   *
+   * LaTeX's preview is not here. It is woven through the editor rather than
+   * being one extension, and it reads {@link richTextEnabled} directly.
+   */
+  const formatPreviewCompartment = new Compartment();
 
   /*
    * Colours come from the theme token contract, never literals — ADR-0010 makes
@@ -735,6 +759,7 @@
       // Visual mode needs a real syntax tree to hang decorations off, and a
       // StreamLanguage does not give us one (ADR-0004).
       languageCompartment.of([]),
+      formatPreviewCompartment.of([]),
       // Rich text is decorations over this same buffer, never a second
       // document (ADR-0004).
       richText(),
@@ -931,6 +956,18 @@
     // An effect rather than a reconfigure: switching view must not rebuild the
     // editor, or the caret and the undo history go with it.
     view?.dispatch({ effects: setRichText.of(rich) });
+  });
+
+  // On while preview is on, gone when it is off. Reconfiguring rather than
+  // rebuilding for the same reason as the language: the caret and the undo
+  // history would go with a rebuild, and switching preview on to look at
+  // something and off again is a thing people do constantly.
+  $effect(() => {
+    view?.dispatch({
+      effects: formatPreviewCompartment.reconfigure(
+        rich && formatPreview ? formatPreview : [],
+      ),
+    });
   });
 
   // A compartment, for the reason every other one here is: switching the

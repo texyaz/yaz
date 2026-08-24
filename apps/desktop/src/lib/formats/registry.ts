@@ -51,6 +51,20 @@ export interface Format {
    * between a format with a plugin and the floor every file gets.
    */
   load: (() => Promise<Extension>) | null;
+  /**
+   * Load this format's preview, where it has one.
+   *
+   * `null` for a format that is only ever read as source. What comes back is
+   * mounted while preview is on for a buffer of this format and dropped when
+   * it is off, which is why nothing in it has to know whether preview is on.
+   *
+   * LaTeX's is the application's own and is not loaded through this — it is
+   * woven through the editor rather than being one extension — so its entry
+   * says `null` and the shell special-cases it. That is a wart, and an honest
+   * one: the day a second built-in format wants a preview is the day to make
+   * LaTeX's arrive the same way as everyone else's.
+   */
+  preview?: (() => Promise<Extension>) | null;
 }
 
 /**
@@ -130,6 +144,17 @@ export function formatOf(path: string): FormatId {
     format.extensions.includes(extension),
   );
   return found?.id ?? "text";
+}
+
+/**
+ * Whether a format has a preview at all.
+ *
+ * LaTeX's is the editor's own; everything else's arrives from a plugin. A
+ * format with none gets a greyed switch rather than one that does nothing.
+ */
+export function hasPreview(id: FormatId): boolean {
+  if (id === "latex") return true;
+  return Boolean(format(id).preview);
 }
 
 /** The format with an id, or plain text. */

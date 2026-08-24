@@ -253,6 +253,14 @@ export interface Suggestion {
    * narrowing.
    */
   reopen?: boolean | undefined;
+  /**
+   * What to insert instead of the label, as a CodeMirror snippet.
+   *
+   * Where a command is worth more than its name: `\section` arrives with its
+   * `\label` beneath it and the two linked, so typing the title fills the key.
+   * See {@link SNIPPETS}.
+   */
+  snippet?: string | undefined;
   /** The right-hand column: what it is, or where it came from. */
   detail?: string | undefined;
   /** The longer explanation, shown beside the list. */
@@ -389,6 +397,80 @@ function kindOfLabel(key: string): string | undefined {
  * Only the kernel's. Anything a package adds arrives through the vocabulary,
  * which is where a plugin declares it (ADR-0023).
  */
+/**
+ * What a command expands to, where it is worth more than its own name.
+ *
+ * # Why a sectioning command brings its label
+ *
+ * A `\section` without a `\label` is a section nothing can refer to, and the
+ * moment somebody wants to refer to it they have to go back, invent a key, and
+ * hope they remember the convention they used in chapter two. Writing the
+ * label at the same time costs nothing and removes that entirely — which is
+ * why every LaTeX house style says to do it and nobody does.
+ *
+ * # The title and the key are the same placeholder
+ *
+ * `\section{$title}` and `\label{sec:$title}` name the same placeholder, so
+ * typing the title fills the key as it goes. CodeMirror's snippet machinery
+ * links repeated names and edits them together; there is no second cursor to
+ * manage and no step where the two can drift apart.
+ *
+ * It goes in verbatim rather than slugged. Slugging as you type would mean the
+ * key changing shape under the cursor — `Kosten und` becoming `kosten-und`
+ * mid-word — and a key that rewrites itself while being typed is worse than
+ * one with a space in it. The author fixes the key once, at the end, or leaves
+ * it: LaTeX takes a space in a label perfectly well.
+ *
+ * # The shape
+ *
+ * `${name}` is a placeholder Tab moves between; `${}` is one with no name,
+ * which is where the caret ends up. This is CodeMirror's syntax, not one
+ * invented here.
+ */
+export const SNIPPETS: Record<string, string> = {
+  // Sectioning, each with the label it should always have had.
+  part: "part{${title}}\n\\label{part:${title}}\n",
+  chapter: "chapter{${title}}\n\\label{ch:${title}}\n",
+  section: "section{${title}}\n\\label{sec:${title}}\n",
+  subsection: "subsection{${title}}\n\\label{sec:${title}}\n",
+  subsubsection: "subsubsection{${title}}\n\\label{sec:${title}}\n",
+
+  // A float is three commands and an environment, and getting the order wrong
+  // is the most common reason a caption comes out above the picture.
+  figure:
+    "begin{figure}[htbp]\n" +
+    "  \\centering\n" +
+    "  \\includegraphics[width=${width:0.8}\\textwidth]{${file}}\n" +
+    "  \\caption{${caption}}\n" +
+    "  \\label{fig:${caption}}\n" +
+    "\\end{figure}\n",
+  table:
+    "begin{table}[htbp]\n" +
+    "  \\centering\n" +
+    "  \\caption{${caption}}\n" +
+    "  \\label{tab:${caption}}\n" +
+    "  \\begin{tabular}{${columns:ll}}\n" +
+    "    ${}\n" +
+    "  \\end{tabular}\n" +
+    "\\end{table}\n",
+
+  // An equation that can be referred to, which is the only kind worth
+  // numbering.
+  equation: "begin{equation}\n  ${}\n  \\label{eq:${name}}\n\\end{equation}\n",
+
+  // The everyday one-argument commands. Not a saving in typing — a saving in
+  // the closing brace nobody notices is missing until the compile fails.
+  emph: "emph{${}}",
+  textbf: "textbf{${}}",
+  textit: "textit{${}}",
+  footnote: "footnote{${}}",
+  cite: "cite{${}}",
+  ref: "ref{${}}",
+  label: "label{${}}",
+  href: "href{${url}}{${text}}",
+  includegraphics: "includegraphics[width=${width:0.8}\\textwidth]{${file}}",
+};
+
 export const STRUCTURAL_COMMANDS = [
   // Sectioning, drawn from the heading parser.
   "part",

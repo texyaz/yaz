@@ -1232,6 +1232,30 @@ export interface FormatContribution {
    * yaz rather than a break for every plugin.
    */
   load(): Promise<unknown>;
+  /**
+   * Load a preview of this format, for the editor's preview mode.
+   *
+   * A preview is decorations over the same buffer, never a second document
+   * ([ADR-0004]) — the text on screen *is* the file, so it stays editable and
+   * the markup comes back wherever the caret is.
+   *
+   * # yaz decides when it is on, not you
+   *
+   * The extension returned here is mounted while preview is on for a buffer of
+   * this format and unmounted when it is off. There is deliberately nothing to
+   * read: a plugin that had to ask "is preview on" would be a plugin that could
+   * get the answer wrong, and two of them could disagree about it. Write the
+   * decorations as though preview were always on, and let them be taken away.
+   *
+   * Absent means the format has no preview, and yaz greys the switch for it
+   * rather than offering one that does nothing.
+   *
+   * Returns a CodeMirror `Extension`, typed as `unknown` for the same reason
+   * {@link load} is.
+   *
+   * @since 0.5.0
+   */
+  preview?: (() => Promise<unknown>) | undefined;
 }
 
 /**

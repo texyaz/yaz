@@ -61,6 +61,9 @@ function mount(marked: string, latex = true): EditorView {
       extensions: [
         richText(),
         completions(),
+        // The editor has this; without it CodeMirror keeps one range and the
+        // linked halves of a snippet cannot be typed into together.
+        EditorState.allowMultipleSelections.of(true),
         latexBuffer.of(latex),
         bibliography.of(BIB),
         projectFiles.of([
@@ -292,5 +295,62 @@ describe("the keystroke path", () => {
 
     expect(read).not.toHaveBeenCalled();
     read.mockRestore();
+  });
+});
+
+describe("commands that bring what they need", () => {
+  it("gives a section its label, with the title and the key linked", async () => {
+    // The whole point: a section without a label is a section nothing can
+    // refer to, and by the time somebody wants to refer to it they have to go
+    // back and invent a key.
+    const view = mount(`${B}sec‸`);
+    const found = await optionsOf(view);
+    const section = found.find((one) => one.label === "section");
+    expect(section?.apply).toBeTypeOf("function");
+
+    // Run what accepting it would run.
+    (
+      section!.apply as (
+        v: EditorView,
+        c: unknown,
+        f: number,
+        t: number,
+      ) => void
+    )(view, section, 1, view.state.doc.length);
+
+    const text = view.state.doc.toString();
+    expect(text).toContain(`${B}section{`);
+    expect(text).toContain(`${B}label{sec:`);
+  });
+
+  it("types the title into the key as it goes", async () => {
+    const view = mount(`${B}sec‸`);
+    const found = await optionsOf(view);
+    const section = found.find((one) => one.label === "section");
+
+    (
+      section!.apply as (
+        v: EditorView,
+        c: unknown,
+        f: number,
+        t: number,
+      ) => void
+    )(view, section, 1, view.state.doc.length);
+
+    // The caret lands in the title placeholder; the key names the same one, so
+    // CodeMirror carries what is typed into both.
+    view.dispatch(view.state.replaceSelection("Kosten"));
+    const text = view.state.doc.toString();
+    expect(text).toContain(`${B}section{Kosten}`);
+    expect(text).toContain(`${B}label{sec:Kosten}`);
+  });
+
+  it("leaves a command with nothing to add as its own name", async () => {
+    const view = mount(`${B}quad‸`);
+    const found = await optionsOf(view);
+    const quad = found.find((one) => one.label === "quad");
+    // Not every command wants a template, and one that would only wrap its own
+    // name in braces it does not take would be worse than none.
+    expect(quad?.apply).toBeUndefined();
   });
 });

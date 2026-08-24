@@ -33,6 +33,15 @@ export default defineConfig({
       "@codemirror/language": fileURLToPath(
         new URL("./node_modules/@codemirror/language", import.meta.url),
       ),
+      // Lent for the same reason, and needed the moment a plugin draws rather
+      // than only tokenises: the Markdown preview is decorations over the
+      // buffer, and decorations are `@codemirror/view`.
+      "@codemirror/state": fileURLToPath(
+        new URL("./node_modules/@codemirror/state", import.meta.url),
+      ),
+      "@codemirror/view": fileURLToPath(
+        new URL("./node_modules/@codemirror/view", import.meta.url),
+      ),
       // Lent to the Learn plugin, which renders the DOM to a canvas. Loaded
       // by a dynamic import inside it, so it costs nothing until a capture is
       // actually taken.

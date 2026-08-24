@@ -25,7 +25,11 @@
 
 import { Facet } from "@codemirror/state";
 import type { Extension, Text } from "@codemirror/state";
-import { autocompletion, startCompletion } from "@codemirror/autocomplete";
+import {
+  autocompletion,
+  snippet,
+  startCompletion,
+} from "@codemirror/autocomplete";
 import type {
   Completion,
   CompletionContext,
@@ -37,6 +41,7 @@ import {
   LABEL_PREFIXES,
   labelsIn,
   LOOKBEHIND,
+  SNIPPETS,
   rank,
   STANDARD_CLASSES,
   STRUCTURAL_COMMANDS,
@@ -187,6 +192,15 @@ function commandSuggestions(): Suggestion[] {
       // defines — the distinction ADR-0023 draws, where it matters.
       detail: provider ?? undefined,
     });
+  }
+
+  // The ones worth more than their name arrive as the whole construction.
+  // Applied after both sources, so it does not matter which of them named the
+  // command — and only to commands that are actually offered, so a template
+  // for something the vocabulary has dropped does not resurrect it.
+  for (const [name, template] of Object.entries(SNIPPETS)) {
+    const known = found.get(name);
+    if (known) found.set(name, { ...known, snippet: template });
   }
 
   return [...found.values()].sort((a, b) => a.label.localeCompare(b.label));
@@ -343,6 +357,26 @@ function packageSuggestions(): Suggestion[] {
 
 /** Turn a suggestion into what CodeMirror draws. */
 function asCompletion(suggestion: Suggestion): Completion {
+  // A command that is worth more than its name arrives as the whole
+  // construction: `\section` with its `\label` beneath it, the title and the
+  // key linked so typing one fills the other. `snippet` returns the apply
+  // function that runs the placeholders, which is the same machinery
+  // CodeMirror's own snippet completions use.
+  if (suggestion.snippet !== undefined) {
+    const completion: Completion = {
+      label: suggestion.label,
+      apply: snippet(suggestion.snippet),
+      type: "keyword",
+    };
+    if (suggestion.display !== undefined) {
+      completion.displayLabel = suggestion.display;
+    }
+    if (suggestion.detail !== undefined) completion.detail = suggestion.detail;
+    if (suggestion.info !== undefined) completion.info = suggestion.info;
+    if (suggestion.boost !== undefined) completion.boost = suggestion.boost;
+    return completion;
+  }
+
   const completion: Completion = { label: suggestion.label };
   // What is shown, where it differs from what is inserted: a citation reads as
   // "Spielbauer 2020" and inserts `spielbauer2020`. CodeMirror still filters on

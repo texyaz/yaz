@@ -71,6 +71,8 @@
     isEnabled,
     languageFor,
     optionalFormats,
+    format,
+    hasPreview,
     setContributedFormats,
   } from "./lib/formats/registry";
   import type { FormatId, FormatPreferences } from "./lib/formats/registry";
@@ -564,6 +566,26 @@
   let language = $state<Extension | null>(null);
 
   /**
+   * The current format's preview, once its chunk has arrived.
+   *
+   * Loaded the same way and for the same reason the language is: a session
+   * that never opens a `.md` never loads the Markdown preview. Null for LaTeX,
+   * whose preview is the editor's own and is always there.
+   */
+  let formatPreview = $state<Extension | null>(null);
+
+  /**
+   * Whether this buffer can be previewed at all.
+   *
+   * LaTeX always, and any format whose plugin brought a preview. A format
+   * with none greys the switch rather than offering one that does nothing —
+   * which was the state Markdown was in.
+   */
+  const previewable = $derived(
+    hasPreview(currentFormat) && isEnabled(currentFormat, formatPreferences),
+  );
+
+  /**
    * The view actually drawn, which is the chosen one unless it cannot apply.
    *
    * @see {@link viewFor}
@@ -581,6 +603,40 @@
       // a language to the wrong document is worse than applying none.
       if (!cancelled) language = loaded;
     });
+
+    return () => {
+      cancelled = true;
+    };
+  });
+
+  // The preview, loaded on the same terms. Separate from the language because
+  // the two are separate chunks and a file with a language may have no preview.
+  $effect(() => {
+    const wanted = currentFormat;
+    const preferences = formatPreferences;
+    let cancelled = false;
+
+    const loader =
+      wanted !== "latex" && isEnabled(wanted, preferences)
+        ? format(wanted).preview
+        : null;
+
+    if (!loader) {
+      formatPreview = null;
+      return;
+    }
+
+    void loader()
+      .then((loaded) => {
+        // The file may have changed while the chunk was in flight, and drawing
+        // Markdown over a YAML file is worse than drawing nothing.
+        if (!cancelled) formatPreview = loaded;
+      })
+      .catch(() => {
+        // A preview that will not load is a preview the file does without.
+        // Saying so would interrupt somebody's writing over a decoration.
+        if (!cancelled) formatPreview = null;
+      });
 
     return () => {
       cancelled = true;
@@ -1618,6 +1674,98 @@
   let makingProject = $state(false);
   let newProjectFailure = $state<string | null>(null);
 
+/**
+   * What a tab's own menu holds.
+   *
+   * # Why the tab and not the ribbon
+   *
+   * Some commands belong to a tab rather than to the window: whether the
+   * editor is showing source or preview is about *that* editor, and looking
+   * for it under View means leaving the thing you are working on to change
+   * something about it. The ribbon keeps the document-wide switches; this is
+   * for what a pane does to itself.
+   *
+   * # Why a function
+   *
+   * It is asked at the moment the menu opens, so the entry can say what the
+   * tab is doing now — "Source" when preview is on and "Preview" when it is
+   * not, rather than a checkbox somebody has to interpret. A table computed
+   * ahead of time would be stale exactly when it matters.
+   *
+   * A tab with nothing to offer returns nothing, and no button is drawn.
+   */
+  function tabMenu(tab: TabId): MenuItem[] {
+    if (tab === "editor") {
+      return [
+        {
+          // Named for what choosing it *does*, not for what is on screen. A
+          // menu is read as a list of actions.
+          labelKey: richText ? "tab-editor-source" : "tab-editor-preview",
+          icon: richText ? "code" : "text",
+          disabled: !previewable,
+          action: () => {
+            richText = !richText;
+          },
+        },
+        {
+          labelKey: "tab-editor-wrap",
+          icon: "wrap" as const,
+          checked: wrap,
+          action: () => {
+            wrap = !wrap;
+          },
+        },
+      ];
+    }
+
+    if (tab === "files") {
+      return [
+        {
+          labelKey: "files-refresh",
+          icon: "redo" as const,
+          disabled: !project,
+          action: () => void refreshProject(),
+        },
+        {
+          labelKey: "files-new-file",
+          icon: "file-plus" as const,
+          disabled: !project,
+          action: () => askNewFile(null),
+        },
+        {
+          labelKey: "files-new-folder",
+          icon: "folder-plus" as const,
+          disabled: !project,
+          action: () => askNewFolder(null),
+        },
+      ];
+    }
+
+    if (tab === "pdf") {
+      return [
+        {
+          labelKey: "menu-file-compile",
+          icon: "play" as const,
+          disabled: !project || busy,
+          action: () => void compile(),
+        },
+      ];
+    }
+
+    if (tab === "tasks") {
+      return [
+        {
+          labelKey: "tasks-refresh",
+          icon: "redo" as const,
+          disabled: !taskProvider,
+          action: () => void loadTasks(),
+        },
+      ];
+    }
+
+    return [];
+  }
+
   /** Open or close a tab from a switch, saving the arrangement once. */
   function toggleTab(tab: TabId) {
     updateLayout(
@@ -2639,6 +2787,19 @@ ${entryText}`,
     {
       labelKey: "menu-view",
       items: [
+        // The colour of the paper leads the group, and is drawn large.
+        // A ribbon tab says what it is for by what it puts first, and this
+        // is the one switch here that changes how the page *looks* rather
+        // than how the text is arranged on it.
+        {
+          labelKey: "menu-view-paper",
+          icon: "sun" as const,
+          group: "group-views",
+          checked: paperLight,
+          action: () => {
+            paperLight = !paperLight;
+          },
+        },
         // One entry per way of setting the text, rather than one switch: they
         // are three choices and not two states, and a checkbox cannot say that.
         ...DOCUMENT_VIEWS.map((mode) => ({
@@ -2652,6 +2813,36 @@ ${entryText}`,
             chosenView = mode;
           },
         })),
+        {
+          labelKey: "menu-view-joined",
+          icon: "layers" as const,
+          group: "group-views",
+          checked: joined,
+          disabled: !project,
+          // An include that could not be read stays in the buffer as a command
+          // rather than disappearing, and this is where to find out why the
+          // document has one in it.
+          tooltip:
+            joinedMissing.length > 0
+              ? t("joined-unexpanded", { missing: joinedMissing.join(", ") })
+              : undefined,
+          action: toggleJoined,
+        },
+        {
+          labelKey: "menu-view-rich-text",
+          icon: "text" as const,
+          group: "group-views",
+          checked: richText && previewable,
+          // Enabled for any format that brought a preview with it, which is
+          // LaTeX and whatever a format plugin has contributed — Markdown, as
+          // of the formats plugin. A switch that appears to do something and
+          // does not is worse than one that is plainly off, so a format with
+          // no preview still greys it.
+          disabled: !previewable,
+          action: () => {
+            richText = !richText;
+          },
+        },
         {
           labelKey: "ribbon-compact",
           icon: "layout" as const,
@@ -2669,21 +2860,6 @@ ${entryText}`,
           action: () => {
             ribbonVertical = !ribbonVertical;
           },
-        },
-        {
-          labelKey: "menu-view-joined",
-          icon: "layers" as const,
-          group: "group-views",
-          checked: joined,
-          disabled: !project,
-          // An include that could not be read stays in the buffer as a command
-          // rather than disappearing, and this is where to find out why the
-          // document has one in it.
-          tooltip:
-            joinedMissing.length > 0
-              ? t("joined-unexpanded", { missing: joinedMissing.join(", ") })
-              : undefined,
-          action: toggleJoined,
         },
         {
           labelKey: "menu-view-line-breaks",
@@ -2719,27 +2895,6 @@ ${entryText}`,
           checked: comments,
           action: () => {
             comments = !comments;
-          },
-        },
-        {
-          labelKey: "menu-view-paper",
-          icon: "sun" as const,
-          group: "group-views",
-          checked: paperLight,
-          action: () => {
-            paperLight = !paperLight;
-          },
-        },
-        {
-          labelKey: "menu-view-rich-text",
-          icon: "text" as const,
-          group: "group-views",
-          checked: richText && currentFormat === "latex",
-          // Only LaTeX has a preview so far, and a switch that appears to do
-          // something and does not is worse than one that is plainly off.
-          disabled: currentFormat !== "latex",
-          action: () => {
-            richText = !richText;
           },
         },
         {
@@ -2787,13 +2942,6 @@ ${entryText}`,
           action: () => {
             dimBuild = !dimBuild;
           },
-        },
-        {
-          labelKey: "menu-view-files",
-          icon: "list" as const,
-          group: "group-panes",
-          checked: layoutTree.isOpen(layout, "files"),
-          action: () => toggleTab("files"),
         },
         {
           labelKey: "menu-view-wrap",
@@ -4056,6 +4204,16 @@ ${entryText}`,
             extensions: entry.extensions,
             labelKey: entry.nameKey,
             load: async () => (await entry.load()) as never,
+            // Carried through only where the plugin supplied one. Under
+            // `exactOptionalPropertyTypes` an absent property and one set to
+            // `undefined` are different things, and "has a preview" is read off
+            // the property's presence.
+            ...(entry.preview
+              ? {
+                  preview: async () =>
+                    (await entry.preview!()) as never,
+                }
+              : {}),
           })),
         );
         // The tabs the plugins added. A copy, because the runtime's array is
@@ -4469,7 +4627,8 @@ ${entryText}`,
           if (joined) recordJoinedChanges(changes);
         }}
         onSave={save}
-        rich={richText && currentFormat === "latex"}
+        rich={richText && previewable}
+        {formatPreview}
         {numbering}
         {shortcuts}
         documentView={shownView}
@@ -4729,6 +4888,7 @@ ${entryText}`,
       onfocus={(tab) => updateLayout(layoutTree.focusTab(layout, tab))}
       onclose={(tab) => updateLayout(layoutTree.closeTab(layout, tab))}
       onresize={(path, sizes) => updateLayout(layoutTree.resize(layout, path, sizes))}
+      {tabMenu}
     />
   </div>
 

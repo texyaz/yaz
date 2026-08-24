@@ -46,6 +46,10 @@ The load-bearing ones:
   **on a trigger, never on a change**. The decoration pass is already the
   keystroke budget; a second walk costs more than the whole of it. No language
   server: eight of the nine things worth completing need no filesystem.
+- **0029** — A format plugin may contribute a **preview**, mounted by yaz while
+  preview is on and dropped when it is off. **There is no flag for a plugin to
+  read.** Decorations over the same buffer (0004), so it stays editable, and the
+  markup returns wherever the caret is.
 - **0028** — The file list is a **tab**, not a region, and it can rename, delete
   and create. Every operation resolves its path in Rust first. **Delete goes to
   the recycle bin**, never an unlink — a right-click delete eventually lands on

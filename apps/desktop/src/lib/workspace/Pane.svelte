@@ -18,6 +18,8 @@
   // tree in the parent, which puts the structure in two places.
   import Pane from "./Pane.svelte";
   import type { DropZone, Node, TabId } from "./layout";
+  import ContextMenu from "../ContextMenu.svelte";
+  import type { MenuItem } from "../MenuBar.svelte";
 
   interface Props {
     node: Node;
@@ -30,6 +32,19 @@
     onfocus: (tab: TabId) => void;
     onclose: (tab: TabId) => void;
     onresize: (path: number[], sizes: number[]) => void;
+    /**
+     * What a tab's own menu offers, asked for when it is opened.
+     *
+     * A function rather than a table, because the answer depends on the state
+     * of whatever the tab holds — the editor's entry says "Preview" or
+     * "Source" depending on which it is showing — and asking at the moment of
+     * opening is the only way to be current without the pane subscribing to
+     * things it should know nothing about.
+     *
+     * Returning nothing means no menu, and the button is not drawn: a control
+     * that opens onto an empty list is worse than no control.
+     */
+    tabMenu?: ((tab: TabId) => MenuItem[]) | undefined;
   }
 
   let {
@@ -41,7 +56,11 @@
     onfocus,
     onclose,
     onresize,
+    tabMenu,
   }: Props = $props();
+
+  /** The tab whose menu is open, and where to draw it. */
+  let opened = $state<{ items: MenuItem[]; x: number; y: number } | null>(null);
 
   /** The pane the pointer is over, and where in it, while a drag is in flight. */
   let hovering = $state<DropZone | null>(null);
@@ -152,6 +171,7 @@
         {onfocus}
         {onclose}
         {onresize}
+        {tabMenu}
       />
     {/each}
   </div>
@@ -203,6 +223,32 @@
           }}
         >
           <span class="label">{titles[tab] ?? tab}</span>
+          {#if (tabMenu?.(tab)?.length ?? 0) > 0}
+            <button
+              type="button"
+              class="more"
+              aria-label={t("workspace-tab-menu")}
+              aria-haspopup="menu"
+              onclick={(event) => {
+                event.stopPropagation();
+                // Under the button rather than at the pointer: this one has an
+                // anchor, unlike a right-click, and a menu that appeared at the
+                // cursor would sit over the tab it belongs to.
+                const box = event.currentTarget.getBoundingClientRect();
+                opened = {
+                  items: tabMenu?.(tab) ?? [],
+                  x: box.left,
+                  y: box.bottom + 2,
+                };
+              }}
+            >
+              <svg viewBox="0 0 12 3" aria-hidden="true">
+                <circle cx="1.5" cy="1.5" r="1.2" />
+                <circle cx="6" cy="1.5" r="1.2" />
+                <circle cx="10.5" cy="1.5" r="1.2" />
+              </svg>
+            </button>
+          {/if}
           <button
             type="button"
             class="close"
@@ -233,6 +279,15 @@
       {/if}
     </div>
   </section>
+
+  {#if opened}
+    <ContextMenu
+      items={opened.items}
+      x={opened.x}
+      y={opened.y}
+      onclose={() => (opened = null)}
+    />
+  {/if}
 {/if}
 
 <style>
@@ -325,6 +380,7 @@
     background: var(--yaz-bg-primary);
   }
 
+  .more,
   .close {
     display: flex;
     align-items: center;
@@ -339,9 +395,16 @@
     cursor: pointer;
   }
 
+  .more:hover,
   .close:hover {
     background: var(--yaz-bg-active);
     color: var(--yaz-text-primary);
+  }
+
+  .more svg {
+    inline-size: 0.6rem;
+    fill: currentColor;
+    stroke: none;
   }
 
   .close svg {

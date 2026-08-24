@@ -264,6 +264,10 @@ menu-edit-settings = Einstellungen…
 ## Arbeitsbereich
 
 workspace-close-tab = Reiter schließen
+workspace-tab-menu = Was dieser Tab kann
+tab-editor-preview = Vorschau zeigen
+tab-editor-source = Quelltext zeigen
+tab-editor-wrap = Lange Zeilen umbrechen
 workspace-tab-editor = Editor
 workspace-tab-pdf = PDF
 menu-view-tabs = Reiter

@@ -136,6 +136,13 @@ export interface RegisteredFormat {
   nameKey: string;
   /** Loads the language, the first time a file of this format is opened. */
   load: () => Promise<unknown>;
+  /**
+   * Loads the preview, where the format has one.
+   *
+   * Mounted while preview is on for a buffer of this format and dropped when
+   * it is off, so nothing inside it needs to know which it is.
+   */
+  preview?: (() => Promise<unknown>) | undefined;
 }
 
 /**
@@ -372,6 +379,9 @@ export class PluginRuntime {
         ),
         nameKey: contribution.nameKey,
         load: contribution.load,
+        // Only when there is one: absent means "no preview", and a property
+        // set to `undefined` is not absent.
+        ...(contribution.preview ? { preview: contribution.preview } : {}),
       });
     };
 

@@ -267,6 +267,10 @@ menu-edit-settings = Settings…
 ## Workspace
 
 workspace-close-tab = Close tab
+workspace-tab-menu = What this tab can do
+tab-editor-preview = Show preview
+tab-editor-source = Show source
+tab-editor-wrap = Wrap long lines
 workspace-tab-editor = Editor
 workspace-tab-pdf = PDF
 menu-view-tabs = Tabs
