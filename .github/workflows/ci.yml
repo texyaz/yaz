@@ -186,6 +186,14 @@ jobs:
     if: needs.detect.outputs.docs == 'true'
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The plugin pages are assembled from each plugin's own manifest and
+          # README (ADR-0021), so the docs cannot be built from a checkout that
+          # does not have them. Without this the generator found only the one
+          # plugin that is not a submodule and rewrote the index with a single
+          # row, while the committed per-plugin pages still filled the sidebar —
+          # a site that disagreed with itself.
+          submodules: recursive
       - uses: actions/setup-node@v7
         with:
           node-version: 22

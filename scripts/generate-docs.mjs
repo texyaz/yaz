@@ -31,6 +31,7 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
@@ -215,17 +216,32 @@ function generatePlugins() {
   const found = [];
 
   for (const name of readdirSync(dir).sort()) {
-    const manifestPath = join(dir, name, "manifest.json");
-    if (!existsSync(manifestPath)) continue;
+    const plugin = join(dir, name);
+    if (!statSync(plugin).isDirectory()) continue;
+
+    const manifestPath = join(plugin, "manifest.json");
+    if (!existsSync(manifestPath)) {
+      // A submodule that has not been checked out leaves an empty directory.
+      //
+      // This used to be skipped, and skipping was wrong: on a checkout without
+      // submodules the only plugin left is the one that is a plain directory,
+      // so the index was rewritten with a single row while the per-plugin pages
+      // — committed, and read by the sidebar — still listed all six. The site
+      // then disagreed with itself, which is worse than not building.
+      throw new Error(
+        `plugins/${name} has no manifest.json. ` +
+          "Run `git submodule update --init --recursive`.",
+      );
+    }
 
     let manifest;
     try {
       manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-    } catch {
-      // A submodule that has not been checked out leaves an empty directory.
-      // Skipping is right: the alternative is a docs build that fails on a
-      // fresh clone, which nobody would thank us for.
-      continue;
+    } catch (error) {
+      throw new Error(
+        `${name}: could not read its manifest (${error.message}). ` +
+          "Run `git submodule update --init --recursive`.",
+      );
     }
 
     const readmePath = join(dir, name, "README.md");

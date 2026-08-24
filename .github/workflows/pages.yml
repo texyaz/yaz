@@ -43,6 +43,11 @@ jobs:
     if: needs.detect.outputs.site == 'true'
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The plugin pages are assembled from each plugin's own
+          # manifest and README (ADR-0021), so the docs cannot be built
+          # from a checkout that does not have them.
+          submodules: recursive
 
       - uses: dtolnay/rust-toolchain@stable
 

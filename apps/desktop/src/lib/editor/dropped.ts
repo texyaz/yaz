@@ -87,14 +87,76 @@ function flavoursOf(
 }
 
 /**
- * The pictures a drag is carrying.
+ * The pseudo-type a drag reports when it carries files.
  *
- * Zotero puts the image of an image annotation here alongside the citation
- * text, which is what lets a marked figure arrive as a figure rather than as a
- * citation with nothing to look at.
+ * Not a MIME type: `DataTransfer.types` lists `"Files"` for a drag of files,
+ * whatever they are, and `getData` on it answers with nothing. A handler names
+ * it to say it wants to hear about a drag that is a picture and nothing else.
+ */
+export const FILES = "Files";
+
+/**
+ * The pictures a drag is carrying as files.
+ *
+ * Zotero puts the image of an image annotation here when the drag comes from
+ * the file system side of things.
  */
 function imagesOnDrag(transfer: DataTransfer): File[] {
   return [...(transfer.files ?? [])].filter((file) => usableImage(file.type));
+}
+
+/**
+ * The pictures a drag is carrying *inside its HTML*.
+ *
+ * The other half of the same problem: a drag can embed a picture as a `data:`
+ * URL rather than as a file, and that is what an image annotation dragged out
+ * of Zotero turned out to be — so a drag that plainly contained a picture
+ * arrived with no files at all, and the whole thing fell through to "identify
+ * this by its words", which for a picture is no words. That is why dropping one
+ * asked for the source and then produced a citation with nothing to look at.
+ *
+ * Only `data:` URLs. A `file://` or `zotero://` source names something on the
+ * disk that the webview cannot read and that only the Rust side may reach
+ * (ADR-0006), so it is left alone rather than half-handled.
+ */
+function embeddedImages(html: string): { type: string; bytes: Uint8Array }[] {
+  if (!html) return [];
+
+  const found: { type: string; bytes: Uint8Array }[] = [];
+  // Both quotings, because HTML in a clipboard flavour is written by whatever
+  // put it there rather than by a serialiser that agrees with us.
+  for (const match of html.matchAll(/<img[^>]*?src=["'](data:[^"']+)["']/gi)) {
+    const decoded = decodeDataUrl(match[1] ?? "");
+    if (decoded) found.push(decoded);
+  }
+  return found;
+}
+
+/** The bytes behind a base64 `data:` URL, if it is a picture yaz can use. */
+export function decodeDataUrl(
+  url: string,
+): { type: string; bytes: Uint8Array } | null {
+  const head = /^data:([^;,]+)(;base64)?,/i.exec(url);
+  if (!head) return null;
+
+  const type = (head[1] ?? "").toLowerCase();
+  if (!usableImage(type)) return null;
+  // Only base64. A percent-encoded `data:` URL holding a PNG is possible, is
+  // not a thing anything actually produces, and decoding one wrongly would
+  // write a corrupt file rather than fail.
+  if (!head[2]) return null;
+
+  try {
+    const binary = atob(url.slice(head[0].length));
+    const bytes = new Uint8Array(binary.length);
+    for (let at = 0; at < binary.length; at += 1) {
+      bytes[at] = binary.charCodeAt(at);
+    }
+    return { type, bytes };
+  } catch {
+    // A truncated or malformed payload. Nothing to insert is the right answer.
+    return null;
+  }
 }
 
 /** Put `text` in at `at`, with the caret after it. */
@@ -120,12 +182,24 @@ export function pluginDrops(): Extension {
       if (takers.length === 0) return false;
 
       // Only the types somebody asked for, and only the takers whose types are
-      // actually present. A drag of a file offers `Files` and nothing else, so
-      // this is where that stops being anyone's problem.
+      // actually present.
       const wanted = new Set(takers.flatMap((taker) => taker.flavours));
       const flavours = flavoursOf(transfer, wanted);
-      const interested = takers.filter((taker) =>
-        taker.flavours.some((flavour) => flavours[flavour] !== undefined),
+
+      // Read now, because a `DataTransfer` is emptied the moment this handler
+      // returns — and reading a file is asynchronous, so the files themselves
+      // have to be held rather than the transfer.
+      const carried = imagesOnDrag(transfer);
+      const embedded = embeddedImages(flavours["text/html"] ?? "");
+      const hasImages = carried.length > 0 || embedded.length > 0;
+
+      const interested = takers.filter(
+        (taker) =>
+          taker.flavours.some((flavour) => flavours[flavour] !== undefined) ||
+          // A drag can be a picture and nothing else — an image annotation out
+          // of Zotero is one — and a handler that asked for files should hear
+          // about it even though no text flavour arrived.
+          (hasImages && taker.flavours.includes(FILES)),
       );
       if (interested.length === 0) return false;
 
@@ -136,18 +210,16 @@ export function pluginDrops(): Extension {
       const at =
         view.posAtCoords({ x: event.clientX, y: event.clientY }) ??
         view.state.selection.main.head;
-      // Taken off the transfer now, because it is emptied the moment this
-      // handler returns — and reading them is asynchronous, so the files
-      // themselves have to be held rather than the transfer.
-      const carried = imagesOnDrag(transfer);
-
       void (async () => {
-        const images = await Promise.all(
-          carried.map(async (file) => ({
-            type: file.type,
-            bytes: new Uint8Array(await file.arrayBuffer()),
-          })),
-        );
+        const images = [
+          ...(await Promise.all(
+            carried.map(async (file) => ({
+              type: file.type,
+              bytes: new Uint8Array(await file.arrayBuffer()),
+            })),
+          )),
+          ...embedded,
+        ];
         const dropped: Dropped = {
           flavours,
           text: flavours["text/plain"] ?? "",
