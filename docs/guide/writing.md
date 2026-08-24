@@ -136,6 +136,26 @@ description, dates and section. Those come from core, from a packages plugin and
 from a to-do plugin — and a tab each would be three tabs to track for one
 question the reader keeps asking: _what is this thing?_
 
+## Suggestions while you type
+
+A backslash offers command names. The brace of a command that takes a key offers
+the keys: `\ref{` your labels, `\cite{` your bibliography, `\gls{` your glossary,
+`\begin{` the environments, `\includegraphics{` the pictures in the project.
+Every one of those comes from something yaz already had in memory, so the list is
+there before you have finished the word.
+
+It fires on **syntax, not on words** — after `\`, and inside the braces of a
+command that takes a key. Never mid-sentence: a list popping up while you write
+prose is the feature people turn off.
+
+Nothing is selected until you move, so Return still means Return. And nothing
+about it runs while you type: the document is read when a trigger fires, not on
+every keystroke ([ADR-0027](/adr/0027-completion-while-typing)).
+
+`\usepackage{` offers the packages **yaz** understands rather than the ones
+installed on the machine — reading the TeX tree is a job for a language server,
+which yaz does not have yet and says so rather than guessing.
+
 ## Finding things
 
 `Ctrl+F` puts the caret in the search box at the top and opens the **Search**

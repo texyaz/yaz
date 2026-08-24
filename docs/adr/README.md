@@ -52,3 +52,4 @@ decision we later reversed is more valuable than a tidy directory.
 | [0024](0024-page-view-fixed-sheets.md)               | The page is a fixed box; content is pushed through it                 | Accepted |
 | [0025](0025-generated-lists-are-tabs.md)             | A generated list is a tab, not pages                                  | Accepted |
 | [0026](0026-task-providers-and-credentials.md)       | A task list is a core tab; a credential is a capability               | Accepted |
+| [0027](0027-completion-while-typing.md)              | Completion reads what yaz already holds, and never on a keystroke     | Accepted |

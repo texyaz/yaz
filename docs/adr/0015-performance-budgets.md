@@ -226,3 +226,20 @@ at. The forcing function is the point.
 uncomparable — different architecture, different feature set, different measuring
 method. Our own fixtures and our own method, tracked over time, are what tell us
 whether _we_ are getting worse.
+
+### Amendment, 2026-08-24: completion has budgets of its own
+
+[ADR-0027](0027-completion-while-typing) adds three, and the reason they are
+separate from the table above is the point of them: "the suggestion appears" is
+not part of "the character appears", and measuring them as one thing means a
+slow source either gets blamed on typing latency or hides behind it.
+
+| Budget                     | Limit                     | Conditions                         |
+| -------------------------- | ------------------------- | ---------------------------------- |
+| Index update per keystroke | **0 ms** — no scan at all | any document                       |
+| Trigger scan               | < 5 ms (p99)              | 5000-line document                 |
+| Suggestions visible        | < 150 ms (p99)            | 5000-line document, from keystroke |
+
+The first is a design rule written as a number: completion reads the document
+when a trigger fires, never when the text changes. A change that makes it scan
+on `docChanged` fails this whatever the measurement says.

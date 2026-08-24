@@ -36,6 +36,7 @@ compile-diagnostics =
         [one] 1 problem
        *[other] { $count } problems
     }
+completion-package-known = yaz knows this one
 compile-engine-unavailable = This project is set to use { $engine }, which is not installed. Install a TeX distribution, or switch this project to the built-in Tectonic engine.
 
 ## Engines

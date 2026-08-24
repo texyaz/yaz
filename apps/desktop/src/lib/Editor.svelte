@@ -14,7 +14,6 @@
   import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
   import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
   import {
-    autocompletion,
     completionKeymap,
     closeBrackets,
     closeBracketsKeymap,
@@ -58,6 +57,11 @@
   import FormatBar from "./FormatBar.svelte";
   import { placeBar } from "./editor/formatBar";
   import { formatInCell } from "./editor/tableWidget";
+  import {
+    completions,
+    latexBuffer,
+    projectFiles,
+  } from "./editor/completions";
   import { captionOffset, imageOnClipboard } from "./editor/pastedImage";
   import {
     appliedFormatting,
@@ -317,6 +321,14 @@
      */
     onRequirePackage?: ((name: string) => void) | undefined;
     /**
+     * The project's files, for the commands that name one.
+     *
+     * Passed in rather than reached for: which project is open is the shell's
+     * business, and an editor that went looking would be a second place that
+     * knows.
+     */
+    files?: readonly string[];
+    /**
      * Whether the bar that follows a selection is offered at all.
      *
      * Off for a format with no notion of bold: a Markdown or plain-text buffer
@@ -360,6 +372,7 @@
     onReady,
     onPasteImage,
     onRequirePackage,
+    files = [],
     formatBar = false,
   }: Props = $props();
 
@@ -622,6 +635,7 @@
   const listingCompartment = new Compartment();
   const dropCompartment = new Compartment();
   const bibCompartment = new Compartment();
+  const completionCompartment = new Compartment();
   const languageCompartment = new Compartment();
 
   /*
@@ -690,7 +704,14 @@
       indentOnInput(),
       bracketMatching(),
       closeBrackets(),
-      autocompletion(),
+      completions(),
+      completionCompartment.of([
+        // Whether this buffer is LaTeX, and what the project holds. Both change
+        // under a view that is not rebuilt — opening a `.md`, adding a picture
+        // — so both are reconfigured rather than fixed here.
+        latexBuffer.of(untrack(() => rich)),
+        projectFiles.of(untrack(() => files)),
+      ]),
       highlightSelectionMatches(),
       EditorState.allowMultipleSelections.of(true),
       // The language arrives later and from a compartment: which one it is
@@ -1022,6 +1043,18 @@
   $effect(() => {
     view?.dispatch({
       effects: dropCompartment.reconfigure(dropTakers.of(takers)),
+    });
+  });
+
+  // What completion draws on: whether this is a `.tex` at all, and the files a
+  // command could name. A file switch keeps the view, so fixing these when it
+  // was created would keep offering `\\parencite` in a Markdown buffer.
+  $effect(() => {
+    view?.dispatch({
+      effects: completionCompartment.reconfigure([
+        latexBuffer.of(rich),
+        projectFiles.of(files),
+      ]),
     });
   });
 

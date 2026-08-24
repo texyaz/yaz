@@ -42,6 +42,10 @@ The load-bearing ones:
   plugin's, through the public `workspace.registerView`.
 - **0026** — A task list is a **core tab a plugin fills**, the same shape as 0025. An API token is a **declared capability stored in the OS keychain**,
   never in a config file and never handed to the webview.
+- **0027** — Completion reads **data yaz already holds** and scans the document
+  **on a trigger, never on a change**. The decoration pass is already the
+  keystroke budget; a second walk costs more than the whole of it. No language
+  server: eight of the nine things worth completing need no filesystem.
 
 ## Environment (this machine)
 
