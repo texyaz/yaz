@@ -32,6 +32,26 @@
   export const KINDS = ["article", "report", "book", "beamer"] as const;
 
   export type DocumentKind = (typeof KINDS)[number];
+
+  /**
+   * One drawing per kind, on a 16-unit grid.
+   *
+   * Each is the *shape of the page*, not a symbol for it: an article is one
+   * sheet with a heading and paragraphs, a report the same with a chapter rule
+   * above them, a book two facing pages, a presentation a landscape frame with
+   * a title bar. Somebody choosing between four things they have not read yet
+   * picks by silhouette, and four variations of a page icon would tell them
+   * nothing at all.
+   */
+  export const KIND_ICONS: Record<DocumentKind, string> = {
+    article:
+      "M3 1.5h10v13H3zM5.5 4.5h5M5.5 7h5M5.5 9h5M5.5 11h3",
+    report:
+      "M3 1.5h10v13H3zM5.5 4h5M5.5 5.8h5.5M5.5 8.5h5M5.5 10.5h5M5.5 12.5h3",
+    book: "M8 3.5v10M8 3.5C6.5 2.3 4.6 2 2.5 2.2v10C4.6 12 6.5 12.3 8 13.5M8 3.5c1.5-1.2 3.4-1.5 5.5-1.3v10c-2.1-.2-4 .1-5.5 1.3",
+    beamer:
+      "M1.5 2.5h13v9h-13zM1.5 5h13M4 13.5h8M3.5 7.5h4M3.5 9.5h6",
+  };
 </script>
 
 <script lang="ts">
@@ -139,8 +159,13 @@
             aria-checked={kind === option}
             onclick={() => (kind = option)}
           >
-            <span class="kind-name">{t(`new-project-kind-${option}`)}</span>
-            <span class="kind-detail">{t(`new-project-kind-${option}-detail`)}</span>
+            <span class="kind-icon" aria-hidden="true">
+              <svg viewBox="0 0 16 16"><path d={KIND_ICONS[option]} /></svg>
+            </span>
+            <span class="kind-text">
+              <span class="kind-name">{t(`new-project-kind-${option}`)}</span>
+              <span class="kind-detail">{t(`new-project-kind-${option}-detail`)}</span>
+            </span>
           </button>
         {/each}
       </div>
@@ -248,7 +273,9 @@
   }
 
   .kind {
-    display: block;
+    display: flex;
+    align-items: center;
+    gap: var(--yaz-space-3);
     inline-size: 100%;
     padding: var(--yaz-space-2);
     text-align: start;
@@ -266,6 +293,34 @@
   .kind.chosen {
     border-color: var(--yaz-accent);
     background: var(--yaz-bg-active);
+  }
+
+  .kind-icon {
+    inline-size: 1.75rem;
+    block-size: 1.75rem;
+    flex: none;
+    display: inline-flex;
+    color: var(--yaz-text-muted);
+  }
+
+  /* The chosen one's drawing takes the accent too, so the row reads as one
+     thing selected rather than a tinted border with a grey picture in it. */
+  .kind.chosen .kind-icon {
+    color: var(--yaz-accent);
+  }
+
+  .kind-icon svg {
+    inline-size: 100%;
+    block-size: 100%;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.1;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .kind-text {
+    min-inline-size: 0;
   }
 
   .kind-name {

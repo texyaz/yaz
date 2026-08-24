@@ -804,6 +804,17 @@
         tablesLocked = view.tablesLocked;
         paperLight = view.paperLight;
         zoom = view.zoom;
+        vimMode = view.vimMode;
+        autosave = view.autosave;
+        dimBuild = view.dimBuild;
+        fileFilters = {
+          showHidden: view.showHidden,
+          showOther: view.showOther,
+          showBuild: view.showBuild,
+        };
+        ribbonOpen = view.ribbonOpen;
+        ribbonHeight = view.ribbonHeight as RibbonHeight;
+        ribbonVertical = view.ribbonVertical;
         // Only now may the effect above write: before this it would have
         // overwritten the file with the defaults it had not yet replaced.
         viewLoaded = true;
@@ -1555,6 +1566,15 @@
       tablesLocked,
       paperLight,
       zoom,
+      vimMode,
+      autosave,
+      dimBuild,
+      showHidden: fileFilters.showHidden,
+      showOther: fileFilters.showOther,
+      showBuild: fileFilters.showBuild,
+      ribbonOpen,
+      ribbonHeight,
+      ribbonVertical,
     };
     // Not before they have been read: the first run of this effect happens with
     // the defaults still in place, and writing those back would overwrite what
@@ -1618,6 +1638,31 @@
     if (!project) return;
     project = await ipc.openProject(project.root);
   }
+
+  /**
+   * Re-read the project when the window comes back to the front.
+   *
+   * Somebody who has just made a file in Explorer, unzipped a folder of
+   * figures, or had a compile write into `build/` comes back to yaz expecting
+   * to see it. Without this the list is only as fresh as the last thing yaz
+   * itself did to the folder, and the fix — close the tab and open it again —
+   * does not work either, because the tab redraws the same stale scan.
+   *
+   * On focus rather than on a watcher: a walk of the project is cheap and
+   * happens at most once per time somebody switches windows, where a watcher is
+   * a thread, a platform difference, and a stream of events during a compile
+   * that writes thirty files.
+   */
+  $effect(() => {
+    const onfocus = () => {
+      void refreshProject().catch(() => {
+        // A folder that has been deleted or unmounted under us. The list keeps
+        // what it had, which is better than emptying itself over a blip.
+      });
+    };
+    window.addEventListener("focus", onfocus);
+    return () => window.removeEventListener("focus", onfocus);
+  });
 
   /**
    * Where a new file or folder goes, given what was right-clicked.
@@ -1746,6 +1791,16 @@
     }
 
     items.push(
+      {
+        // Always offered, and it is the answer to "I made a file in Explorer
+        // and yaz has not noticed". The list also re-reads itself whenever the
+        // window is focused, so this is for the case where something changed
+        // while yaz was already in front.
+        labelKey: "files-refresh",
+        icon: "redo" as const,
+        separatorBefore: Boolean(node),
+        action: () => void refreshProject(),
+      },
       {
         labelKey: "files-new-file",
         icon: "file-plus" as const,
@@ -4052,6 +4107,20 @@ ${entryText}`,
    * remember that the plugin brokers have to be re-scoped.
    */
   async function adoptProject(info: ipc.ProjectInfo) {
+      // The previous project's joined buffer goes first, and it has to go
+      // before the new entry is opened. Otherwise `openFile` takes its joined
+      // branch, looks for `main.tex` among the *old* document's segments,
+      // finds one — nearly every project has a `main.tex` — and moves the
+      // cursor inside the old text instead of loading the new file. Which is
+      // exactly what a new project looked like: created, opened, and showing
+      // the last project's document.
+      joined = false;
+      joinedSegments = null;
+      liveSegments = null;
+      joinedFiles = new Map();
+      joinedDirty = new Set();
+      joinedMissing = [];
+
       project = info;
       // Filesystem capabilities are scoped to the open project, so the brokers
       // have to be told. Without this a plugin keeps writing into whichever

@@ -264,7 +264,7 @@ menu-edit-settings = Einstellungen…
 ## Arbeitsbereich
 
 workspace-close-tab = Reiter schließen
-workspace-tab-editor = Quelltext
+workspace-tab-editor = Editor
 workspace-tab-pdf = PDF
 menu-view-tabs = Reiter
 menu-view-reset-layout = Anordnung zurücksetzen
@@ -903,6 +903,7 @@ insert-footnote = Einfügen: Fußnote
 ## Die Dateiliste als Dateiverwaltung
 
 workspace-tab-files = Dateien
+files-refresh = Aktualisieren
 files-open = Öffnen
 files-new-file = Neue Datei…
 files-new-folder = Neuer Ordner…

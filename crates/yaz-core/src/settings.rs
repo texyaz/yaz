@@ -344,6 +344,29 @@ pub struct ViewPreferences {
     pub paper_light: bool,
     /// How large the text is drawn, as a percentage.
     pub zoom: u32,
+    /// Whether the editor takes Vim keys.
+    ///
+    /// Not a view at all, and neither are the four below it. They are here
+    /// because the question they answer is the same one — "how is yaz set up
+    /// for me" — and splitting that across two files would mean two files to
+    /// read before anybody could say whether a preference survives a restart.
+    pub vim_mode: bool,
+    /// Whether a save also records a version.
+    pub autosave: bool,
+    /// Whether build artefacts are drawn quietly rather than hidden.
+    pub dim_build: bool,
+    /// Whether dotted folders appear in the file list.
+    pub show_hidden: bool,
+    /// Whether formats yaz has no use for appear in the file list.
+    pub show_other: bool,
+    /// Whether what a compile produced appears in the file list.
+    pub show_build: bool,
+    /// Whether the ribbon is expanded rather than collapsed to its tabs.
+    pub ribbon_open: bool,
+    /// How tall the ribbon's controls are: `regular` or `compact`.
+    pub ribbon_height: String,
+    /// Whether the ribbon runs down the side rather than across the top.
+    pub ribbon_vertical: bool,
 }
 
 impl Default for ViewPreferences {
@@ -354,6 +377,15 @@ impl Default for ViewPreferences {
             line_numbering: "absolute".to_owned(),
             wrap: true,
             comments: true,
+            vim_mode: false,
+            autosave: false,
+            dim_build: true,
+            show_hidden: false,
+            show_other: true,
+            show_build: true,
+            ribbon_open: true,
+            ribbon_height: "regular".to_owned(),
+            ribbon_vertical: false,
             line_breaks: false,
             machinery: false,
             tables_locked: false,

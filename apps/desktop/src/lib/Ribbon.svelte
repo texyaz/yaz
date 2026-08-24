@@ -568,6 +568,16 @@
     align-items: stretch;
     gap: var(--yaz-space-2);
     padding: var(--yaz-space-2) var(--yaz-space-3);
+    /* One height for every tab.
+    
+       Without this the strip is as tall as whatever the chosen tab holds, so
+       Document — which has a full-height command in it — stood taller than
+       Start, and switching tabs moved the whole document up and down under the
+       cursor. The number is the tallest a group gets: a large action at 4.5rem,
+       its group title, the gap between them, and the padding above and below.
+       A tab with nothing that tall now sits in a box of the same size rather
+       than shrinking it. */
+    min-block-size: 6.75rem;
     /* Clipping is safe now that the menus are fixed to the window. A ribbon
        narrower than its commands still has to end somewhere, and scrolling it
        is better than pushing the window wider than the screen. */
@@ -579,6 +589,9 @@
     flex-direction: column;
     overflow-x: hidden;
     overflow-y: auto;
+    /* Down the side, height is the long dimension and there is nothing to
+       keep steady. */
+    min-block-size: 0;
   }
 
   /* Groups are separated by a rule, which is what makes a ribbon scannable —
@@ -677,6 +690,9 @@
 
   .ribbon.compact .body {
     padding-block: var(--yaz-space-1);
+    /* Compact is one row of small controls whichever tab it is, so this only
+       has to stop the box collapsing on a tab with a short group. */
+    min-block-size: 2.25rem;
   }
 
   .group-title {

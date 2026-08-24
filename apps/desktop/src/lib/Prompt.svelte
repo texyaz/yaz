@@ -57,10 +57,17 @@
     const field = input;
     if (!field) return;
     field.focus();
-    // The stem, not the extension: `Ablauf` out of `Ablauf.png`. Selecting
-    // everything means the first keystroke costs somebody their file type.
-    const stop = value.lastIndexOf(".");
-    field.setSelectionRange(0, stop > 0 ? stop : value.length);
+    // Untracked, and that is the whole of it: this effect reads `value`, and
+    // `value` changes on every keystroke. Tracked, it re-ran after each
+    // character and put the selection back over what had just been typed — so
+    // the field could never hold more than one letter, and naming a new file
+    // was impossible.
+    untrack(() => {
+      // The stem, not the extension: `Ablauf` out of `Ablauf.png`. Selecting
+      // everything means the first keystroke costs somebody their file type.
+      const stop = value.lastIndexOf(".");
+      field.setSelectionRange(0, stop > 0 ? stop : value.length);
+    });
   });
 
   function onkeydown(event: KeyboardEvent) {

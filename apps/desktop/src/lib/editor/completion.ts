@@ -298,6 +298,11 @@ export function labelsIn(
   text: string,
   named: ReadonlyMap<number, string> = new Map(),
 ): Suggestion[] {
+  // Document order, which for sections is numeric order — 2 before 10, which
+  // sorting the *text* "10" against "2" gets backwards. It falls out of walking
+  // the text rather than being arranged afterwards: the labels are found in the
+  // order they appear, and the order they appear is the order they are
+  // numbered.
   const found: Suggestion[] = [];
   const seen = new Set<string>();
 
@@ -309,13 +314,23 @@ export function labelsIn(
     if (commented(text, at)) continue;
     seen.add(key);
 
+    const names = nearest(named, at);
     found.push({
       label: key,
-      // What it is attached to: "3.2 Kosten" rather than `sec:kosten`. The key
-      // is what goes in the document and the title is what tells somebody
-      // whether it is the one they meant — a list of forty keys is a list
-      // nobody can choose from.
-      detail: nearest(named, at) ?? kindOfLabel(key),
+      // The heading itself is what the row reads as — "3.2 Kosten" — with the
+      // number first because that is where it goes when LaTeX prints it and
+      // where somebody scanning a numbered list expects to find it. It used to
+      // be the second column, which put the number in the middle of the row
+      // with the key on one side of it and the title on the other.
+      //
+      // The key is still what gets inserted, and still what typing is matched
+      // against, so `kosten` finds it.
+      ...(names ? { display: names } : {}),
+      // The key moves to the quiet column once the title has the loud one.
+      // Where there is no title — a label on something yaz cannot name — the
+      // kind goes there instead and the key stays in front, which is all there
+      // is to say about it.
+      detail: names ? key : kindOfLabel(key),
     });
   }
   return found;

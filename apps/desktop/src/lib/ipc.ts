@@ -849,6 +849,23 @@ export interface ViewPreferences {
   tablesLocked: boolean;
   paperLight: boolean;
   zoom: number;
+  /**
+   * Vim keys, and the switches below it.
+   *
+   * Not views, and kept here anyway: the question they answer is the same one —
+   * how yaz is set up for this person — and a second file for it would be a
+   * second place to look before anybody could say whether a preference
+   * survives a restart.
+   */
+  vimMode: boolean;
+  autosave: boolean;
+  dimBuild: boolean;
+  showHidden: boolean;
+  showOther: boolean;
+  showBuild: boolean;
+  ribbonOpen: boolean;
+  ribbonHeight: string;
+  ribbonVertical: boolean;
 }
 
 export function getViewPreferences(): Promise<ViewPreferences> {

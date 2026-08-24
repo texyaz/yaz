@@ -247,6 +247,9 @@ function candidatesFor(
       return labelKinds(readDocument(state.doc).labels);
 
     case "label":
+      // Left in the order the document puts them, which for sections is the
+      // order they are numbered. Sorting alphabetically would interleave
+      // `sec:anhang` between 2 and 3.
       return readDocument(state.doc).labels;
 
     case "citation":
@@ -398,6 +401,24 @@ function latexCompletions(context: CompletionContext): CompletionResult | null {
   );
   if (options.length === 0) return null;
 
+  // Say what order they go in, for as long as nothing has been typed to sort
+  // them by. CodeMirror scores each option against the query and breaks ties on
+  // the label, so ten sections came out `1, 10, 2, 3` — alphabetical order,
+  // which is the wrong order for anything numbered. A descending boost states
+  // the document's own order instead.
+  //
+  // Only while the query is bare, which for a reference means the prefix and
+  // its colon. The moment somebody types a letter they mean the letter, and the
+  // match should decide — a boost strong enough to fix the default order is
+  // also strong enough to override a better match.
+  if (bare(trigger)) {
+    options.forEach((option, index) => {
+      // Positive and inside CodeMirror's ±99, which the rank limit of 50
+      // guarantees. Descending, so the first stays first.
+      option.boost = options.length - index;
+    });
+  }
+
   return {
     from: trigger.from,
     options,
@@ -412,6 +433,20 @@ function latexCompletions(context: CompletionContext): CompletionResult | null {
     // showing the seven prefixes.
     validFor: trigger.argument === "labelKind" ? /^[\w.\-]*$/ : /^[\w:.\-/]*$/,
   };
+}
+
+/**
+ * Whether anything has been typed that could sort the list.
+ *
+ * For a reference the prefix and its colon do not count: `\ref{sec:` has a
+ * query of `sec:`, and every candidate begins with it, so it distinguishes
+ * nothing and the order is still the default one.
+ */
+function bare(trigger: Trigger): boolean {
+  if (trigger.kind === "argument" && trigger.argument === "label") {
+    return trigger.query.endsWith(":");
+  }
+  return trigger.query === "";
 }
 
 /** Completion for a LaTeX buffer. */

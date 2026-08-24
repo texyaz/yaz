@@ -145,7 +145,7 @@ describe("what it offers", () => {
     expect(await startAndRead(labels)).toContain("sec:kosten");
   });
 
-  it("says what a label names, with the number it will print", async () => {
+  it("reads a label as its heading, numbered, in document order", async () => {
     // `sec:kosten` is a handle. "2 Kosten" is what tells somebody it is the
     // section they meant.
     const view = mount(
@@ -155,7 +155,38 @@ describe("what it offers", () => {
         `Siehe ${B}ref{sec:‸`,
       ].join("\n"),
     );
-    expect(await detailOf(view, "sec:kosten")).toBe("2 Kosten");
+    const found = await optionsOf(view);
+    const kosten = found.find((one) => one.label === "sec:kosten");
+    // The heading is what the row reads as, number first — where LaTeX puts it
+    // and where somebody scanning a numbered list looks. The key moves to the
+    // quiet column, and is still what gets inserted and matched against.
+    expect(kosten?.displayLabel).toBe("2 Kosten");
+    expect(kosten?.detail).toBe("sec:kosten");
+  });
+
+  it("keeps the labels in the order the document numbers them", async () => {
+    // Ten sections, so alphabetical order and numeric order disagree: sorting
+    // the text would put "10" before "2".
+    const lines: string[] = [];
+    for (let n = 1; n <= 10; n += 1) {
+      lines.push(`${B}section{Teil ${n}}${B}label{sec:t${n}}`);
+    }
+    lines.push(`Siehe ${B}ref{sec:‸`);
+
+    const view = mount(lines.join("\n"));
+    const found = await optionsOf(view);
+    expect(found.map((one) => one.displayLabel)).toEqual([
+      "1 Teil 1",
+      "2 Teil 2",
+      "3 Teil 3",
+      "4 Teil 4",
+      "5 Teil 5",
+      "6 Teil 6",
+      "7 Teil 7",
+      "8 Teil 8",
+      "9 Teil 9",
+      "10 Teil 10",
+    ]);
   });
 
   it("expands an acronym rather than repeating it", async () => {

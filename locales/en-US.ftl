@@ -267,7 +267,7 @@ menu-edit-settings = Settings…
 ## Workspace
 
 workspace-close-tab = Close tab
-workspace-tab-editor = Source
+workspace-tab-editor = Editor
 workspace-tab-pdf = PDF
 menu-view-tabs = Tabs
 menu-view-reset-layout = Reset layout
@@ -906,6 +906,7 @@ insert-footnote = Insert: footnote
 ## The file list, as a file manager
 
 workspace-tab-files = Files
+files-refresh = Refresh
 files-open = Open
 files-new-file = New file…
 files-new-folder = New folder…
