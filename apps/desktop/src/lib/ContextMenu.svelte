@@ -24,10 +24,20 @@
     /** Where the click was, in client coordinates. */
     x: number;
     y: number;
+    /**
+     * Which edge of the menu `x` names.
+     *
+     * `start` for a right-click, where `x` is the pointer and the menu grows
+     * away from it. `end` for a menu hanging off a button at the right of
+     * something: aligning its left edge to the button would leave it hanging
+     * off the pane, and flipping it only once it reached the window edge would
+     * make a menu near the middle of the screen look misplaced.
+     */
+    anchor?: "start" | "end" | undefined;
     onclose: () => void;
   }
 
-  let { items, x, y, onclose }: Props = $props();
+  let { items, x, y, anchor = "start", onclose }: Props = $props();
 
   let menu = $state<HTMLDivElement | null>(null);
 
@@ -54,11 +64,13 @@
     // not drawn — a menu that appeared at the click point and then jumped is
     // worse than one that appears a frame later in the right place.
     if (!size) return { left: x, top: y };
+    // Where it would like to be, before the window has a say.
+    const wanted = anchor === "end" ? x - size.width : x;
     return {
       left:
-        x + size.width + MARGIN > window.innerWidth
-          ? Math.max(MARGIN, x - size.width)
-          : x,
+        wanted + size.width + MARGIN > window.innerWidth
+          ? Math.max(MARGIN, window.innerWidth - size.width - MARGIN)
+          : Math.max(MARGIN, wanted),
       top:
         y + size.height + MARGIN > window.innerHeight
           ? Math.max(MARGIN, y - size.height)

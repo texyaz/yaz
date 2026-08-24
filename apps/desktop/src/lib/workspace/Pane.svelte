@@ -59,8 +59,13 @@
     tabMenu,
   }: Props = $props();
 
-  /** The tab whose menu is open, and where to draw it. */
-  let opened = $state<{ items: MenuItem[]; x: number; y: number } | null>(null);
+  /** The pane's menu, while it is open, and where to draw it. */
+  let opened = $state<{
+    items: MenuItem[];
+    x: number;
+    y: number;
+    anchor: "start" | "end";
+  } | null>(null);
 
   /** The pane the pointer is over, and where in it, while a drag is in flight. */
   let hovering = $state<DropZone | null>(null);
@@ -205,63 +210,74 @@
         if (tab && node.kind === "leaf") onmove(tab, node.id, "center");
       }}
     >
-      {#each node.tabs as tab (tab)}
-        <div
-          class="tab"
-          class:active={tab === node.active}
-          draggable="true"
-          role="tab"
-          tabindex={tab === node.active ? 0 : -1}
-          aria-selected={tab === node.active}
-          ondragstart={(event) => {
-            event.dataTransfer?.setData("application/x-yaz-tab", tab);
-            if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
-          }}
-          onclick={() => onfocus(tab)}
-          onkeydown={(event) => {
-            if (event.key === "Enter" || event.key === " ") onfocus(tab);
-          }}
-        >
-          <span class="label">{titles[tab] ?? tab}</span>
-          {#if (tabMenu?.(tab)?.length ?? 0) > 0}
-            <button
-              type="button"
-              class="more"
-              aria-label={t("workspace-tab-menu")}
-              aria-haspopup="menu"
-              onclick={(event) => {
-                event.stopPropagation();
-                // Under the button rather than at the pointer: this one has an
-                // anchor, unlike a right-click, and a menu that appeared at the
-                // cursor would sit over the tab it belongs to.
-                const box = event.currentTarget.getBoundingClientRect();
-                opened = {
-                  items: tabMenu?.(tab) ?? [],
-                  x: box.left,
-                  y: box.bottom + 2,
-                };
-              }}
-            >
-              <svg viewBox="0 0 12 3" aria-hidden="true">
-                <circle cx="1.5" cy="1.5" r="1.2" />
-                <circle cx="6" cy="1.5" r="1.2" />
-                <circle cx="10.5" cy="1.5" r="1.2" />
-              </svg>
-            </button>
-          {/if}
-          <button
-            type="button"
-            class="close"
-            aria-label={t("workspace-close-tab")}
-            onclick={(event) => {
-              event.stopPropagation();
-              onclose(tab);
+      <div class="tab-scroll">
+        {#each node.tabs as tab (tab)}
+          <div
+            class="tab"
+            class:active={tab === node.active}
+            draggable="true"
+            role="tab"
+            tabindex={tab === node.active ? 0 : -1}
+            aria-selected={tab === node.active}
+            ondragstart={(event) => {
+              event.dataTransfer?.setData("application/x-yaz-tab", tab);
+              if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+            }}
+            onclick={() => onfocus(tab)}
+            onkeydown={(event) => {
+              if (event.key === "Enter" || event.key === " ") onfocus(tab);
             }}
           >
-            <svg viewBox="0 0 8 8" aria-hidden="true"><path d="M0 0l8 8M8 0L0 8" /></svg>
-          </button>
-        </div>
-      {/each}
+            <span class="label">{titles[tab] ?? tab}</span>
+            <button
+              type="button"
+              class="close"
+              aria-label={t("workspace-close-tab")}
+              onclick={(event) => {
+                event.stopPropagation();
+                onclose(tab);
+              }}
+            >
+              <svg viewBox="0 0 8 8" aria-hidden="true"><path d="M0 0l8 8M8 0L0 8" /></svg>
+            </button>
+          </div>
+        {/each}
+      </div>
+
+      <!-- One menu for the pane, not one per tab.
+
+           It sits at the end of the strip and offers whatever the *active* tab
+           can do. Per tab it was three dots repeated across every tab in the
+           pane — a row of controls that all look alike and only one of which is
+           ever relevant, since the actions belong to whatever you are looking
+           at. One button in a fixed place is somewhere to learn. -->
+      {#if node.kind === "leaf" && (tabMenu?.(node.active)?.length ?? 0) > 0}
+        <button
+          type="button"
+          class="more"
+          aria-label={t("workspace-tab-menu")}
+          aria-haspopup="menu"
+          onclick={(event) => {
+            // Anchored under the button rather than at the pointer: this one
+            // has somewhere to hang from, unlike a right-click menu, and it is
+            // pinned to the strip's end so it opens in the same place every
+            // time. Aligned by its right edge, because the button is.
+            const box = event.currentTarget.getBoundingClientRect();
+            opened = {
+              items: tabMenu?.(node.active) ?? [],
+              x: box.right,
+              y: box.bottom + 2,
+              anchor: "end",
+            };
+          }}
+        >
+          <svg viewBox="0 0 12 3" aria-hidden="true">
+            <circle cx="1.5" cy="1.5" r="1.2" />
+            <circle cx="6" cy="1.5" r="1.2" />
+            <circle cx="10.5" cy="1.5" r="1.2" />
+          </svg>
+        </button>
+      {/if}
     </div>
 
     <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -285,6 +301,7 @@
       items={opened.items}
       x={opened.x}
       y={opened.y}
+      anchor={opened.anchor}
       onclose={() => (opened = null)}
     />
   {/if}
@@ -349,9 +366,22 @@
   .tabs {
     display: flex;
     align-items: stretch;
-    gap: 1px;
     background: var(--yaz-bg-secondary);
     border-block-end: 1px solid var(--yaz-border);
+  }
+
+  /* Only the tabs scroll.
+
+     The whole strip used to, which would have carried the pane's menu off the
+     right-hand end as soon as there were more tabs than fitted — a control in
+     a fixed place that is not always in it is worse than one that moves
+     honestly. Now the tabs slide under a button that does not. */
+  .tab-scroll {
+    display: flex;
+    align-items: stretch;
+    gap: 1px;
+    flex: 1;
+    min-inline-size: 0;
     overflow-x: auto;
   }
 
@@ -399,6 +429,12 @@
   .close:hover {
     background: var(--yaz-bg-active);
     color: var(--yaz-text-primary);
+  }
+
+  .more {
+    /* Clear of the last tab, and of the pane's edge. */
+    margin-inline: var(--yaz-space-1);
+    flex: none;
   }
 
   .more svg {
