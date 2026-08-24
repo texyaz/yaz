@@ -67,6 +67,18 @@ export const ALL_VISIBLE: Filters = {
   showBuild: true,
 };
 
+/**
+ * Whether a folder is where the compiler writes.
+ *
+ * By name, because that is all there is to go on: a folder carries no kind of
+ * its own, and the one the engines use is `build` by convention. The same
+ * switch hides the artefacts inside it, so hiding those and leaving the folder
+ * would show an empty `build` to somebody who asked not to see it.
+ */
+function isBuildFolder(path: string): boolean {
+  return path === "build" || path.startsWith("build/");
+}
+
 /** Whether a path lies inside a dotted folder, or is one. */
 function isHidden(path: string): boolean {
   return path.split("/").some((segment) => segment.startsWith("."));
@@ -75,13 +87,23 @@ function isHidden(path: string): boolean {
 /**
  * Build the tree, applying the filters.
  *
- * A folder left with nothing in it after filtering is dropped too — a project
- * whose `output/` is hidden should not still show an `output` folder that
- * opens onto nothing.
+ * # Empty folders are folders
+ *
+ * The tree used to be built from file paths alone, which meant a folder existed
+ * only as the prefix of something inside it. That was fine while the list was
+ * a reader. It stopped being fine the moment the list could *make* a folder:
+ * the new folder would appear, the project would refresh, and it would be gone
+ * — not deleted, just never visible. So the scan reports folders too and they
+ * are placed first, before anything is filed into them.
+ *
+ * A folder emptied *by the filters* is still dropped, which is the opposite
+ * case and stays as it was: a project whose `build/` is switched off should not
+ * show a `build` folder that opens onto nothing.
  */
 export function buildTree(
   files: readonly ProjectFile[],
   filters: Filters,
+  directories: readonly string[] = [],
 ): Node[] {
   const roots: Node[] = [];
   const folders = new Map<string, FolderNode>();
@@ -114,6 +136,16 @@ export function buildTree(
     return node;
   };
 
+  // Every folder the scan found, before the files go in — otherwise a folder
+  // with nothing in it never gets created, because nothing names it.
+  for (const path of directories) {
+    if (!filters.showHidden && isHidden(path)) continue;
+    // `build/` and its contents are one switch, and the folder is the part of
+    // it somebody actually sees.
+    if (!filters.showBuild && isBuildFolder(path)) continue;
+    folderAt(path);
+  }
+
   for (const file of wanted) {
     const cut = file.relativePath.lastIndexOf("/");
     const parent =
@@ -130,8 +162,29 @@ export function buildTree(
     (parent ? parent.children : roots).push(node);
   }
 
+  prune(roots, directories);
   sort(roots);
   return roots;
+}
+
+/**
+ * Drop the folders that exist only because something in them was filtered out.
+ *
+ * A folder the scan actually reported stays, empty or not — it is really there,
+ * and the list is a view of the folder. One that was created here as the parent
+ * of a file that has since been filtered away is not: it would open onto
+ * nothing, and the switch that hid its contents was asking for it to go.
+ */
+function prune(nodes: Node[], directories: readonly string[]): void {
+  const real = new Set(directories);
+  const keep = (node: Node): boolean => {
+    if (node.type === "file") return true;
+    prune(node.children, directories);
+    return node.children.length > 0 || real.has(node.path);
+  };
+  for (let index = nodes.length - 1; index >= 0; index -= 1) {
+    if (!keep(nodes[index]!)) nodes.splice(index, 1);
+  }
 }
 
 /**

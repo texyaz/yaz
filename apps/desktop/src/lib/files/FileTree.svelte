@@ -34,9 +34,18 @@
     dimBuild: boolean;
     ontoggle: (path: string) => void;
     onopen: (path: string) => void;
+    /**
+     * A right-click, on a row or on the empty space below them.
+     *
+     * `null` for the empty space, which is a real target rather than a miss:
+     * it means the project root, and "new folder" with nothing selected has to
+     * put the folder somewhere.
+     */
+    oncontext?: ((node: Node | null, x: number, y: number) => void) | undefined;
   }
 
-  let { rows, open, current, dimBuild, ontoggle, onopen }: Props = $props();
+  let { rows, open, current, dimBuild, ontoggle, onopen, oncontext }: Props =
+    $props();
 
   /**
    * One drawing per kind of file.
@@ -68,7 +77,18 @@
   }
 </script>
 
-<ul class="tree">
+<!-- The list fills the pane so that the space below the last row is still
+     part of it: right-clicking there means the project root, and a list that
+     ended at its last row would leave nowhere to aim for that.
+     svelte-ignore a11y_no_noninteractive_element_interactions -->
+<ul
+  class="tree"
+  oncontextmenu={(event) => {
+    if (!oncontext) return;
+    event.preventDefault();
+    oncontext(null, event.clientX, event.clientY);
+  }}
+>
   {#each rows as node (node.path)}
     <li>
       <button
@@ -81,6 +101,14 @@
         aria-expanded={node.type === "folder" ? open.has(node.path) : undefined}
         aria-label={describe(node)}
         onclick={() => (node.type === "folder" ? ontoggle(node.path) : onopen(node.path))}
+        oncontextmenu={(event) => {
+          if (!oncontext) return;
+          event.preventDefault();
+          // Not the list's: a click on a row is about that row, and letting it
+          // through would offer the root's menu over a file.
+          event.stopPropagation();
+          oncontext(node, event.clientX, event.clientY);
+        }}
       >
         <span class="twist" aria-hidden="true">
           {#if node.type === "folder"}{open.has(node.path) ? "▾" : "▸"}{/if}
@@ -111,6 +139,9 @@
     margin: 0;
     padding: var(--yaz-space-1) 0;
     list-style: none;
+    /* Down to the bottom of the pane, so the empty space under the last row
+       is somewhere to right-click rather than a gap. */
+    min-block-size: 100%;
   }
 
   .row {

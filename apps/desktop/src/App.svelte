@@ -62,6 +62,10 @@
   import type { LineNumbering } from "./lib/editor/lineNumbers";
   import { orderTabs } from "./lib/ribbonOrder";
   import FileTree from "./lib/files/FileTree.svelte";
+  import ContextMenu from "./lib/ContextMenu.svelte";
+  import Confirm from "./lib/Confirm.svelte";
+  import NewProject from "./lib/NewProject.svelte";
+  import type { DocumentKind } from "./lib/NewProject.svelte";
   import {
     formatOf,
     isEnabled,
@@ -77,7 +81,7 @@
     initiallyOpen,
     visibleRows,
   } from "./lib/files/tree";
-  import type { Filters } from "./lib/files/tree";
+  import type { Filters, Node as ProjectNode } from "./lib/files/tree";
   import Prompt from "./lib/Prompt.svelte";
   import ThemeBuilder from "./lib/ThemeBuilder.svelte";
   import * as theming from "./lib/theme";
@@ -306,16 +310,6 @@
    */
   let numbering = $state<LineNumbering>("absolute");
   /**
-   * Whether the file list is showing, and whether it stays showing.
-   *
-   * Pinned is the resting state: a file list you have to summon is a file list
-   * you stop using. Unpinned it collapses to a strip and gives its width back
-   * to the document, which is what a long writing session wants.
-   */
-  let filesPinned = $state(true);
-  let filesOpen = $state(true);
-
-  /**
    * What the file list shows, and which folders are open.
    *
    * The filters are a view of the project rather than a property of it, so
@@ -326,7 +320,9 @@
   let dimBuild = $state(true);
   let openFolders = $state<Set<string>>(new Set());
 
-  const fileTree = $derived(buildTree(project?.files ?? [], fileFilters));
+  const fileTree = $derived(
+    buildTree(project?.files ?? [], fileFilters, project?.directories ?? []),
+  );
   const fileRows = $derived(visibleRows(fileTree, openFolders));
 
   /**
@@ -1002,8 +998,7 @@
           ] ?? "continuous";
         return;
       case "view.toggleFiles":
-        filesPinned = !filesPinned;
-        filesOpen = filesPinned;
+        toggleTab("files");
         return;
       case "view.wrap":
         wrap = !wrap;
@@ -1576,6 +1571,235 @@
     return () => clearTimeout(viewTimer);
   });
 
+  /**
+   * The right-click menu in the file list: what was clicked, and where.
+   *
+   * The node is `null` for the empty space below the rows, which means the
+   * project root — a real target, because "new folder" with nothing selected
+   * still has to put the folder somewhere.
+   */
+  let fileMenu = $state<{
+    node: ProjectNode | null;
+    x: number;
+    y: number;
+  } | null>(null);
+
+  /** A pending rename or new name, and what to do with the answer. */
+  let namePrompt = $state<{
+    titleKey: string;
+    initial: string;
+    onname: (name: string) => Promise<void>;
+  } | null>(null);
+
+  /** A pending deletion, held until it is confirmed. */
+  let pendingDelete = $state<{ path: string; name: string } | null>(null);
+
+  /** Whether the new-project wizard is open, and what it last refused. */
+  let makingProject = $state(false);
+  let newProjectFailure = $state<string | null>(null);
+
+  /** Open or close a tab from a switch, saving the arrangement once. */
+  function toggleTab(tab: TabId) {
+    updateLayout(
+      layoutTree.isOpen(layout, tab)
+        ? layoutTree.closeTab(layout, tab)
+        : layoutTree.openTab(layout, tab),
+    );
+  }
+
+  /**
+   * Re-read the project after something on disk has changed.
+   *
+   * The scan is the only thing that knows what is really there, and it is
+   * cheap. Patching the list in memory instead would mean two ideas of the
+   * project — and the one that is wrong is always the one on screen.
+   */
+  async function refreshProject() {
+    if (!project) return;
+    project = await ipc.openProject(project.root);
+  }
+
+  /**
+   * Where a new file or folder goes, given what was right-clicked.
+   *
+   * A folder means inside it; a file means beside it, because "new file" on a
+   * file is somebody pointing at where they want the new one, not at the file.
+   * Nothing means the root.
+   */
+  function targetFolder(node: ProjectNode | null): string {
+    if (!node) return "";
+    if (node.type === "folder") return node.path;
+    const cut = node.path.lastIndexOf("/");
+    return cut === -1 ? "" : node.path.slice(0, cut);
+  }
+
+  /** Join a folder and a name, without a leading slash at the root. */
+  function within(folder: string, name: string): string {
+    return folder ? `${folder}/${name}` : name;
+  }
+
+  /** Ask for a name, then create a folder there. */
+  function askNewFolder(node: ProjectNode | null) {
+    const folder = targetFolder(node);
+    namePrompt = {
+      titleKey: "files-new-folder-title",
+      initial: "",
+      onname: async (name) => {
+        if (!project) return;
+        await ipc.createDirectory(project.root, within(folder, name));
+        await refreshProject();
+        // Opened, so the folder somebody just made is somewhere they can put
+        // something rather than a closed row they have to click again.
+        openFolders = new Set([...openFolders, within(folder, name)]);
+      },
+    };
+  }
+
+  /** Ask for a name, then create an empty file there and open it. */
+  function askNewFile(node: ProjectNode | null) {
+    const folder = targetFolder(node);
+    namePrompt = {
+      titleKey: "files-new-file-title",
+      initial: ".tex",
+      onname: async (name) => {
+        if (!project) return;
+        const path = within(folder, name);
+        await ipc.createFile(project.root, path);
+        await refreshProject();
+        if (folder) openFolders = new Set([...openFolders, folder]);
+        // Opened straight away: a new file nobody is editing is a new file
+        // nobody asked for.
+        await openFile(path);
+      },
+    };
+  }
+
+  /** Ask for a new name, then rename in place. */
+  function askRename(node: ProjectNode) {
+    namePrompt = {
+      titleKey: "files-rename-title",
+      initial: node.name,
+      onname: async (name) => {
+        if (!project || name === node.name) return;
+        const wasOpen = currentFile === node.path;
+        await ipc.renameEntry(project.root, node.path, name);
+        await refreshProject();
+
+        // The editor is holding a path that no longer names anything. Follow
+        // the rename rather than closing the file, which is what somebody who
+        // renamed the thing they were writing in expects.
+        if (node.type === "file" && wasOpen) {
+          const cut = node.path.lastIndexOf("/");
+          await openFile(cut === -1 ? name : `${node.path.slice(0, cut)}/${name}`);
+        } else if (node.type === "folder" && currentFile?.startsWith(`${node.path}/`)) {
+          const cut = node.path.lastIndexOf("/");
+          const parent = cut === -1 ? "" : node.path.slice(0, cut);
+          await openFile(
+            within(within(parent, name), currentFile.slice(node.path.length + 1)),
+          );
+        }
+      },
+    };
+  }
+
+  /**
+   * Carry out a deletion that has been confirmed.
+   *
+   * The Rust side sends it to the recycle bin rather than unlinking it, which
+   * is what makes this recoverable — and is why the confirmation says where it
+   * went rather than warning that it cannot be undone.
+   */
+  async function deletePath(path: string) {
+    if (!project) return;
+    try {
+      await ipc.deleteEntry(project.root, path);
+      // The open file has just gone. Nothing to show, and showing its contents
+      // would invite somebody to save them back.
+      if (currentFile === path || currentFile?.startsWith(`${path}/`)) {
+        currentFile = null;
+        docText = "";
+        dirty = false;
+      }
+      await refreshProject();
+      showNotice(t("files-deleted", { name: path }));
+    } catch (error) {
+      failure = String(error);
+    }
+  }
+
+  /**
+   * What a right-click offers, given what it landed on.
+   *
+   * Built here rather than in the file list because these are project
+   * operations, and the file list is a view of the project — the same split
+   * that keeps the filters here and the scan in Rust.
+   */
+  function fileMenuItems(node: ProjectNode | null): MenuItem[] {
+    const items: MenuItem[] = [];
+
+    if (node?.type === "file") {
+      items.push({
+        labelKey: "files-open",
+        icon: "page" as const,
+        action: () => void openFile(node.path),
+      });
+    }
+
+    items.push(
+      {
+        labelKey: "files-new-file",
+        icon: "file-plus" as const,
+        separatorBefore: node?.type === "file",
+        action: () => askNewFile(node),
+      },
+      {
+        labelKey: "files-new-folder",
+        icon: "folder-plus" as const,
+        action: () => askNewFolder(node),
+      },
+    );
+
+    if (node) {
+      items.push(
+        {
+          labelKey: "files-rename",
+          icon: "pencil" as const,
+          separatorBefore: true,
+          action: () => askRename(node),
+        },
+        {
+          labelKey: "files-delete",
+          icon: "trash" as const,
+          destructive: true,
+          action: () => {
+            pendingDelete = { path: node.path, name: node.name };
+          },
+        },
+      );
+    }
+
+    return items;
+  }
+
+  /**
+   * Make a project, then open it.
+   *
+   * The wizard stays up if this is refused — a folder of that name already
+   * there is the usual reason — because closing it would throw away the two
+   * answers it had just been given.
+   */
+  async function createProject(parent: string, name: string, kind: DocumentKind) {
+    newProjectFailure = null;
+    try {
+      const info = await ipc.createProject(parent, name, kind);
+      makingProject = false;
+      await adoptProject(info);
+      showNotice(t("new-project-created", { name }));
+    } catch (error) {
+      newProjectFailure = String(error);
+    }
+  }
+
   /** Settings panels plugins contributed, shown under Settings → Plugins. */
   let pluginPanels = $state<RegisteredSettings[]>([]);
 
@@ -1987,6 +2211,7 @@ ${entryText}`,
   /** Tab names. A filename is data, so it is not a message key. */
   const tabTitles = $derived<Record<TabId, string>>({
     editor: currentFile ?? t("workspace-tab-editor"),
+    files: t("workspace-tab-files"),
     outline: t("workspace-tab-outline"),
     citations: t("workspace-tab-citations"),
     tasks: t("workspace-tab-tasks"),
@@ -2312,6 +2537,18 @@ ${entryText}`,
    */
   const projectMenu = $derived<MenuItem[]>([
     {
+      // First, because it is the one thing somebody who has just installed yaz
+      // can do. Opening a folder assumes they already have a project; this is
+      // how they get one.
+      labelKey: "menu-file-new-project",
+      icon: "file-plus" as const,
+      group: "group-project",
+      action: () => {
+        newProjectFailure = null;
+        makingProject = true;
+      },
+    },
+    {
       labelKey: "menu-file-open-folder",
       icon: "folder" as const,
       group: "group-project",
@@ -2500,11 +2737,8 @@ ${entryText}`,
           labelKey: "menu-view-files",
           icon: "list" as const,
           group: "group-panes",
-          checked: filesPinned,
-          action: () => {
-            filesPinned = !filesPinned;
-            filesOpen = filesPinned;
-          },
+          checked: layoutTree.isOpen(layout, "files"),
+          action: () => toggleTab("files"),
         },
         {
           labelKey: "menu-view-wrap",
@@ -2554,6 +2788,7 @@ ${entryText}`,
             ...[
               ...(
                 [
+                  "files",
                   "editor",
                   "pdf",
                   "outline",
@@ -3802,7 +4037,21 @@ ${entryText}`,
   async function openProjectAt(picked: string) {
     failure = null;
     try {
-      const info = await ipc.openProject(picked);
+      await adoptProject(await ipc.openProject(picked));
+    } catch (error) {
+      failure = String(error);
+    }
+  }
+
+  /**
+   * Settle into a project that has already been scanned.
+   *
+   * Split out from {@link openProjectAt} because the wizard has the scan
+   * already — creating a project returns it — and everything after the scan is
+   * the same work either way. Two copies of this would be two places to
+   * remember that the plugin brokers have to be re-scoped.
+   */
+  async function adoptProject(info: ipc.ProjectInfo) {
       project = info;
       // Filesystem capabilities are scoped to the open project, so the brokers
       // have to be told. Without this a plugin keeps writing into whichever
@@ -3829,9 +4078,6 @@ ${entryText}`,
       // nothing, which is why the condition is the document's and not a
       // setting. Amends ADR-0020, which had this off for everyone.
       if (hasIncludes(docText)) await join();
-    } catch (error) {
-      failure = String(error);
-    }
   }
 
   async function ensureEditorLoaded() {
@@ -4198,6 +4444,22 @@ ${entryText}`,
     {:else}
       <p class="empty">{t("workspace-no-file-open")}</p>
     {/if}
+  {:else if tab === "files"}
+    {#if !project}
+      <p class="empty">{t("workspace-no-project")}</p>
+    {:else}
+      <!-- Not gated on there being rows: an empty project is exactly when
+           somebody needs to right-click and make the first file. -->
+      <FileTree
+        rows={fileRows}
+        open={openFolders}
+        current={currentFile}
+        {dimBuild}
+        ontoggle={toggleFolder}
+        onopen={openFile}
+        oncontext={(node, x, y) => (fileMenu = { node, x, y })}
+      />
+    {/if}
   {:else if tab === "pdf"}
     <PdfView
       data={pdfData}
@@ -4265,6 +4527,58 @@ ${entryText}`,
   {/if}
 {/snippet}
 
+{#if fileMenu}
+  <ContextMenu
+    items={fileMenuItems(fileMenu.node)}
+    x={fileMenu.x}
+    y={fileMenu.y}
+    onclose={() => (fileMenu = null)}
+  />
+{/if}
+
+{#if namePrompt}
+  <Prompt
+    titleKey={namePrompt.titleKey}
+    initial={namePrompt.initial}
+    onsubmit={(value) => {
+      const pending = namePrompt;
+      namePrompt = null;
+      const name = value?.trim();
+      if (!pending || !name) return;
+      void pending.onname(name).catch((error: unknown) => {
+        failure = String(error);
+      });
+    }}
+  />
+{/if}
+
+{#if pendingDelete}
+  <Confirm
+    titleKey="files-delete-confirm"
+    values={{ name: pendingDelete.name }}
+    detailKey="files-delete-detail"
+    confirmKey="files-delete"
+    destructive
+    onchoose={(confirmed) => {
+      const pending = pendingDelete;
+      pendingDelete = null;
+      if (confirmed && pending) void deletePath(pending.path);
+    }}
+  />
+{/if}
+
+{#if makingProject}
+  <NewProject
+    failure={newProjectFailure}
+    onbrowse={async () => {
+      const picked = await open({ directory: true, multiple: false });
+      return typeof picked === "string" ? picked : null;
+    }}
+    oncreate={(parent, name, kind) => void createProject(parent, name, kind)}
+    oncancel={() => (makingProject = false)}
+  />
+{/if}
+
 {#if bibProblem}
   <BibliographyFix
     citationKey={bibProblem.key}
@@ -4326,7 +4640,7 @@ ${entryText}`,
     />
   {/if}
 
-  <div class="body" class:narrow={!filesOpen}>
+  <div class="body">
     {#if ribbonVertical}
       <Ribbon
         tabs={ribbonTabs}
@@ -4337,55 +4651,6 @@ ${entryText}`,
         ontoggle={() => (ribbonOpen = !ribbonOpen)}
       />
     {/if}
-    <nav
-      class="files"
-      class:collapsed={!filesOpen}
-      onmouseenter={() => (filesOpen = true)}
-      onmouseleave={() => {
-        if (!filesPinned) filesOpen = false;
-      }}
-    >
-      <!-- The pin is the only control the strip needs: everything else about
-           the list is the list. -->
-      <div class="files-bar">
-        <button
-          type="button"
-          class="pin"
-          class:on={filesPinned}
-          title={filesPinned ? t("files-unpin") : t("files-pin")}
-          aria-label={filesPinned ? t("files-unpin") : t("files-pin")}
-          aria-pressed={filesPinned}
-          onclick={() => {
-            filesPinned = !filesPinned;
-            filesOpen = filesPinned;
-          }}
-        >
-          <svg viewBox="0 0 14 14" aria-hidden="true">
-            <path
-              d="M9 1.5l3.5 3.5-1.6 1.6-1-.4-2.4 2.4.5 2.1-1 1-4.2-4.2 1-1 2.1.5 2.4-2.4-.4-1z"
-              fill="currentColor"
-              stroke="none"
-            />
-            <path d="M4.3 9.7L1.5 12.5" stroke="currentColor" stroke-width="1.3" fill="none" />
-          </svg>
-        </button>
-      </div>
-      {#if !project}
-        <p class="empty">{t("workspace-no-project")}</p>
-      {:else if fileRows.length === 0}
-        <p class="empty">{t("workspace-no-files")}</p>
-      {:else}
-        <FileTree
-          rows={fileRows}
-          open={openFolders}
-          current={currentFile}
-          {dimBuild}
-          ontoggle={toggleFolder}
-          onopen={openFile}
-        />
-      {/if}
-    </nav>
-
     <Pane
       node={layout}
       titles={tabTitles}
@@ -4492,80 +4757,18 @@ ${entryText}`,
     font-size: var(--yaz-font-size-base);
   }
 
-  button {
-    font: inherit;
-    color: var(--yaz-text-primary);
-    background: var(--yaz-bg-tertiary);
-    border: 1px solid var(--yaz-border);
-    border-radius: var(--yaz-radius-md);
-    padding: var(--yaz-space-1) var(--yaz-space-3);
-    cursor: pointer;
-  }
-
-  button:hover:not(:disabled) {
-    background: var(--yaz-bg-hover);
-  }
-
-  button:disabled {
-    opacity: 0.5;
-    cursor: default;
-  }
-
+  /* The workspace, which arranges itself — including the file list, which is
+     a tab in it rather than a column beside it. */
   .body {
     flex: 1;
-    display: grid;
-    /* The file list, then the workspace, which arranges itself. */
-    grid-template-columns: 15rem 1fr;
-    min-block-size: 0;
-    transition: grid-template-columns 140ms ease;
-  }
-
-  /* Collapsed, the list keeps a strip: something to point at to get it back,
-     and somewhere for the pin to live. A pane that vanishes completely is one
-     the user has to remember exists. */
-  .body.narrow {
-    grid-template-columns: 1.75rem 1fr;
-  }
-
-
-
-  .pin {
     display: flex;
-    align-items: center;
-    justify-content: center;
-    inline-size: 1.25rem;
-    block-size: 1.25rem;
-    padding: 0;
-    background: none;
-    border: none;
-    border-radius: var(--yaz-radius-sm);
-    color: var(--yaz-text-muted);
-    cursor: pointer;
-    opacity: 0.6;
+    min-block-size: 0;
   }
 
-  .pin svg {
-    inline-size: 0.75rem;
-    block-size: 0.75rem;
+  .body > :global(*) {
+    flex: 1;
+    min-inline-size: 0;
   }
-
-  .pin:hover {
-    opacity: 1;
-    background: var(--yaz-bg-hover);
-  }
-
-  .pin.on {
-    opacity: 1;
-    color: var(--yaz-accent);
-  }
-
-  .files {
-    overflow: auto;
-    background: var(--yaz-bg-secondary);
-    border-inline-end: 1px solid var(--yaz-border);
-  }
-
-
 
 
   .empty {

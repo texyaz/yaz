@@ -899,3 +899,52 @@ insert-section = Einfügen: Abschnitt
 insert-subsection = Einfügen: Unterabschnitt
 insert-quote = Einfügen: Blockzitat
 insert-footnote = Einfügen: Fußnote
+
+## Die Dateiliste als Dateiverwaltung
+
+workspace-tab-files = Dateien
+files-open = Öffnen
+files-new-file = Neue Datei…
+files-new-folder = Neuer Ordner…
+files-rename = Umbenennen…
+files-delete = Löschen
+files-new-file-title = Name der neuen Datei
+files-new-folder-title = Name des neuen Ordners
+files-rename-title = Umbenennen in
+files-delete-confirm = { $name } löschen?
+files-delete-detail = Wandert in den Papierkorb und lässt sich von dort zurückholen.
+files-deleted = { $name } liegt jetzt im Papierkorb.
+dialog-cancel = Abbrechen
+
+## Ein Projekt anlegen
+
+menu-file-new-project = Neues Projekt…
+new-project-title = Neues Projekt
+new-project-where-lede = Es entsteht ein Ordner dieses Namens mit einem Dokument, das sich sofort kompilieren lässt.
+new-project-name = Projektname
+new-project-name-placeholder = Masterarbeit
+new-project-parent = Ablegen in
+new-project-parent-placeholder = Ordner wählen
+new-project-browse = Durchsuchen…
+new-project-destination = Wird angelegt unter { $path }
+new-project-what-lede = Um welche Art Dokument geht es? Das legt Klasse und Aufbau der Datei fest — beides lässt sich später ändern.
+new-project-kind-article = Aufsatz
+new-project-kind-article-detail = Ein Papier. Abschnitte, keine Kapitel.
+new-project-kind-report = Bericht
+new-project-kind-report-detail = Kapitel und Inhaltsverzeichnis. Das nehmen die meisten Abschlussarbeiten.
+new-project-kind-book = Buch
+new-project-kind-book-detail = Kapitel, mit Vor- und Nachspann und doppelseitigem Satz.
+new-project-kind-beamer = Präsentation
+new-project-kind-beamer-detail = Folien, mit beamer.
+new-project-makes = Enthält main.tex, einen Ordner images und einen Ordner build.
+new-project-back = Zurück
+new-project-next = Weiter
+new-project-create = Anlegen
+new-project-created = { $name } steht bereit.
+
+## Was das Dateisystem abgelehnt hat
+
+error-fs-bad-name = Dieser Name lässt sich für Datei oder Ordner nicht verwenden.
+error-fs-exists = Dort liegt bereits etwas dieses Namens.
+error-fs-delete-root = Ein Projekt kann sich nicht selbst löschen.
+error-project-unknown-kind = yaz kennt diese Art Dokument nicht.

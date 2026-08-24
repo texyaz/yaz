@@ -19,7 +19,9 @@
 use camino::{Utf8Path, Utf8PathBuf};
 use serde::{Deserialize, Serialize};
 use yaz_core::Error;
-use yaz_core::settings::{ColourMode, FormatPreferences, KeyPreferences, Settings, ViewPreferences};
+use yaz_core::settings::{
+    ColourMode, FormatPreferences, KeyPreferences, Settings, ViewPreferences,
+};
 
 use crate::commands::{CommandError, Result};
 

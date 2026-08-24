@@ -50,7 +50,11 @@ export type IconName =
   | "calendar"
   | "heading"
   | "globe"
-  | "code";
+  | "code"
+  | "pencil"
+  | "trash"
+  | "file-plus"
+  | "folder-plus";
 
 /**
  * SVG path data on a 16-unit grid.
@@ -60,6 +64,14 @@ export type IconName =
  * catches the mistake anyone actually makes.
  */
 export const ICONS: Record<IconName, string> = {
+  // Renaming: a nib over a line, which is the mark every interface uses for
+  // "change this text" and needs no legend.
+  pencil: "M11.2 2.3l2.5 2.5-7.4 7.4-3.1.6.6-3.1zM10 3.5l2.5 2.5",
+  // Deleting: a bin with a lid. Drawn as a bin rather than an X because an X
+  // is "close" everywhere else in this interface.
+  trash: "M3.5 4.5h9M6.5 4.5V3h3v1.5M4.8 4.5l.6 9h5.2l.6-9M6.8 7v4M9.2 7v4",
+  "file-plus": "M4 1.5h4L11 4.5v4M4 1.5V14.5h3M8 1.5v3h3M11 10v4M9 12h4",
+  "folder-plus": "M2 4h4l1.2 1.5H14v4M2 4v9h6M12 10v4M10 12h4",
   folder: "M2 4.5h4l1.2 1.5H14v6.5H2z",
   clock: "M8 2.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM8 5v3.2l2.2 1.3",
   save: "M3 3h7.5L13 5.5V13H3zM5.5 3v3.5h5V3M5.5 13V9h5v4",

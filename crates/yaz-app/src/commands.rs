@@ -71,6 +71,134 @@ pub struct ProjectFile {
     kind: FileKind,
 }
 
+/// Whether a name can be used for a file or folder inside a project.
+///
+/// One component, not a path: renaming is renaming, and a "rename" that
+/// accepted `../../elsewhere` would be a move dressed as one. The root guard
+/// would refuse it anyway — this refuses it with an error that says what is
+/// actually wrong.
+///
+/// The reserved Windows device names are in here because a file called `con`
+/// cannot be created, deleted or opened by ordinary means once something has
+/// talked the shell into making one.
+fn check_name(name: &str) -> Result<()> {
+    const RESERVED: [&str; 22] = [
+        "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8",
+        "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+    ];
+
+    if name.is_empty() || name == "." || name == ".." {
+        return Err(CommandError::new("error-fs-bad-name", name));
+    }
+    if name.contains(['/', '\\', ':', '*', '?', '"', '<', '>', '|']) {
+        return Err(CommandError::new("error-fs-bad-name", name));
+    }
+    // Trailing dots and spaces are silently trimmed by Windows, so a file
+    // created as `notes ` is a file nothing can then address by that name.
+    if name.ends_with('.') || name.ends_with(' ') || name.starts_with(' ') {
+        return Err(CommandError::new("error-fs-bad-name", name));
+    }
+    let stem = name.split('.').next().unwrap_or(name).to_ascii_lowercase();
+    if RESERVED.contains(&stem.as_str()) {
+        return Err(CommandError::new("error-fs-bad-name", name));
+    }
+    Ok(())
+}
+
+/// Create a folder inside the project.
+///
+/// Parents are created with it: somebody typing `chapters/appendix` into a new
+/// folder prompt means both, and refusing because the first does not exist yet
+/// would be pedantry rather than safety. Every component is still checked, and
+/// the whole path still has to land inside the root.
+#[tauri::command]
+pub fn create_directory(root: String, relative_path: String) -> Result<()> {
+    for component in relative_path.split('/') {
+        check_name(component)?;
+    }
+    let path = resolve_in_root(Utf8Path::new(&root), &relative_path)?;
+    if path.exists() {
+        return Err(CommandError::new("error-fs-exists", &path));
+    }
+    std::fs::create_dir_all(&path)
+        .map_err(|error| CommandError::new("error-fs-io", format!("{path}: {error}")))
+}
+
+/// Create an empty file inside the project.
+#[tauri::command]
+pub fn create_file(root: String, relative_path: String) -> Result<()> {
+    for component in relative_path.split('/') {
+        check_name(component)?;
+    }
+    let path = resolve_in_root(Utf8Path::new(&root), &relative_path)?;
+    if path.exists() {
+        return Err(CommandError::new("error-fs-exists", &path));
+    }
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|error| CommandError::new("error-fs-io", format!("{parent}: {error}")))?;
+    }
+    std::fs::write(&path, "")
+        .map_err(|error| CommandError::new("error-fs-io", format!("{path}: {error}")))
+}
+
+/// Rename a file or folder, in place.
+///
+/// `name` is the new final component and nothing else, so this cannot move
+/// anything between folders. Both ends are resolved against the root regardless,
+/// because a guard that only runs on the input you thought about is not a guard.
+#[tauri::command]
+pub fn rename_entry(root: String, relative_path: String, name: String) -> Result<()> {
+    check_name(&name)?;
+    let from = resolve_in_root(Utf8Path::new(&root), &relative_path)?;
+    if !from.exists() {
+        return Err(CommandError::new("error-fs-not-found", &from));
+    }
+
+    let cut = relative_path.rfind('/');
+    let target = match cut {
+        Some(at) => format!("{}/{name}", &relative_path[..at]),
+        None => name.clone(),
+    };
+    let to = resolve_in_root(Utf8Path::new(&root), &target)?;
+
+    // A case-only rename is a real rename — `Bild.png` to `bild.png` — and on
+    // Windows the destination "already exists" because the filesystem does not
+    // distinguish them. Comparing the resolved paths lets that through while
+    // still refusing a rename onto a different file.
+    if to.exists() && to != from {
+        return Err(CommandError::new("error-fs-exists", &to));
+    }
+    std::fs::rename(&from, &to)
+        .map_err(|error| CommandError::new("error-fs-io", format!("{from} -> {to}: {error}")))
+}
+
+/// Send a file or folder to the system's recycle bin.
+///
+/// The recycle bin rather than an unlink, and that is the whole design of this
+/// command. A file list with a delete on its right-click menu will eventually
+/// be right-clicked on the wrong row, and the difference between "undo it from
+/// the bin" and "restore last night's backup" is the difference between an
+/// annoyance and a lost afternoon. `trash` does this through the shell on
+/// Windows, which is the same operation Explorer performs — so it lands where
+/// the user already knows to look for it.
+///
+/// The project root itself is refused: deleting the thing you are working in
+/// from inside it leaves the window pointing at nothing.
+#[tauri::command]
+pub fn delete_entry(root: String, relative_path: String) -> Result<()> {
+    let root_canonical = canonical_root(Utf8Path::new(&root))?;
+    let path = resolve_in_root(Utf8Path::new(&root), &relative_path)?;
+    if path == root_canonical {
+        return Err(CommandError::new("error-fs-delete-root", &path));
+    }
+    if !path.exists() {
+        return Err(CommandError::new("error-fs-not-found", &path));
+    }
+    trash::delete(path.as_std_path())
+        .map_err(|error| CommandError::new("error-fs-io", format!("{path}: {error}")))
+}
+
 /// What a file is, as far as a file list needs to care.
 ///
 /// Coarse on purpose. The list draws one icon per kind and dims one of them,
@@ -169,6 +297,8 @@ impl FileKind {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectInfo {
+    /// Every folder in the project, including the ones holding nothing.
+    directories: Vec<String>,
     root: String,
     entry: String,
     files: Vec<ProjectFile>,
@@ -248,7 +378,14 @@ pub fn open_project(root: String) -> Result<ProjectInfo> {
     // What is *shown* is then the interface's decision — dotfolders, build
     // artefacts and unfamiliar formats each have a switch — and a decision
     // like that belongs where it can be changed without a recompile.
-    let mut files: Vec<String> = walkdir::WalkDir::new(root.as_std_path())
+    // Folders are collected alongside, because an empty one is still a folder.
+    // The interface builds its tree from the paths it is given, so a folder
+    // with nothing in it would simply not exist there — and "New folder" would
+    // create something that vanished the moment the list refreshed.
+    let mut directories: Vec<String> = Vec::new();
+    let mut files: Vec<String> = Vec::new();
+
+    for entry in walkdir::WalkDir::new(root.as_std_path())
         .max_depth(8)
         .into_iter()
         .filter_entry(|entry| {
@@ -261,15 +398,31 @@ pub fn open_project(root: String) -> Result<ProjectInfo> {
             !(name == ".git" || name == "node_modules")
         })
         .filter_map(std::result::Result::ok)
-        .filter(|entry| entry.file_type().is_file())
-        .filter_map(|entry| {
-            let path = Utf8PathBuf::from_path_buf(entry.into_path()).ok()?;
-            let relative = path.strip_prefix(&root).ok()?;
-            Some(relative.as_str().replace('\\', "/"))
-        })
-        .collect();
+    {
+        let is_dir = entry.file_type().is_dir();
+        if !is_dir && !entry.file_type().is_file() {
+            continue;
+        }
+        let Ok(path) = Utf8PathBuf::from_path_buf(entry.into_path()) else {
+            continue;
+        };
+        let Ok(relative) = path.strip_prefix(&root) else {
+            continue;
+        };
+        // The root itself is the project, not a folder inside it.
+        if relative.as_str().is_empty() {
+            continue;
+        }
+        let relative = relative.as_str().replace('\\', "/");
+        if is_dir {
+            directories.push(relative);
+        } else {
+            files.push(relative);
+        }
+    }
 
     files.sort();
+    directories.sort();
 
     // Entry heuristic, deliberately dumb for now: main.tex, else the first .tex.
     // Phase 4 replaces this with the \documentclass scan in yaz-latex, which can
@@ -288,6 +441,7 @@ pub fn open_project(root: String) -> Result<ProjectInfo> {
     Ok(ProjectInfo {
         root: root.to_string(),
         entry: entry.clone(),
+        directories,
         files: files
             .into_iter()
             .map(|relative_path| ProjectFile {
@@ -297,6 +451,212 @@ pub fn open_project(root: String) -> Result<ProjectInfo> {
             })
             .collect(),
     })
+}
+
+/// Create a project directory, its folders, and a document that compiles.
+///
+/// # Why the boilerplate lives here
+///
+/// The same reason every other write does: the frontend has no filesystem
+/// ([ADR-0006]). There is a second reason worth naming — what a new project
+/// contains is a decision about LaTeX, and the side of the boundary that knows
+/// LaTeX is this one.
+///
+/// # What it makes
+///
+/// `images/` and `build/` exist from the start rather than appearing the first
+/// time something needs them. A folder that appears when you paste a picture is
+/// a folder you did not know to put anything in, and an empty `build/` is what
+/// tells somebody where the output will go before they have compiled anything.
+///
+/// The document is a real one: it sets a language, loads the packages a paper
+/// uses in its first hour, and has a section with a sentence in it. A `main.tex`
+/// holding a `\documentclass` and an empty `document` compiles to a blank page,
+/// which teaches nobody anything and is the first thing they delete.
+///
+/// [ADR-0006]: https://github.com/texyaz/yaz/blob/main/docs/adr/0006-plugin-runtime-and-capabilities.md
+#[tauri::command]
+pub fn create_project(parent: String, name: String, kind: String) -> Result<ProjectInfo> {
+    check_name(&name)?;
+
+    let parent = canonical_root(Utf8Path::new(&parent))?;
+    let root = parent.join(&name);
+    if root.exists() {
+        return Err(CommandError::new("error-fs-exists", &root));
+    }
+
+    let class = DocumentKind::parse(&kind)?;
+
+    for folder in ["images", "build"] {
+        let path = root.join(folder);
+        std::fs::create_dir_all(&path)
+            .map_err(|error| CommandError::new("error-fs-io", format!("{path}: {error}")))?;
+    }
+
+    let main = root.join("main.tex");
+    std::fs::write(&main, class.document(&name))
+        .map_err(|error| CommandError::new("error-fs-io", format!("{main}: {error}")))?;
+
+    open_project(root.to_string())
+}
+
+/// The kinds of document the wizard offers.
+///
+/// The standard classes and only those. A class that is not installed produces
+/// a project that does not compile, and yaz cannot know what is installed
+/// without reading the TeX tree — the same line [ADR-0023] draws for the
+/// preview.
+///
+/// [ADR-0023]: https://github.com/texyaz/yaz/blob/main/docs/adr/0023-latex-vocabulary-boundary.md
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DocumentKind {
+    Article,
+    Report,
+    Book,
+    Beamer,
+}
+
+/// A paper: `\section` is its top level and it has no chapters.
+const ARTICLE: &str = r#"\documentclass[a4paper,11pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[english]{babel}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+
+% Pictures brought into the document are kept here.
+\graphicspath{{images/}}
+
+\title{TITLE}
+\author{}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Introduction}
+\label{sec:introduction}
+
+Replace this with the first thing you have to say.
+
+\end{document}
+"#;
+
+/// A longer piece: chapters, and a contents list worth printing.
+const REPORT: &str = r#"\documentclass[a4paper,11pt]{CLASS}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[english]{babel}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+
+% Pictures brought into the document are kept here.
+\graphicspath{{images/}}
+
+\title{TITLE}
+\author{}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+
+\chapter{Introduction}
+\label{ch:introduction}
+
+Replace this with the first thing you have to say.
+
+\section{Background}
+\label{sec:background}
+
+And a section beneath it.
+
+\end{document}
+"#;
+
+/// Slides. A different shape of document, so a different skeleton.
+const BEAMER: &str = r#"\documentclass[aspectratio=169]{beamer}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{graphicx}
+
+% Pictures brought into the document are kept here.
+\graphicspath{{images/}}
+
+\title{TITLE}
+\author{}
+\date{\today}
+
+\begin{document}
+
+\frame{\titlepage}
+
+\begin{frame}{Overview}
+  \begin{itemize}
+    \item The first thing you have to say.
+  \end{itemize}
+\end{frame}
+
+\end{document}
+"#;
+
+impl DocumentKind {
+    fn parse(kind: &str) -> Result<Self> {
+        match kind {
+            "article" => Ok(Self::Article),
+            "report" => Ok(Self::Report),
+            "book" => Ok(Self::Book),
+            "beamer" => Ok(Self::Beamer),
+            other => Err(CommandError::new("error-project-unknown-kind", other)),
+        }
+    }
+
+    /// The document this kind starts from, titled after the folder.
+    fn document(self, title: &str) -> String {
+        let skeleton = match self {
+            Self::Article => ARTICLE,
+            Self::Report | Self::Book => REPORT,
+            Self::Beamer => BEAMER,
+        };
+        let class = match self {
+            Self::Article => "article",
+            Self::Report => "report",
+            Self::Book => "book",
+            Self::Beamer => "beamer",
+        };
+        skeleton
+            .replace("CLASS", class)
+            .replace("TITLE", &escape_tex(title))
+    }
+}
+
+/// Make a folder name safe to drop into `\title`.
+///
+/// `Kosten & Nutzen` is an ordinary thing to call a project and `&` is an
+/// alignment character, so without this the first compile fails on the title of
+/// the document the wizard has just written.
+fn escape_tex(text: &str) -> String {
+    let mut escaped = String::with_capacity(text.len());
+    for character in text.chars() {
+        match character {
+            '&' | '%' | '$' | '#' | '_' | '{' | '}' => {
+                escaped.push('\\');
+                escaped.push(character);
+            }
+            '~' => escaped.push_str("\\textasciitilde{}"),
+            '^' => escaped.push_str("\\textasciicircum{}"),
+            '\\' => escaped.push_str("\\textbackslash{}"),
+            _ => escaped.push(character),
+        }
+    }
+    escaped
 }
 
 /// Read a project-relative file as text.
@@ -658,6 +1018,181 @@ pub struct ProjectSettingsDto {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A project directory with one file in it, and its canonical root.
+    fn a_project() -> (tempfile::TempDir, String) {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).expect("utf-8 path");
+        std::fs::write(root.join("main.tex"), "\\documentclass{article}").expect("write");
+        let canonical = canonical_root(&root).expect("canonical").to_string();
+        (dir, canonical)
+    }
+
+    #[test]
+    fn the_scan_reports_a_folder_with_nothing_in_it() {
+        // The whole reason folders are reported separately: the interface builds
+        // its tree from paths, so an empty folder would not exist there, and a
+        // "New folder" that vanished on refresh is worse than none at all.
+        let (_dir, root) = a_project();
+        create_directory(root.clone(), "images".to_owned()).expect("create");
+
+        let info = open_project(root).expect("open");
+        assert!(info.directories.contains(&"images".to_owned()));
+    }
+
+    #[test]
+    fn a_name_may_not_climb_out_of_the_project() {
+        let (_dir, root) = a_project();
+
+        // Every one of these is a way of naming somewhere else, and each has to
+        // be refused by name rather than by whether the write happens to fail.
+        for attempt in ["../escape", "..", "a/../../escape", "C:/Windows/evil"] {
+            let error = create_directory(root.clone(), attempt.to_owned())
+                .expect_err("must refuse to leave the project");
+            assert!(
+                error.message_key() == "error-fs-bad-name"
+                    || error.message_key() == "error-fs-outside-root",
+                "{attempt} was refused with {}",
+                error.message_key()
+            );
+        }
+    }
+
+    #[test]
+    fn a_rename_cannot_become_a_move() {
+        let (_dir, root) = a_project();
+        create_directory(root.clone(), "chapters".to_owned()).expect("create");
+        create_file(root.clone(), "chapters/one.tex".to_owned()).expect("create");
+
+        // A new *name*, not a new path. Accepting a path here would make
+        // "rename" a move, and a move that the caller did not think they were
+        // asking for.
+        let error = rename_entry(
+            root.clone(),
+            "chapters/one.tex".to_owned(),
+            "../one.tex".to_owned(),
+        )
+        .expect_err("a name with a separator in it is not a name");
+        assert_eq!(error.message_key(), "error-fs-bad-name");
+
+        rename_entry(
+            root.clone(),
+            "chapters/one.tex".to_owned(),
+            "two.tex".to_owned(),
+        )
+        .expect("an ordinary rename");
+
+        let info = open_project(root).expect("open");
+        let paths: Vec<&str> = info
+            .files
+            .iter()
+            .map(|file| file.relative_path.as_str())
+            .collect();
+        // Renamed in place: still in `chapters`, not moved to the root.
+        assert!(paths.contains(&"chapters/two.tex"));
+        assert!(!paths.contains(&"chapters/one.tex"));
+    }
+
+    #[test]
+    fn a_rename_will_not_write_over_something_else() {
+        let (_dir, root) = a_project();
+        create_file(root.clone(), "notes.tex".to_owned()).expect("create");
+
+        let error = rename_entry(root, "notes.tex".to_owned(), "main.tex".to_owned())
+            .expect_err("renaming onto an existing file destroys it");
+        assert_eq!(error.message_key(), "error-fs-exists");
+    }
+
+    #[test]
+    fn the_project_root_cannot_be_deleted_from_inside_it() {
+        let (_dir, root) = a_project();
+        let error = delete_entry(root, ".".to_owned()).expect_err("must refuse");
+        assert_eq!(error.message_key(), "error-fs-delete-root");
+    }
+
+    #[test]
+    fn a_reserved_windows_name_is_refused() {
+        // A file called `con` cannot afterwards be opened, renamed or removed
+        // by ordinary means, so refusing it up front is the only chance.
+        let (_dir, root) = a_project();
+        for name in ["con", "NUL", "lpt1.tex", "trailing.", "spaced "] {
+            assert_eq!(
+                create_file(root.clone(), name.to_owned())
+                    .expect_err("must refuse")
+                    .message_key(),
+                "error-fs-bad-name",
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_new_project_has_somewhere_to_put_pictures_and_output() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let parent = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).expect("utf-8");
+
+        let info = create_project(parent.to_string(), "Thesis".to_owned(), "report".to_owned())
+            .expect("create");
+
+        assert!(info.directories.contains(&"images".to_owned()));
+        assert!(info.directories.contains(&"build".to_owned()));
+        assert_eq!(info.entry, "main.tex");
+    }
+
+    #[test]
+    fn a_new_project_writes_the_class_it_was_asked_for() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let parent = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).expect("utf-8");
+
+        for (kind, expected, heading) in [
+            ("article", "{article}", "\\section{Introduction}"),
+            ("report", "{report}", "\\chapter{Introduction}"),
+            ("book", "{book}", "\\chapter{Introduction}"),
+            ("beamer", "{beamer}", "\\begin{frame}"),
+        ] {
+            let info = create_project(parent.to_string(), kind.to_owned(), kind.to_owned())
+                .expect("create");
+            let text = read_file(info.root, "main.tex".to_owned()).expect("read");
+
+            assert!(text.contains(expected), "{kind}: {text}");
+            // A book has chapters and an article does not. Writing the wrong
+            // one fails on the first compile, which is a poor introduction.
+            assert!(text.contains(heading), "{kind}: {text}");
+        }
+    }
+
+    #[test]
+    fn a_project_name_that_is_latex_does_not_break_the_document() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let parent = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).expect("utf-8");
+
+        // An ordinary thing to call a project, and `&` is an alignment
+        // character — so without escaping the first compile fails on the title.
+        let info = create_project(
+            parent.to_string(),
+            "Kosten & Nutzen".to_owned(),
+            "article".to_owned(),
+        )
+        .expect("create");
+        let text = read_file(info.root, "main.tex".to_owned()).expect("read");
+
+        assert!(text.contains("\\title{Kosten \\& Nutzen}"), "{text}");
+    }
+
+    #[test]
+    fn a_new_project_will_not_write_over_an_existing_folder() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let parent = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).expect("utf-8");
+        std::fs::create_dir(parent.join("Thesis")).expect("create");
+
+        let error = create_project(
+            parent.to_string(),
+            "Thesis".to_owned(),
+            "article".to_owned(),
+        )
+        .expect_err("must refuse");
+        assert_eq!(error.message_key(), "error-fs-exists");
+    }
 
     #[test]
     fn tectonic_availability_tracks_the_build_feature() {

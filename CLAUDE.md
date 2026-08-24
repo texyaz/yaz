@@ -46,6 +46,10 @@ The load-bearing ones:
   **on a trigger, never on a change**. The decoration pass is already the
   keystroke budget; a second walk costs more than the whole of it. No language
   server: eight of the nine things worth completing need no filesystem.
+- **0028** — The file list is a **tab**, not a region, and it can rename, delete
+  and create. Every operation resolves its path in Rust first. **Delete goes to
+  the recycle bin**, never an unlink — a right-click delete eventually lands on
+  the wrong row. A rename takes a _name_, never a path.
 
 ## Environment (this machine)
 

@@ -166,3 +166,63 @@ describe("initiallyOpen", () => {
     expect([...initiallyOpen([file("notes.md")])]).toEqual([]);
   });
 });
+
+describe("folders that hold nothing", () => {
+  it("shows a folder the scan reported but nothing names", () => {
+    // The case that made this necessary: "New folder" created one, the project
+    // refreshed, and it was gone — never deleted, just never visible, because
+    // the tree was built from file paths and no file named it.
+    const tree = buildTree([file("main.tex")], ALL_VISIBLE, ["images"]);
+    const images = tree.find((node) => node.name === "images");
+
+    expect(images?.type).toBe("folder");
+    expect(images?.type === "folder" && images.children).toEqual([]);
+  });
+
+  it("still drops one left empty by the filters", () => {
+    // The opposite case, and it stays as it was: somebody who switched build
+    // artefacts off should not be shown a `build` that opens onto nothing.
+    const tree = buildTree(
+      [file("main.tex"), file("build/main.aux", "build")],
+      { ...ALL_VISIBLE, showBuild: false },
+      [],
+    );
+    expect(tree.map((node) => node.name)).toEqual(["main.tex"]);
+  });
+
+  it("hides the build folder itself when its contents are hidden", () => {
+    // Reported by the scan, so the empty-folder rule would otherwise keep it —
+    // and a `build` folder that survives the switch that hides build output is
+    // the switch not working.
+    const tree = buildTree(
+      [file("main.tex")],
+      { ...ALL_VISIBLE, showBuild: false },
+      ["build", "images"],
+    );
+    expect(tree.map((node) => node.name)).toEqual(["images", "main.tex"]);
+  });
+
+  it("keeps a dotted folder out unless dotted folders are shown", () => {
+    const hidden = buildTree([file("main.tex")], ALL_VISIBLE, [".texpadtmp"]);
+    expect(hidden.map((node) => node.name)).toEqual(["main.tex"]);
+
+    const shown = buildTree(
+      [file("main.tex")],
+      { ...ALL_VISIBLE, showHidden: true },
+      [".texpadtmp"],
+    );
+    expect(shown.map((node) => node.name)).toEqual([".texpadtmp", "main.tex"]);
+  });
+
+  it("nests an empty folder inside the one that holds it", () => {
+    const tree = buildTree([file("main.tex")], ALL_VISIBLE, [
+      "chapters",
+      "chapters/drafts",
+    ]);
+    const chapters = tree.find((node) => node.name === "chapters");
+
+    expect(chapters?.type === "folder" && chapters.children[0]?.name).toBe(
+      "drafts",
+    );
+  });
+});

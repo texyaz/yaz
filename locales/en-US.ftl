@@ -902,3 +902,52 @@ insert-section = Insert: section
 insert-subsection = Insert: subsection
 insert-quote = Insert: block quotation
 insert-footnote = Insert: footnote
+
+## The file list, as a file manager
+
+workspace-tab-files = Files
+files-open = Open
+files-new-file = New file…
+files-new-folder = New folder…
+files-rename = Rename…
+files-delete = Delete
+files-new-file-title = Name the new file
+files-new-folder-title = Name the new folder
+files-rename-title = Rename to
+files-delete-confirm = Delete { $name }?
+files-delete-detail = It goes to the recycle bin, so you can get it back.
+files-deleted = { $name } was moved to the recycle bin.
+dialog-cancel = Cancel
+
+## Starting a project
+
+menu-file-new-project = New project…
+new-project-title = New project
+new-project-where-lede = A folder will be made with this name, holding a document you can compile straight away.
+new-project-name = Project name
+new-project-name-placeholder = Thesis
+new-project-parent = Inside
+new-project-parent-placeholder = Choose a folder
+new-project-browse = Browse…
+new-project-destination = It will be created at { $path }
+new-project-what-lede = What kind of document is it? This decides the class and the shape of the file — you can change either later.
+new-project-kind-article = Article
+new-project-kind-article-detail = A paper. Sections, no chapters.
+new-project-kind-report = Report
+new-project-kind-report-detail = Chapters and a contents list. What most theses use.
+new-project-kind-book = Book
+new-project-kind-book-detail = Chapters, with front and back matter and facing pages.
+new-project-kind-beamer = Presentation
+new-project-kind-beamer-detail = Slides, using beamer.
+new-project-makes = It gets a main.tex, an images folder and a build folder.
+new-project-back = Back
+new-project-next = Next
+new-project-create = Create
+new-project-created = { $name } is ready.
+
+## Things the filesystem refused
+
+error-fs-bad-name = That name cannot be used for a file or a folder.
+error-fs-exists = Something of that name is already there.
+error-fs-delete-root = A project cannot be deleted from inside itself.
+error-project-unknown-kind = yaz does not know that kind of document.

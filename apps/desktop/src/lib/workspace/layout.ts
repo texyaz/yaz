@@ -69,13 +69,23 @@ export function leaf(tabs: TabId[], active?: TabId): Leaf {
   };
 }
 
-/** The default arrangement: source on the left, PDF on the right. */
+/**
+ * The default arrangement: files, then the source, then the PDF.
+ *
+ * The file list sits where a file list sits, and is a tab like everything else
+ * rather than a region of its own. It had been a fixed column with a pin and a
+ * hover-to-open of its own invention — which meant it alone could not be moved,
+ * could not be split against, and had two ways to hide it that the rest of the
+ * window knew nothing about.
+ *
+ * Narrower than the other two because it holds names rather than text.
+ */
 export function defaultLayout(): Node {
   return {
     kind: "split",
     direction: "row",
-    children: [leaf(["editor"]), leaf(["pdf"])],
-    sizes: [0.5, 0.5],
+    children: [leaf(["files"]), leaf(["editor"]), leaf(["pdf"])],
+    sizes: [0.18, 0.41, 0.41],
   };
 }
 
@@ -226,9 +236,19 @@ export function moveTab(
   return dropped ?? leaf([tab]);
 }
 
+/**
+ * What a stored arrangement is stamped with.
+ *
+ * Bumped when a tab is added that every existing project ought to get. Without
+ * it there is no way to tell "this project was arranged before the file list
+ * was a tab" from "somebody closed the file list on purpose", and the two want
+ * opposite treatment.
+ */
+const LAYOUT_VERSION = 2;
+
 /** Serialise for persistence. */
 export function serialise(node: Node): string {
-  return JSON.stringify(node);
+  return JSON.stringify({ version: LAYOUT_VERSION, layout: node });
 }
 
 /**
@@ -242,10 +262,50 @@ export function deserialise(text: string | null | undefined): Node {
   if (!text) return defaultLayout();
   try {
     const parsed = JSON.parse(text) as unknown;
-    return isNode(parsed) ? withFreshIds(parsed) : defaultLayout();
+
+    // Stamped: the tree is under `layout`, and it is current.
+    if (isStamped(parsed)) {
+      return isNode(parsed.layout)
+        ? withFreshIds(parsed.layout)
+        : defaultLayout();
+    }
+
+    // Unstamped: the whole value is the tree, and it was written before the
+    // file list was a tab. Every project stored one, so upgrading without this
+    // would take the file list away from all of them at once and leave it
+    // findable only by somebody who thought to look under View.
+    if (!isNode(parsed)) return defaultLayout();
+    return withFilesRestored(withFreshIds(parsed));
   } catch {
     return defaultLayout();
   }
+}
+
+/** Whether a parsed value carries a version stamp. */
+function isStamped(
+  value: unknown,
+): value is { version: number; layout: unknown } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { version?: unknown }).version === "number"
+  );
+}
+
+/**
+ * Put the file list back, on the left, in an arrangement that predates it.
+ *
+ * Its own column rather than a tab alongside the editor: that is where it was
+ * when the arrangement was saved, so this is the reading that changes least.
+ */
+function withFilesRestored(node: Node): Node {
+  if (isOpen(node, "files")) return node;
+  return {
+    kind: "split",
+    direction: "row",
+    children: [leaf(["files"]), node],
+    sizes: [0.18, 0.82],
+  };
 }
 
 /** Structural check, since this comes off disk and may be anything. */

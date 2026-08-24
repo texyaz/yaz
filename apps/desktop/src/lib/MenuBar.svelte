@@ -32,6 +32,14 @@
     /** Draw a separator above this entry. */
     separatorBefore?: boolean | undefined;
     /**
+     * Whether choosing this destroys something.
+     *
+     * Drawn in the warning colour, and only in a right-click menu so far. A
+     * menu is aimed at before it is read, so "delete" needs to be
+     * distinguishable from "rename" by something other than the word.
+     */
+    destructive?: boolean | undefined;
+    /**
      * Nested entries, shown as a flyout.
      *
      * One level only. A second level of nesting is where menus stop being

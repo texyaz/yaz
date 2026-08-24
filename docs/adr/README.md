@@ -53,3 +53,4 @@ decision we later reversed is more valuable than a tidy directory.
 | [0025](0025-generated-lists-are-tabs.md)             | A generated list is a tab, not pages                                  | Accepted |
 | [0026](0026-task-providers-and-credentials.md)       | A task list is a core tab; a credential is a capability               | Accepted |
 | [0027](0027-completion-while-typing.md)              | Completion reads what yaz already holds, and never on a keystroke     | Accepted |
+| [0028](0028-the-file-list-edits-the-project.md)      | The file list is a tab, and can rename, delete and create             | Accepted |

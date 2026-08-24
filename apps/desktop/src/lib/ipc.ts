@@ -28,6 +28,15 @@ export interface ProjectInfo {
   root: string;
   entry: string;
   files: ProjectFile[];
+  /**
+   * Every folder in the project, including the ones holding nothing.
+   *
+   * Sent separately because a folder is not a file. The list needs them to
+   * exist in their own right: a folder that is only the prefix of something
+   * inside it cannot be created, cannot be empty, and disappears the moment
+   * its last file is deleted.
+   */
+  directories: string[];
 }
 
 /** A diagnostic parsed out of the engine log. */
@@ -848,4 +857,62 @@ export function getViewPreferences(): Promise<ViewPreferences> {
 
 export function setViewPreferences(view: ViewPreferences): Promise<void> {
   return invoke("set_view_preferences", { view });
+}
+
+/**
+ * Create a folder inside the project.
+ *
+ * Parents come with it, so `chapters/appendix` is one call. Every path here is
+ * resolved against the project root by the Rust side, which is where "may this
+ * be touched" is decided (ADR-0006) — the webview composes a name, never a
+ * permission.
+ */
+export function createDirectory(
+  root: string,
+  relativePath: string,
+): Promise<void> {
+  return invoke("create_directory", { root, relativePath });
+}
+
+/** Create an empty file inside the project. */
+export function createFile(root: string, relativePath: string): Promise<void> {
+  return invoke("create_file", { root, relativePath });
+}
+
+/**
+ * Rename a file or folder where it is.
+ *
+ * `name` is the new final component, not a path: a rename that took a path
+ * would be a move, and one nobody asked for.
+ */
+export function renameEntry(
+  root: string,
+  relativePath: string,
+  name: string,
+): Promise<void> {
+  return invoke("rename_entry", { root, relativePath, name });
+}
+
+/**
+ * Send a file or folder to the recycle bin.
+ *
+ * The bin rather than an unlink, and that is the point: a delete on a
+ * right-click menu is eventually a delete on the wrong row.
+ */
+export function deleteEntry(root: string, relativePath: string): Promise<void> {
+  return invoke("delete_entry", { root, relativePath });
+}
+
+/**
+ * Create a project folder with a document in it, and open it.
+ *
+ * Returns the project as {@link openProject} would, so the shell has the file
+ * list and the entry document without a second call.
+ */
+export function createProject(
+  parent: string,
+  name: string,
+  kind: string,
+): Promise<ProjectInfo> {
+  return invoke<ProjectInfo>("create_project", { parent, name, kind });
 }

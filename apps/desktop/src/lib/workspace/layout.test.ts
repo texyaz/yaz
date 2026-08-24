@@ -24,16 +24,31 @@ import {
   type Node,
 } from "./layout";
 
-/** A row of two panes: [editor] | [pdf]. */
+/**
+ * A row of two panes: [editor] | [pdf].
+ *
+ * Built here rather than taken from {@link defaultLayout}, which it used to be.
+ * These are tests of the tree operations — collapsing, moving, closing — and
+ * what the shell happens to open with is not what they are about. Borrowing the
+ * default meant adding the file list to it broke five tests that had nothing to
+ * do with the file list.
+ */
 function sideBySide(): Node {
-  return defaultLayout();
+  return {
+    kind: "split",
+    direction: "row",
+    children: [leaf(["editor"]), leaf(["pdf"])],
+    sizes: [0.5, 0.5],
+  };
 }
 
 describe("layout", () => {
-  it("starts with the editor and the PDF side by side", () => {
-    const layout = sideBySide();
-    expect(leaves(layout)).toHaveLength(2);
-    expect(openTabs(layout)).toEqual(["editor", "pdf"]);
+  it("starts with the files, the source and the PDF side by side", () => {
+    const layout = defaultLayout();
+    expect(leaves(layout)).toHaveLength(3);
+    // The file list is a tab like the others and opens where a file list
+    // belongs, rather than being a region of the window with rules of its own.
+    expect(openTabs(layout)).toEqual(["files", "editor", "pdf"]);
   });
 
   it("collapses a split when a pane loses its last tab", () => {
@@ -150,8 +165,41 @@ describe("layout", () => {
       "[]",
     ]) {
       const restored = deserialise(bad as string | null);
-      expect(openTabs(restored)).toEqual(["editor", "pdf"]);
+      expect(openTabs(restored)).toEqual(["files", "editor", "pdf"]);
     }
+  });
+
+  it("gives an arrangement saved before the file list one anyway", () => {
+    // Every project has a stored arrangement, and none of them mentioned the
+    // file list because it was not a tab. Reading those as "the file list was
+    // closed on purpose" would take it away from every existing project at
+    // once, leaving it findable only by somebody who thought to look in View.
+    const old = JSON.stringify({
+      kind: "split",
+      direction: "row",
+      children: [
+        { kind: "leaf", id: "pane-1", tabs: ["editor"], active: "editor" },
+        { kind: "leaf", id: "pane-2", tabs: ["pdf"], active: "pdf" },
+      ],
+      sizes: [0.5, 0.5],
+    });
+
+    const restored = deserialise(old);
+    expect(openTabs(restored)).toContain("files");
+    // On the left, where it was when that arrangement was saved.
+    expect(leaves(restored)[0]?.tabs).toEqual(["files"]);
+  });
+
+  it("respects a closed file list once the arrangement knows about it", () => {
+    // The other half of the same decision: a stamped arrangement is one saved
+    // by a version that had the tab, so its absence is somebody's choice.
+    const closed = serialise(leaf(["editor"]));
+    expect(openTabs(deserialise(closed))).toEqual(["editor"]);
+  });
+
+  it("round-trips an arrangement through the stamp", () => {
+    const layout = defaultLayout();
+    expect(openTabs(deserialise(serialise(layout)))).toEqual(openTabs(layout));
   });
 
   it("gives restored panes fresh ids", () => {

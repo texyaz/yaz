@@ -10,6 +10,8 @@
   so.
 -->
 <script lang="ts">
+  import { untrack } from "svelte";
+
   import { t } from "./i18n";
 
   interface Props {
@@ -23,6 +25,15 @@
      * over somebody's shoulder or left legible in a screen recording.
      */
     secret?: boolean | undefined;
+    /**
+     * What the field starts with.
+     *
+     * For renaming, where the answer is nearly always a small edit of what is
+     * already there. The stem is selected rather than the whole thing, so
+     * typing replaces the name and leaves `.tex` alone — which is what somebody
+     * renaming a file means about nine times in ten.
+     */
+    initial?: string | undefined;
     /** Resolved with the text, or null if dismissed. */
     onsubmit: (value: string | null) => void;
   }
@@ -32,14 +43,24 @@
     placeholderKey,
     hintKey,
     secret = false,
+    initial,
     onsubmit,
   }: Props = $props();
 
-  let value = $state("");
+  // The starting text, read once. It is where the field begins, not something
+  // that keeps steering it — an `initial` that reassigned `value` would undo
+  // whatever had been typed since.
+  let value = $state(untrack(() => initial) ?? "");
   let input = $state<HTMLInputElement | null>(null);
 
   $effect(() => {
-    input?.focus();
+    const field = input;
+    if (!field) return;
+    field.focus();
+    // The stem, not the extension: `Ablauf` out of `Ablauf.png`. Selecting
+    // everything means the first keystroke costs somebody their file type.
+    const stop = value.lastIndexOf(".");
+    field.setSelectionRange(0, stop > 0 ? stop : value.length);
   });
 
   function onkeydown(event: KeyboardEvent) {
