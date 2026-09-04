@@ -70,7 +70,7 @@ url = { version = "2", features = ["serde"] }
 # That is what makes it satisfy ADR-0014 without ceremony: it builds natively on
 # aarch64 with no system package, and adds no runtime dependency to the
 # installer.
-rusqlite = { version = "0.38", features = ["bundled"] }
+rusqlite = { version = "0.40", features = ["bundled"] }
 sha2 = "0.11"
 # Both root sources are compiled in, but only one is used at a time — see
 # yaz_core::net and ADR-0019. Enabling both features alone would make reqwest
