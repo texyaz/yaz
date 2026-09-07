@@ -1,0 +1,130 @@
+/*
+ * Gruvbox — an installable yaz theme.
+ *
+ * The warm, retro-groove palette by morhetz
+ * <https://github.com/morhetz/gruvbox>. Unlike Nord or Dracula it ships an
+ * official light ladder as well as dark, so both modes here use Gruvbox's
+ * own background/foreground pairs rather than an improvised complement.
+ *
+ * The signature is warmth: cream and ochre surfaces rather than blue-grey
+ * ones, and accents pulled from a fixed earth palette (orange, yellow,
+ * green, aqua, blue, purple, red) that reads as retro-terminal rather than
+ * neon.
+ *
+ * Anything not set here keeps whatever themes/tokens.css says, so this file
+ * stays short and still inherits improvements to the defaults.
+ */
+
+/* ============================================================ Light ======= */
+
+[data-yaz-theme="gruvbox"][data-yaz-mode="light"] {
+  /* ---- Surfaces ------------------------------------------------------------ */
+  --yaz-bg-primary: #fbf1c7;
+  --yaz-bg-secondary: #ebdbb2;
+  --yaz-bg-tertiary: #d5c4a1;
+  --yaz-bg-overlay: #fbf1c7;
+  --yaz-bg-hover: rgba(60, 56, 54, 0.06);
+  --yaz-bg-active: rgba(60, 56, 54, 0.1);
+  --yaz-bg-selection: rgba(69, 133, 136, 0.22);
+  --yaz-scrim: rgba(40, 40, 40, 0.35);
+
+  /* ---- Text ------------------------------------------------------------------ */
+  --yaz-text-primary: #3c3836;
+  --yaz-text-secondary: #504945;
+  --yaz-text-muted: #7c6f64;
+  --yaz-text-on-accent: #fbf1c7;
+
+  /* ---- Accent and state -------------------------------------------------------
+   * Gruvbox's own "neutral" set, tuned for the light background.
+   */
+  --yaz-accent: #af3a03;
+  --yaz-accent-hover: #9d3400;
+  --yaz-success: #79740e;
+  --yaz-warning: #b57614;
+  --yaz-error: #9d0006;
+  --yaz-info: #427b58;
+
+  /* ---- Borders and separation ------------------------------------------- */
+  --yaz-border: #d5c4a1;
+  --yaz-border-strong: #bdae93;
+  --yaz-focus-ring: var(--yaz-accent);
+
+  /* ---- Editor ------------------------------------------------------------- */
+  --yaz-editor-bg: var(--yaz-bg-primary);
+  --yaz-editor-text: var(--yaz-text-primary);
+  --yaz-editor-gutter-bg: var(--yaz-bg-secondary);
+  --yaz-editor-gutter-text: var(--yaz-text-muted);
+  --yaz-editor-cursor: var(--yaz-accent);
+  --yaz-editor-active-line: rgba(60, 56, 54, 0.05);
+
+  --yaz-syntax-command: #8f3f71;
+  --yaz-syntax-environment: #076678;
+  --yaz-syntax-math: #427b58;
+  --yaz-syntax-comment: #928374;
+  --yaz-syntax-string: #79740e;
+  --yaz-syntax-reference: #d65d0e;
+  --yaz-syntax-error: var(--yaz-error);
+
+  /* ---- PDF viewer --------------------------------------------------------- */
+  --yaz-pdf-bg: #7c6f64;
+  --yaz-pdf-page-shadow: rgba(40, 40, 40, 0.3);
+
+  --yaz-shadow-overlay: 0 8px 24px rgba(40, 40, 40, 0.18);
+}
+
+/* ============================================================= Dark ======= */
+
+[data-yaz-theme="gruvbox"][data-yaz-mode="dark"] {
+  /* ---- Surfaces ------------------------------------------------------------ */
+  --yaz-bg-primary: #282828;
+  --yaz-bg-secondary: #32302f;
+  --yaz-bg-tertiary: #3c3836;
+  --yaz-bg-overlay: #32302f;
+  --yaz-bg-hover: rgba(235, 219, 178, 0.05);
+  --yaz-bg-active: rgba(235, 219, 178, 0.09);
+  --yaz-bg-selection: rgba(131, 165, 152, 0.25);
+  --yaz-scrim: rgba(0, 0, 0, 0.55);
+
+  /* ---- Text ------------------------------------------------------------------ */
+  --yaz-text-primary: #ebdbb2;
+  --yaz-text-secondary: #d5c4a1;
+  --yaz-text-muted: #a89984;
+  --yaz-text-on-accent: #282828;
+
+  /* ---- Accent and state -------------------------------------------------------
+   * Gruvbox's own "bright" set, tuned for the dark background.
+   */
+  --yaz-accent: #fe8019;
+  --yaz-accent-hover: #ff9a44;
+  --yaz-success: #b8bb26;
+  --yaz-warning: #fabd2f;
+  --yaz-error: #fb4934;
+  --yaz-info: #8ec07c;
+
+  /* ---- Borders and separation ------------------------------------------- */
+  --yaz-border: #3c3836;
+  --yaz-border-strong: #504945;
+  --yaz-focus-ring: var(--yaz-accent);
+
+  /* ---- Editor ------------------------------------------------------------- */
+  --yaz-editor-bg: var(--yaz-bg-primary);
+  --yaz-editor-text: var(--yaz-text-primary);
+  --yaz-editor-gutter-bg: var(--yaz-bg-secondary);
+  --yaz-editor-gutter-text: var(--yaz-text-muted);
+  --yaz-editor-cursor: var(--yaz-accent);
+  --yaz-editor-active-line: rgba(235, 219, 178, 0.045);
+
+  --yaz-syntax-command: #d3869b;
+  --yaz-syntax-environment: #83a598;
+  --yaz-syntax-math: #8ec07c;
+  --yaz-syntax-comment: #a89984;
+  --yaz-syntax-string: #b8bb26;
+  --yaz-syntax-reference: #fe8019;
+  --yaz-syntax-error: var(--yaz-error);
+
+  /* ---- PDF viewer --------------------------------------------------------- */
+  --yaz-pdf-bg: #1d2021;
+  --yaz-pdf-page-shadow: rgba(0, 0, 0, 0.6);
+
+  --yaz-shadow-overlay: 0 8px 24px rgba(0, 0, 0, 0.45);
+}

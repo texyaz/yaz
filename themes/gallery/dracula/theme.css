@@ -1,0 +1,135 @@
+/*
+ * Dracula — an installable yaz theme.
+ *
+ * The palette behind Dracula <https://draculatheme.com>: a purple-grounded
+ * dark background with a fixed set of vivid accents — pink, purple, cyan,
+ * green, orange, red, yellow — that stay the same colour whatever they are
+ * marking, so a glance at the gutter or the ribbon reads the same as a
+ * glance at the buffer.
+ *
+ * Dracula ships dark only. Light mode here keeps the same accent hues,
+ * darkened where a light background needs the contrast a dark one gives for
+ * free, on Dracula's own foreground colour as the page.
+ *
+ * Anything not set here keeps whatever themes/tokens.css says, so this file
+ * stays short and still inherits improvements to the defaults.
+ */
+
+/* ============================================================ Light ======= */
+
+[data-yaz-theme="dracula"][data-yaz-mode="light"] {
+  /* ---- Surfaces -----------------------------------------------------------
+   * Dracula's own foreground (#f8f8f2) as the page, since it is already a
+   * warm off-white.
+   */
+  --yaz-bg-primary: #f8f8f2;
+  --yaz-bg-secondary: #f0f0e8;
+  --yaz-bg-tertiary: #e7e7db;
+  --yaz-bg-overlay: #ffffff;
+  --yaz-bg-hover: rgba(40, 42, 54, 0.05);
+  --yaz-bg-active: rgba(40, 42, 54, 0.09);
+  --yaz-bg-selection: rgba(98, 114, 164, 0.22);
+  --yaz-scrim: rgba(40, 42, 54, 0.4);
+
+  /* ---- Text -----------------------------------------------------------------
+   * Dracula's own background (#282a36) as the ink.
+   */
+  --yaz-text-primary: #282a36;
+  --yaz-text-secondary: #424557;
+  --yaz-text-muted: #62678a;
+  --yaz-text-on-accent: #f8f8f2;
+
+  /* ---- Accent and state -----------------------------------------------------
+   * The signature purple, darkened to clear AA on a light page.
+   */
+  --yaz-accent: #7c4fd1;
+  --yaz-accent-hover: #6a3fbd;
+  --yaz-success: #1f8f3e;
+  --yaz-warning: #a35d00;
+  --yaz-error: #d6293f;
+  --yaz-info: #0e93a8;
+
+  /* ---- Borders and separation ------------------------------------------- */
+  --yaz-border: #ddddd0;
+  --yaz-border-strong: #c6c6b6;
+  --yaz-focus-ring: var(--yaz-accent);
+
+  /* ---- Editor ------------------------------------------------------------- */
+  --yaz-editor-bg: var(--yaz-bg-primary);
+  --yaz-editor-text: var(--yaz-text-primary);
+  --yaz-editor-gutter-bg: var(--yaz-bg-secondary);
+  --yaz-editor-gutter-text: var(--yaz-text-muted);
+  --yaz-editor-cursor: var(--yaz-accent);
+  --yaz-editor-active-line: rgba(40, 42, 54, 0.04);
+
+  --yaz-syntax-command: #7c4fd1;
+  --yaz-syntax-environment: #0e6ba8;
+  --yaz-syntax-math: #14805c;
+  --yaz-syntax-comment: #62678a;
+  --yaz-syntax-string: #a35d00;
+  --yaz-syntax-reference: #c3268a;
+  --yaz-syntax-error: var(--yaz-error);
+
+  /* ---- PDF viewer --------------------------------------------------------- */
+  --yaz-pdf-bg: #565973;
+  --yaz-pdf-page-shadow: rgba(40, 42, 54, 0.3);
+
+  --yaz-shadow-overlay: 0 8px 24px rgba(40, 42, 54, 0.18);
+}
+
+/* ============================================================= Dark ======= */
+
+[data-yaz-theme="dracula"][data-yaz-mode="dark"] {
+  /* ---- Surfaces ------------------------------------------------------------ */
+  --yaz-bg-primary: #282a36;
+  --yaz-bg-secondary: #2f3242;
+  --yaz-bg-tertiary: #383b4d;
+  --yaz-bg-overlay: #363848;
+  --yaz-bg-hover: rgba(248, 248, 242, 0.05);
+  --yaz-bg-active: rgba(248, 248, 242, 0.09);
+  --yaz-bg-selection: rgba(189, 147, 249, 0.25);
+  --yaz-scrim: rgba(0, 0, 0, 0.55);
+
+  /* ---- Text ------------------------------------------------------------------ */
+  --yaz-text-primary: #f8f8f2;
+  --yaz-text-secondary: #d6d6ce;
+  --yaz-text-muted: #8892b0;
+  --yaz-text-on-accent: #191a21;
+
+  /* ---- Accent and state -------------------------------------------------------
+   * The palette by name: purple, green, orange, red, cyan.
+   */
+  --yaz-accent: #bd93f9;
+  --yaz-accent-hover: #caa4fa;
+  --yaz-success: #50fa7b;
+  --yaz-warning: #ffb86c;
+  --yaz-error: #ff5555;
+  --yaz-info: #8be9fd;
+
+  /* ---- Borders and separation ------------------------------------------- */
+  --yaz-border: #414458;
+  --yaz-border-strong: #565973;
+  --yaz-focus-ring: var(--yaz-accent);
+
+  /* ---- Editor ------------------------------------------------------------- */
+  --yaz-editor-bg: var(--yaz-bg-primary);
+  --yaz-editor-text: var(--yaz-text-primary);
+  --yaz-editor-gutter-bg: var(--yaz-bg-secondary);
+  --yaz-editor-gutter-text: var(--yaz-text-muted);
+  --yaz-editor-cursor: var(--yaz-accent);
+  --yaz-editor-active-line: rgba(248, 248, 242, 0.045);
+
+  --yaz-syntax-command: #ff79c6;
+  --yaz-syntax-environment: #8be9fd;
+  --yaz-syntax-math: #50fa7b;
+  --yaz-syntax-comment: #6272a4;
+  --yaz-syntax-string: #f1fa8c;
+  --yaz-syntax-reference: #bd93f9;
+  --yaz-syntax-error: var(--yaz-error);
+
+  /* ---- PDF viewer --------------------------------------------------------- */
+  --yaz-pdf-bg: #1a1b23;
+  --yaz-pdf-page-shadow: rgba(0, 0, 0, 0.6);
+
+  --yaz-shadow-overlay: 0 8px 24px rgba(0, 0, 0, 0.45);
+}

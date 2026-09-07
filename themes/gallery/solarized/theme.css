@@ -1,0 +1,137 @@
+/*
+ * Solarized — an installable yaz theme.
+ *
+ * Ethan Schoonover's palette <https://ethanschoonover.com/solarized/>,
+ * built around a single accent set (yellow, orange, red, magenta, violet,
+ * blue, cyan, green) that stays fixed across both modes, and a background
+ * ladder (base03 through base3) chosen for a specific measured contrast
+ * relationship rather than by eye.
+ *
+ * Light and dark are not inverses of each other's lightness alone — the
+ * ladder was tuned separately for each, which is why base01/base1 swap
+ * roles between the two modes rather than one simply being the other's
+ * negative.
+ *
+ * Anything not set here keeps whatever themes/tokens.css says, so this file
+ * stays short and still inherits improvements to the defaults.
+ */
+
+/* ============================================================ Light ======= */
+
+[data-yaz-theme="solarized"][data-yaz-mode="light"] {
+  /* ---- Surfaces ------------------------------------------------------------
+   * base3 down to base2, Solarized Light's own background ladder.
+   */
+  --yaz-bg-primary: #fdf6e3;
+  --yaz-bg-secondary: #eee8d5;
+  --yaz-bg-tertiary: #e4ddc8;
+  --yaz-bg-overlay: #fdf6e3;
+  --yaz-bg-hover: rgba(101, 123, 131, 0.08);
+  --yaz-bg-active: rgba(101, 123, 131, 0.14);
+  --yaz-bg-selection: rgba(38, 139, 210, 0.18);
+  --yaz-scrim: rgba(0, 43, 54, 0.35);
+
+  /* ---- Text -----------------------------------------------------------------
+   * base00 for body text, base01 for emphasis — Solarized Light's own
+   * assignment, deliberately not the darkest tone in the ladder.
+   */
+  --yaz-text-primary: #586e75;
+  --yaz-text-secondary: #657b83;
+  --yaz-text-muted: #93a1a1;
+  --yaz-text-on-accent: #fdf6e3;
+
+  /* ---- Accent and state ------------------------------------------------- */
+  --yaz-accent: #268bd2;
+  --yaz-accent-hover: #1e6fa8;
+  --yaz-success: #859900;
+  --yaz-warning: #b58900;
+  --yaz-error: #dc322f;
+  --yaz-info: #2aa198;
+
+  /* ---- Borders and separation ------------------------------------------- */
+  --yaz-border: #eee8d5;
+  --yaz-border-strong: #d3ccb6;
+  --yaz-focus-ring: var(--yaz-accent);
+
+  /* ---- Editor ------------------------------------------------------------- */
+  --yaz-editor-bg: var(--yaz-bg-primary);
+  --yaz-editor-text: var(--yaz-text-primary);
+  --yaz-editor-gutter-bg: var(--yaz-bg-secondary);
+  --yaz-editor-gutter-text: var(--yaz-text-muted);
+  --yaz-editor-cursor: var(--yaz-accent);
+  --yaz-editor-active-line: rgba(101, 123, 131, 0.06);
+
+  --yaz-syntax-command: #6c71c4;
+  --yaz-syntax-environment: #268bd2;
+  --yaz-syntax-math: #2aa198;
+  --yaz-syntax-comment: #93a1a1;
+  --yaz-syntax-string: #b58900;
+  --yaz-syntax-reference: #d33682;
+  --yaz-syntax-error: var(--yaz-error);
+
+  /* ---- PDF viewer --------------------------------------------------------- */
+  --yaz-pdf-bg: #839496;
+  --yaz-pdf-page-shadow: rgba(0, 43, 54, 0.25);
+
+  --yaz-shadow-overlay: 0 8px 24px rgba(0, 43, 54, 0.16);
+}
+
+/* ============================================================= Dark ======= */
+
+[data-yaz-theme="solarized"][data-yaz-mode="dark"] {
+  /* ---- Surfaces ------------------------------------------------------------
+   * base03 up to base02, Solarized Dark's own background ladder.
+   */
+  --yaz-bg-primary: #002b36;
+  --yaz-bg-secondary: #073642;
+  --yaz-bg-tertiary: #0e434f;
+  --yaz-bg-overlay: #073642;
+  --yaz-bg-hover: rgba(238, 232, 213, 0.05);
+  --yaz-bg-active: rgba(238, 232, 213, 0.09);
+  --yaz-bg-selection: rgba(38, 139, 210, 0.28);
+  --yaz-scrim: rgba(0, 0, 0, 0.55);
+
+  /* ---- Text -----------------------------------------------------------------
+   * base0 for body text, base1 for emphasis — the roles base00/base01 held
+   * in light mode, on the opposite background.
+   */
+  --yaz-text-primary: #93a1a1;
+  --yaz-text-secondary: #839496;
+  --yaz-text-muted: #6d8385;
+  --yaz-text-on-accent: #002b36;
+
+  /* ---- Accent and state ------------------------------------------------- */
+  --yaz-accent: #2aa198;
+  --yaz-accent-hover: #3cc0b6;
+  --yaz-success: #859900;
+  --yaz-warning: #b58900;
+  --yaz-error: #dc322f;
+  --yaz-info: #268bd2;
+
+  /* ---- Borders and separation ------------------------------------------- */
+  --yaz-border: #0d4652;
+  --yaz-border-strong: #14586a;
+  --yaz-focus-ring: var(--yaz-accent);
+
+  /* ---- Editor ------------------------------------------------------------- */
+  --yaz-editor-bg: var(--yaz-bg-primary);
+  --yaz-editor-text: var(--yaz-text-primary);
+  --yaz-editor-gutter-bg: var(--yaz-bg-secondary);
+  --yaz-editor-gutter-text: var(--yaz-text-muted);
+  --yaz-editor-cursor: var(--yaz-accent);
+  --yaz-editor-active-line: rgba(238, 232, 213, 0.04);
+
+  --yaz-syntax-command: #6c71c4;
+  --yaz-syntax-environment: #268bd2;
+  --yaz-syntax-math: #2aa198;
+  --yaz-syntax-comment: #586e75;
+  --yaz-syntax-string: #b58900;
+  --yaz-syntax-reference: #d33682;
+  --yaz-syntax-error: var(--yaz-error);
+
+  /* ---- PDF viewer --------------------------------------------------------- */
+  --yaz-pdf-bg: #001b22;
+  --yaz-pdf-page-shadow: rgba(0, 0, 0, 0.6);
+
+  --yaz-shadow-overlay: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
