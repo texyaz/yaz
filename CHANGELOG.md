@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/texyaz/yaz/compare/yaz-v0.3.0...yaz-v0.4.0) (2026-09-07)
+
+
+### Features
+
+* **themes:** add Nord, Dracula, Solarized and Gruvbox as installable themes ([eb1fa0f](https://github.com/texyaz/yaz/commit/eb1fa0f0f91490245deeccd2495a86d0f5bed6b5))
+
 ## [0.3.0](https://github.com/texyaz/yaz/compare/yaz-v0.2.0...yaz-v0.3.0) (2026-09-07)
 
 
