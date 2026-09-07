@@ -135,6 +135,56 @@ export function listEngines(): Promise<EngineInfo[]> {
   return invoke<EngineInfo[]>("list_engines");
 }
 
+/**
+ * A LaTeX distribution the user pointed yaz at, beyond what `PATH` finds.
+ *
+ * Registered explicitly rather than only discovered on `PATH`, because a
+ * system TeX distribution is routinely not on `PATH` at all — the common case
+ * on Windows.
+ */
+export interface LatexInstall {
+  /** The directory containing the engine binaries. */
+  path: string;
+  /** Engine/driver binaries found there: `xelatex`, `pdflatex`, `latexmk`, ... */
+  engines: string[];
+  /** First line of `--version` output, for display only. */
+  version: string | null;
+}
+
+/** Every LaTeX install the user has registered. */
+export function getLatexInstalls(): Promise<LatexInstall[]> {
+  return invoke<LatexInstall[]>("get_latex_installs");
+}
+
+/**
+ * Probe conventional install locations for a LaTeX distribution.
+ *
+ * Only ever called from a user action — never at startup, for the same
+ * reason {@link listEngines} is not called until the settings dialog opens.
+ */
+export function scanLatexInstalls(): Promise<LatexInstall[]> {
+  return invoke<LatexInstall[]>("scan_latex_installs");
+}
+
+/** Register a directory as a LaTeX install, once it is shown to provide one. */
+export function addLatexInstall(path: string): Promise<LatexInstall> {
+  return invoke<LatexInstall>("add_latex_install", { path });
+}
+
+/** Forget a registered install. Does not touch the LaTeX distribution itself. */
+export function removeLatexInstall(path: string): Promise<void> {
+  return invoke("remove_latex_install", { path });
+}
+
+/**
+ * Re-probe a registered install on demand, to drive its status dot.
+ *
+ * `null` means it no longer provides anything at that path.
+ */
+export function verifyLatexInstall(path: string): Promise<LatexInstall | null> {
+  return invoke<LatexInstall | null>("verify_latex_install", { path });
+}
+
 /** Read the project's persisted settings. */
 export function getProjectSettings(root: string): Promise<ProjectSettings> {
   return invoke<ProjectSettings>("get_project_settings", { root });

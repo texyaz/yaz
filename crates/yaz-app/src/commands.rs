@@ -772,13 +772,25 @@ fn default_engine_choice() -> Option<EngineChoice> {
     }
     #[cfg(not(feature = "tectonic-engine"))]
     {
-        SystemEngine::detect_all()
+        SystemEngine::detect_all(&registered_latex_installs())
             .into_iter()
             .next()
             .map(|engine| EngineChoice::System {
                 engine: engine.engine,
             })
     }
+}
+
+/// LaTeX installs the user has registered, beyond what `PATH` finds.
+///
+/// Settings are not otherwise carried through the call chain that reaches
+/// engine construction, so this re-loads them — the same cost
+/// `list_engines`/`build_engine` already pay once per settings-dialog open or
+/// per compile, not once per keystroke.
+fn registered_latex_installs() -> Vec<yaz_core::settings::LatexInstall> {
+    crate::appearance::config_dir()
+        .map(|dir| yaz_core::settings::Settings::load(&dir).latex_installs)
+        .unwrap_or_default()
 }
 
 /// Turn a stored choice into something that can actually run.
@@ -803,7 +815,8 @@ fn build_engine(choice: &EngineChoice) -> Result<Box<dyn CompileEngine>> {
             }
         }
         EngineChoice::System { engine } => {
-            let system = SystemEngine::new(engine.clone());
+            let installs = registered_latex_installs();
+            let system = SystemEngine::resolve(engine.clone(), &installs);
             if system.is_available() {
                 Ok(Box::new(system))
             } else {
@@ -860,9 +873,9 @@ pub fn list_engines() -> Vec<EngineInfo> {
         },
     });
 
-    let detected = SystemEngine::detect_all();
+    let installs = registered_latex_installs();
     for name in ["xelatex", "lualatex", "pdflatex"] {
-        let available = detected.iter().any(|e| e.engine == name);
+        let available = SystemEngine::resolve(name, &installs).is_available();
         engines.push(EngineInfo {
             id: format!("system:{name}"),
             label: name.to_owned(),

@@ -30,7 +30,7 @@ use crate::commands::{CommandError, Result};
 /// The absence of a configuration directory is a machine with no `APPDATA` or
 /// no home, which is not a state worth a distinct error: nothing can be stored
 /// and nothing was.
-fn config_dir() -> Result<Utf8PathBuf> {
+pub(crate) fn config_dir() -> Result<Utf8PathBuf> {
     yaz_core::settings::config_dir()
         .ok_or_else(|| CommandError::new("error-fs-not-found", "no configuration directory"))
 }

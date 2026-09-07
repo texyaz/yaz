@@ -40,6 +40,7 @@ camino.workspace = true
 tracing.workspace = true
 flate2.workspace = true
 tokio.workspace = true
+walkdir.workspace = true
 
 tectonic = { version = "0.17", optional = true }
 

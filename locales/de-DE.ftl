@@ -55,6 +55,29 @@ engine-tectonic-not-built = In dieser yaz-Fassung nicht enthalten. Sie muss eink
 engine-system-not-installed = Auf diesem Rechner nicht installiert.
 engine-unavailable-suffix = nicht verfügbar
 
+## LaTeX-Installationen
+
+settings-group-latex-installs = Installationen
+latex-install-path = Installation
+latex-install-none = Noch keine Installation hinzugefügt.
+latex-install-remove = Entfernen
+latex-install-remove-action = Entfernen
+latex-install-scan = Nach Installationen suchen
+latex-install-scan-help = Sucht an den Stellen, an denen sich TeX Live oder MiKTeX üblicherweise selbst installieren.
+latex-install-scan-action = Suchen
+latex-install-scan-busy = Wird gesucht …
+latex-install-scan-none = Keine neuen Installationen gefunden.
+latex-install-candidate = Gefunden
+latex-install-candidate-add = Hinzufügen
+latex-install-add-action = Hinzufügen
+latex-install-add-manual = Installation manuell hinzufügen
+latex-install-add-manual-empty = Kein Ordner ausgewählt
+latex-install-add-help = Wählen Sie den Ordner mit pdflatex, xelatex, lualatex oder latexmk.
+latex-install-not-found = In diesem Ordner wurde keine LaTeX-Engine gefunden.
+latex-install-status-verified = Soeben geprüft
+latex-install-status-unverified = In dieser Sitzung noch nicht geprüft
+latex-install-status-missing = Unter diesem Pfad nicht mehr gefunden
+
 ## Zotero — Schlüssel aus yaz-zotero::ActiveSource::status_key()
 
 zotero-source-better-bibtex = Zotero: über Better BibTeX verbunden
