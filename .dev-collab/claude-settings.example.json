@@ -1,0 +1,76 @@
+{
+  "//": "Vorlage. Am Laptop kopieren nach .claude/settings.local.json (wird von Claude Code automatisch gitignored -> leakt NIE in den Upstream-PR). NICHT nach .claude/settings.json committen, sonst landet es im Repo des Kollegen.",
+
+  "permissions": {
+    "defaultMode": "acceptEdits",
+
+    "//allow": "Lokal, wiederholbar, git-reversibel -> ohne Nachfrage.",
+    "allow": [
+      "Read",
+      "Grep",
+      "Glob",
+
+      "Bash(pnpm install)",
+      "Bash(pnpm dev)",
+      "Bash(pnpm test:*)",
+      "Bash(pnpm lint:*)",
+      "Bash(pnpm format)",
+      "Bash(pnpm app:build)",
+
+      "Bash(cargo check:*)",
+      "Bash(cargo test:*)",
+      "Bash(cargo clippy:*)",
+      "Bash(cargo fmt:*)",
+      "Bash(cargo build:*)",
+
+      "Bash(node scripts/check-i18n.mjs)",
+
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git switch:*)",
+      "Bash(git checkout:*)",
+      "Bash(git branch:*)",
+      "Bash(git restore:*)",
+      "Bash(git stash:*)",
+      "Bash(git fetch:*)",
+      "Bash(git pull:*)",
+      "Bash(git merge --ff-only:*)",
+      "Bash(git submodule status:*)",
+      "Bash(git submodule update:*)",
+
+      "Bash(git push origin:*)",
+
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(rg:*)",
+      "Bash(where:*)",
+      "Bash(which:*)"
+    ],
+
+    "//deny": "Verlaesst die Maschine ODER kann Arbeit zerstoeren -> bleibt gated (fragt weiter nach).",
+    "deny": [
+      "Bash(git push upstream:*)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git push --force-with-lease:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(git clean:*)",
+      "Bash(git rebase:*)",
+      "Bash(git config:*)",
+      "Bash(rm:*)",
+      "Bash(del:*)",
+      "Bash(curl:*)",
+      "Bash(iwr:*)",
+      "Bash(Invoke-WebRequest:*)",
+      "Bash(winget:*)",
+      "Bash(npm install -g:*)",
+      "Bash(pnpm add:*)",
+      "Bash(cargo add:*)",
+      "WebFetch"
+    ]
+  }
+}
