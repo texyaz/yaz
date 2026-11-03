@@ -5355,9 +5355,9 @@ dependencies = [
 
 [[package]]
 name = "rustls"
-version = "0.23.43"
+version = "0.23.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0283386ce02abc0151e1761d08802dfe86c173b0b494af5cbc086574e453da06"
+checksum = "48e13bd8c0e9365c43cfa5c9e8f9ad49d3c8444926c9aac819e0e4dc503c8fdf"
 dependencies = [
  "aws-lc-rs",
  "once_cell",
@@ -6954,7 +6954,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
@@ -9326,7 +9326,7 @@ checksum = "cfe53a6657fd280eaa890a3bc59152892ffa3e30101319d168b781ed6529b049"
 
 [[package]]
 name = "yaz-app"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "camino",
@@ -9358,7 +9358,7 @@ dependencies = [
 
 [[package]]
 name = "yaz-compile"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "camino",
  "flate2",
@@ -9380,7 +9380,7 @@ dependencies = [
 
 [[package]]
 name = "yaz-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "camino",
  "insta",
@@ -9401,7 +9401,7 @@ dependencies = [
 
 [[package]]
 name = "yaz-latex"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "camino",
  "insta",
@@ -9414,7 +9414,7 @@ dependencies = [
 
 [[package]]
 name = "yaz-mcp"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -9425,7 +9425,7 @@ dependencies = [
 
 [[package]]
 name = "yaz-obsidian"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "camino",
  "insta",
@@ -9441,7 +9441,7 @@ dependencies = [
 
 [[package]]
 name = "yaz-plugin"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "camino",
  "insta",
@@ -9459,7 +9459,7 @@ dependencies = [
 
 [[package]]
 name = "yaz-vcs"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "camino",
  "pretty_assertions",
@@ -9471,7 +9471,7 @@ dependencies = [
 
 [[package]]
 name = "yaz-zotero"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "camino",
  "insta",
