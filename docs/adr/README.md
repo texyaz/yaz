@@ -55,3 +55,4 @@ decision we later reversed is more valuable than a tidy directory.
 | [0027](0027-completion-while-typing.md)              | Completion reads what yaz already holds, and never on a keystroke     | Accepted |
 | [0028](0028-the-file-list-edits-the-project.md)      | The file list is a tab, and can rename, delete and create             | Accepted |
 | [0029](0029-a-format-brings-its-own-preview.md)      | A format plugin may contribute a preview; yaz decides when it is on   | Accepted |
+| [0030](0030-a-web-server-hosts-the-same-commands.md) | A web server hosts the same commands the desktop does                 | Accepted |

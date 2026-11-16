@@ -264,6 +264,8 @@ window-minimise = Minimieren
 window-maximise = Maximieren
 window-restore = Wiederherstellen
 window-close = Schließen
+# Shown by a yaz served to a browser, where the folder is on another machine.
+web-choose-directory = Ordner auf dem Rechner, auf dem yaz läuft:
 
 ## Einstellungen
 
