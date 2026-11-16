@@ -10,9 +10,20 @@ homepage.workspace = true
 authors.workspace = true
 publish = false
 
+[lib]
+name = "yaz_app"
+path = "src/lib.rs"
+
 [[bin]]
 name = "yaz"
 path = "src/main.rs"
+
+# The web server (ADR-0030). Behind a feature so that a desktop build compiles
+# neither an HTTP server nor Tauri's mock runtime.
+[[bin]]
+name = "yaz-web"
+path = "src/web.rs"
+required-features = ["web"]
 
 [features]
 default = []
@@ -26,6 +37,10 @@ tectonic-engine = ["yaz-compile/tectonic-engine"]
 # Typst. Pure Rust, so unlike tectonic-engine this needs no vcpkg and builds
 # anywhere — but it compiles a different document language, not .tex.
 typst-engine = ["yaz-compile/typst-engine"]
+
+# The web server: the same commands over HTTP, for a yaz that runs on one
+# machine and is used from a browser on another (ADR-0030).
+web = ["tauri/test", "dep:axum", "dep:tower-http"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -55,8 +70,10 @@ tracing-subscriber.workspace = true
 walkdir.workspace = true
 # The plugin host is async: Zotero probing must not block the command thread,
 # and the library is shared state behind an RwLock.
-tokio.workspace = true
+tokio = { workspace = true, features = ["net", "signal"] }
 reqwest.workspace = true
+axum = { version = "0.8", optional = true, default-features = false, features = ["http1", "json", "tokio"] }
+tower-http = { version = "0.6", optional = true, features = ["fs", "compression-gzip"] }
 trash = { version = "5.2.6", default-features = false, features = ["coinit_apartmentthreaded"] }
 
 # yaz-app stays THIN: it wires the domain crates to Tauri commands and holds no

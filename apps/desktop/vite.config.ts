@@ -4,7 +4,31 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 
-export default defineConfig({
+/** Where `pnpm web:serve` runs the yaz web server while developing. */
+const webServer = process.env.YAZ_WEB_SERVER ?? "http://127.0.0.1:4173";
+
+/**
+ * The Tauri modules, replaced for a yaz served to a browser (ADR-0030).
+ *
+ * An alias rather than a runtime check: the desktop build never contains a
+ * line of this, and no component has to ask which one it is running in.
+ */
+const webShims = {
+  "@tauri-apps/api/core": fileURLToPath(
+    new URL("./src/web/core.ts", import.meta.url),
+  ),
+  "@tauri-apps/api/event": fileURLToPath(
+    new URL("./src/web/event.ts", import.meta.url),
+  ),
+  "@tauri-apps/api/window": fileURLToPath(
+    new URL("./src/web/window.ts", import.meta.url),
+  ),
+  "@tauri-apps/plugin-dialog": fileURLToPath(
+    new URL("./src/web/dialog.ts", import.meta.url),
+  ),
+};
+
+export default defineConfig(({ mode }) => ({
   plugins: [svelte()],
 
   resolve: {
@@ -22,6 +46,7 @@ export default defineConfig({
      * the list is short enough to read.
      */
     alias: {
+      ...(mode === "web" ? webShims : {}),
       "@yaz/api": fileURLToPath(
         new URL("../../packages/api/src/index.ts", import.meta.url),
       ),
@@ -60,6 +85,8 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    // Only in web mode: the page's commands go to the yaz web server.
+    ...(mode === "web" ? { proxy: { "/api": webServer } } : {}),
     fs: {
       // themes/ and locales/ live at the repo root because both Rust and
       // TypeScript consume them (ADR-0017), so Vite must be allowed to read
@@ -69,7 +96,8 @@ export default defineConfig({
   },
 
   build: {
-    outDir: "dist",
+    // A separate directory, so a web build can never be what Tauri embeds.
+    outDir: mode === "web" ? "dist-web" : "dist",
     emptyOutDir: true,
     // The webview is always current, so there is no legacy browser to serve.
     target: "esnext",
@@ -91,4 +119,4 @@ export default defineConfig({
   envPrefix: ["VITE_", "TAURI_"],
 
   clearScreen: false,
-});
+}));

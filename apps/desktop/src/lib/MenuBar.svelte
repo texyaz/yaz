@@ -315,6 +315,12 @@
 </nav>
 
 <style>
+  /* A yaz served to a browser (ADR-0030): the tab is the browser's to
+     minimise and close, so the buttons that would do it are not drawn. */
+  :global(:root[data-host="web"]) .controls {
+    display: none;
+  }
+
   .bar {
     display: flex;
     align-items: stretch;

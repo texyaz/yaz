@@ -22,9 +22,9 @@ use crate::mcp::{McpState, McpStatus, OpenProject, PluginTool};
 /// machine is not a default anybody chose
 /// ([ADR-0022](https://github.com/texyaz/yaz/blob/main/docs/adr/0022-mcp-and-tool-declaration.md)).
 #[tauri::command]
-pub async fn mcp_start(
+pub async fn mcp_start<R: tauri::Runtime>(
     port: Option<u16>,
-    app: tauri::AppHandle,
+    app: tauri::AppHandle<R>,
     state: tauri::State<'_, McpState>,
 ) -> Result<McpStatus> {
     install_core_tools(&state, &app).await;
@@ -70,10 +70,10 @@ pub async fn mcp_set_project(
 /// comment, and a registry reading manifests could not answer "what does this
 /// plugin add to yaz?" without running it (ADR-0022).
 #[tauri::command]
-pub async fn mcp_set_plugin_tools(
+pub async fn mcp_set_plugin_tools<R: tauri::Runtime>(
     plugin_id: String,
     tools: Vec<PluginTool>,
-    app: tauri::AppHandle,
+    app: tauri::AppHandle<R>,
     state: tauri::State<'_, McpState>,
     host: tauri::State<'_, crate::plugin_host::PluginHost>,
 ) -> Result<McpStatus> {
@@ -164,7 +164,7 @@ pub async fn mcp_drop_plugin_tools(
 ///
 /// Registered when the server starts rather than at boot, so a yaz that never
 /// switches MCP on never builds them.
-async fn install_core_tools(state: &McpState, app: &tauri::AppHandle) {
+async fn install_core_tools<R: tauri::Runtime>(state: &McpState, app: &tauri::AppHandle<R>) {
     let registry = state.registry();
     let mut registry = registry.write().await;
 
@@ -235,7 +235,7 @@ async fn install_core_tools(state: &McpState, app: &tauri::AppHandle) {
 }
 
 /// The open project's root, or a message saying there is none.
-fn open_root(app: &tauri::AppHandle) -> std::result::Result<String, String> {
+fn open_root<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> std::result::Result<String, String> {
     app.try_state::<OpenProject>()
         .and_then(|state| state.root())
         .ok_or_else(|| "no project is open in yaz".to_owned())

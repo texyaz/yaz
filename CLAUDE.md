@@ -54,6 +54,10 @@ The load-bearing ones:
   and create. Every operation resolves its path in Rust first. **Delete goes to
   the recycle bin**, never an unlink — a right-click delete eventually lands on
   the wrong row. A rename takes a _name_, never a path.
+- **0030** — `yaz-web` serves **the same command handler** as the desktop, on
+  Tauri's mock runtime. Add a command to `yaz_app::install` and nowhere else;
+  **never write a second dispatcher.** The server authenticates nobody: it
+  belongs on loopback or a VPN address, and must keep refusing unknown `Host`s.
 
 ## Environment (this machine)
 

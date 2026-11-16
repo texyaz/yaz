@@ -12,6 +12,7 @@ Cargo.lock.bak
 node_modules/
 .pnpm-store/
 dist/
+dist-web/
 .svelte-kit/
 .vite/
 *.tsbuildinfo

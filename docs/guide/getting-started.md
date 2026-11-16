@@ -73,3 +73,23 @@ text formats, LaTeX packages and Learn.
 A new-project wizard, loading a plugin from a directory while developing it, and
 the Better BibTeX citation-key tier. Released binaries do not exist; building
 from source is the only way to run it.
+
+## Using yaz from a browser
+
+yaz can run on one machine and be used from a browser on another — the
+project and the TeX installation stay where they are
+([ADR-0030](../adr/0030-a-web-server-hosts-the-same-commands)).
+
+```bash
+pnpm web:build:server
+./target/release/yaz-web --dist apps/desktop/dist-web --listen 127.0.0.1:4173
+```
+
+::: danger There is no login
+Whoever can reach the port can read and write files and run the compiler as
+you. Listen on loopback and use an SSH forward, or on a VPN address — never on
+a public interface. A name other than the listen address has to be allowed
+explicitly: `--allow-host my-machine.example.net`.
+:::
+
+Folders are on the machine yaz runs on, so "Open" asks you to type the path.

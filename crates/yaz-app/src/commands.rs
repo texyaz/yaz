@@ -1297,6 +1297,16 @@ pub struct StartupClock {
     pub started: std::time::Instant,
 }
 
+impl StartupClock {
+    /// Start counting from now. Called first thing in `main`.
+    #[must_use]
+    pub fn now() -> Self {
+        Self {
+            started: std::time::Instant::now(),
+        }
+    }
+}
+
 /// Read a produced artefact as bytes, for handing the PDF to pdf.js.
 #[tauri::command]
 pub fn read_artefact(path: String) -> Result<Vec<u8>> {
