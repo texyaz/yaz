@@ -35,6 +35,10 @@ class JoinWidget extends WidgetType {
     const node = document.createElement("span");
     node.className = "cm-yaz-join";
     node.textContent = " ";
+    // An ordinary space, where the editor's own are kept as typed: one that
+    // falls at the end of a drawn line must vanish there, not start the next
+    // line with a gap.
+    node.style.whiteSpace = "normal";
     return node;
   }
 }

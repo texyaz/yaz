@@ -9,6 +9,11 @@ import { EditorView } from "@codemirror/view";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { richText, setRichText, setShowLineBreaks } from "./richText";
+import {
+  PACKAGE_COMMANDS,
+  PACKAGE_ENVIRONMENTS,
+} from "../../../../../plugins/latex-packages/src/vocabulary";
+import { setContributions } from "./vocabulary";
 
 const B = String.fromCharCode(92);
 
@@ -16,6 +21,14 @@ beforeAll(() => {
   Range.prototype.getBoundingClientRect = () => new DOMRect();
   Range.prototype.getClientRects = () =>
     Object.assign([], { item: () => null }) as unknown as DOMRectList;
+  // `\\enquote` is csquotes', which the packages plugin describes.
+  setContributions([
+    {
+      pluginId: "latex-packages",
+      commands: PACKAGE_COMMANDS,
+      environments: PACKAGE_ENVIRONMENTS,
+    },
+  ]);
 });
 
 const views: EditorView[] = [];
@@ -143,5 +156,23 @@ describe("selecting is not editing", () => {
     const at = view.state.doc.toString().indexOf("wichtiger") + 2;
     view.dispatch({ selection: { anchor: at } });
     expect(lines(view)).toContain(`${B}emph{wichtiger}`);
+  });
+});
+
+describe("a quotation mark stays with its word", () => {
+  it("ties the opening mark to the first word and the closing to the last", () => {
+    const view = mount(`Er sagt ${B}enquote{Bauen wird teurer} dazu.`);
+    const kept = [...view.contentDOM.querySelectorAll(".cm-yaz-keep")].map(
+      (node) => node.textContent,
+    );
+    expect(kept).toEqual(["“Bauen", "teurer”"]);
+  });
+
+  it("ties both marks to a single word", () => {
+    const view = mount(`Das Wort ${B}enquote{Normenflut} fällt.`);
+    const kept = [...view.contentDOM.querySelectorAll(".cm-yaz-keep")]
+      .map((node) => node.textContent)
+      .join("");
+    expect(kept).toBe("“Normenflut”");
   });
 });

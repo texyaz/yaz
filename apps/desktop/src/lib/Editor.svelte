@@ -1229,6 +1229,14 @@
     hyphens: auto;
   }
 
+  /* CodeMirror wraps with `break-spaces`, under which a space that does not
+     fit starts the next line — fine for code, and in set text a line that
+     begins with a gap and a justified line that juts past the margin.
+     `pre-wrap` lets that space hang off the end of the line. */
+  .editor.justified :global(.cm-content.cm-lineWrapping) {
+    white-space: pre-wrap;
+  }
+
   /* White paper under a dark interface.
 
      The tokens are overridden rather than the colours set directly, so
