@@ -379,6 +379,7 @@ async fn the_facade_falls_through_to_sqlite_when_zotero_is_closed() {
     let config = yaz_zotero::Config {
         data_dir: Some(data_dir.clone()),
         scratch: scratch_in(&dir),
+        remote: None,
     };
     let library =
         yaz_zotero::Library::connect(&config, yaz_core::net::http_client().unwrap()).await;
@@ -418,6 +419,7 @@ async fn an_empty_query_lists_recent_items() {
     let config = yaz_zotero::Config {
         data_dir: Some(data_dir),
         scratch: scratch_in(&dir),
+        remote: None,
     };
     let library =
         yaz_zotero::Library::connect(&config, yaz_core::net::http_client().unwrap()).await;
@@ -484,6 +486,7 @@ async fn a_real_library_answers_whether_or_not_the_local_api_is_enabled() {
     let config = yaz_zotero::Config {
         data_dir: Some(Utf8PathBuf::from(dir)),
         scratch: scratch_in(&owner),
+        remote: None,
     };
     let library =
         yaz_zotero::Library::connect(&config, yaz_core::net::http_client().unwrap()).await;
@@ -680,6 +683,7 @@ async fn a_running_zotero_does_not_take_over_the_query_path() {
     let config = yaz_zotero::Config {
         data_dir: Some(data_dir),
         scratch: scratch_in(&dir),
+        remote: None,
     };
     let library =
         yaz_zotero::Library::connect(&config, yaz_core::net::http_client().unwrap()).await;
