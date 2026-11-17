@@ -804,7 +804,14 @@ export interface ViewOptions {
 
 /** A list LaTeX generates rather than the author writing it. @since 0.3.0 */
 export type ListingKind =
-  "contents" | "figures" | "tables" | "glossary" | "bibliography" | "index";
+  | "contents"
+  | "figures"
+  | "tables"
+  | "glossary"
+  | "bibliography"
+  | "index"
+  /** @since 0.4.0 */
+  | "theorems";
 
 /** Handle returned by a view factory. @since 0.1.0 */
 export interface ViewHandle {
@@ -1353,8 +1360,36 @@ export type LatexRendering =
   | { kind: "citation" }
   /** As the glossary entry it names. */
   | { kind: "glossary"; plural?: boolean; capital?: boolean; long?: boolean }
-  /** Wrapped in the document language's quotation marks. */
-  | { kind: "quotation" }
+  /**
+   * Wrapped in the document language's quotation marks.
+   *
+   * `leading` counts the brace arguments in front of the passage that are not
+   * part of it — the language in `\foreignquote{english}{shall}`.
+   * \since 0.4.0
+   */
+  | { kind: "quotation"; leading?: number }
+  /**
+   * A number with its unit, drawn as one piece: `\qty{19}{\percent}`.
+   *
+   * `numbers` brace arguments are figures; with `unit`, one more names what
+   * they are counted in, and each command in it is drawn as the `symbol` it
+   * is declared to be. \since 0.4.0
+   */
+  | { kind: "quantity"; numbers: number; unit: boolean }
+  /**
+   * A character the keyboard does not have, or a unit's sign. \since 0.4.0
+   *
+   * Replaced by `text` rather than hidden: it is content, not markup.
+   */
+  | { kind: "symbol"; text: string }
+  /**
+   * Declares a numbered statement, as `\newtheorem` does. \since 0.4.0
+   *
+   * yaz then reads the declaration — the name, the title, what it is numbered
+   * within — and draws the environment it makes with its title and number.
+   * Both the kernel's argument order and a `[key=value]` list are understood.
+   */
+  | { kind: "theorem" }
   /** With its letters spaced out. */
   | { kind: "tracking" }
   /** Styled, with the markup hidden. */
@@ -1370,7 +1405,14 @@ export type LatexRendering =
 
 /** The generated lists a command can stand for. \since 0.3.0 */
 export type LatexListing =
-  "contents" | "figures" | "tables" | "glossary" | "bibliography" | "index";
+  | "contents"
+  | "figures"
+  | "tables"
+  | "glossary"
+  | "bibliography"
+  | "index"
+  /** \since 0.4.0 */
+  | "theorems";
 
 /** How one environment is drawn. \since 0.3.0 */
 export type LatexEnvironmentRendering =
@@ -1395,7 +1437,14 @@ export type LatexEnvironmentRendering =
    * `lstlisting` a backslash is a backslash, and a preview that drew
    * `	extbf` as bold there would show something the compiler will not print.
    */
-  | { kind: "verbatim" };
+  | { kind: "verbatim" }
+  /**
+   * A picture the compiler draws from instructions. \since 0.4.0
+   *
+   * Nothing in the source says what it will look like, so a card stands where
+   * it will be.
+   */
+  | { kind: "drawing" };
 
 /**
  * A tool an agent can call. \since 0.3.0
