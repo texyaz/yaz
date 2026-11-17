@@ -707,9 +707,13 @@
         caretColor: "var(--yaz-editor-cursor)",
       },
       ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--yaz-editor-cursor)" },
-      "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": {
-        backgroundColor: "var(--yaz-bg-selection)",
-      },
+      // Spelled out as far as CodeMirror's own rule for a focused dark editor,
+      // which is more specific than a plain class and otherwise wins: the
+      // selection was then CodeMirror's dark slate whatever the theme said.
+      "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection":
+        {
+          backgroundColor: "var(--yaz-bg-selection)",
+        },
       ".cm-activeLine": { backgroundColor: "var(--yaz-editor-active-line)" },
       ".cm-gutters": {
         backgroundColor: "var(--yaz-editor-gutter-bg)",
@@ -1242,7 +1246,12 @@
     --yaz-text-secondary: #3f3f46;
     --yaz-text-muted: #71717a;
     --yaz-border: #d4d4d8;
-    --yaz-editor-active-line: #f4f4f5;
+    /* A wash, not a solid: the selection is drawn underneath the lines, and a
+       solid active line covered the part of it on the caret's own line. */
+    --yaz-editor-active-line: rgba(0, 0, 0, 0.045);
+    /* The dark theme's selection is a dark wash, which over white paper hid
+       the very words that were selected. */
+    --yaz-bg-selection: rgba(47, 108, 226, 0.22);
     --yaz-editor-gutter-bg: #fafafa;
     --yaz-editor-gutter-text: #a1a1aa;
     /* Said again, though the stylesheet already says a heading is the colour

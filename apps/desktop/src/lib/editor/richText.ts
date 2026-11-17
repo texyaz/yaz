@@ -70,12 +70,14 @@ import {
   Covered,
   drawable,
   emptyLayout,
+  framed,
   lineHide,
   NO_LAYOUT,
   replace,
   touched,
 } from "./pass";
 import { definitions, expand } from "./definitions";
+import { flow } from "./flow";
 import { conditionals } from "./ownView";
 import { semanticMarkup, semanticTheme } from "./semanticView";
 import type { Meaning } from "./semanticView";
@@ -299,7 +301,7 @@ class ListingCard extends WidgetType {
       note.className = "cm-yaz-listing-note";
       note.textContent = t("listing-compiled");
       box.append(note);
-      return box;
+      return framed(box);
     }
 
     const open = document.createElement("button");
@@ -314,7 +316,7 @@ class ListingCard extends WidgetType {
       view.state.facet(listingTabs)?.open(this.kind);
     });
     box.append(open);
-    return box;
+    return framed(box);
   }
 
   override ignoreEvent(): boolean {
@@ -502,7 +504,7 @@ class PageBreakWidget extends WidgetType {
       });
       view.focus();
     });
-    return rule;
+    return framed(rule);
   }
 
   override ignoreEvent(): boolean {
@@ -656,6 +658,8 @@ function build(state: EditorState): Rendered {
   lists(pass, meaning);
   quotes(pass);
   inlineMarkup(pass, meaning);
+  // Last: whatever already stands for a line break keeps it.
+  flow(pass);
 
   // Sorting is CodeMirror's, which knows how line, mark and replace decorations
   // order against each other at the same position.

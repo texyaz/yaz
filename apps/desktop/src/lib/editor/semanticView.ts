@@ -23,7 +23,7 @@ import { t } from "../i18n";
 import { glossaryEntries } from "./generated";
 import { definitions, expand, statements } from "./definitions";
 import { drawDefined, drawings, printed, quantities } from "./ownView";
-import { drawable, replace, touched } from "./pass";
+import { drawable, framed, replace, touched } from "./pass";
 import { showLineBreaks, showMachinery } from "./viewModes";
 import type { Pass } from "./pass";
 import {
@@ -668,7 +668,7 @@ class FigureWidget extends WidgetType {
       box.append(caption);
     }
 
-    return box;
+    return framed(box);
   }
 
   override ignoreEvent(): boolean {
