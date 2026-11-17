@@ -64,6 +64,23 @@ pub fn start_logging(host: &str) {
     );
 }
 
+/// Read Zotero from another machine, forwarded to `endpoint`.
+///
+/// For a host that runs somewhere other than where the writer's Zotero does —
+/// the web server. Call it after [`install`] has built the app and before the
+/// first command; it is not itself a command, so nothing running inside yaz
+/// can choose where Zotero requests go ([ADR-0008]).
+///
+/// [ADR-0008]: https://github.com/texyaz/yaz/blob/main/docs/adr/0008-zotero-integration.md
+pub fn use_remote_zotero<R: tauri::Runtime>(
+    app: &tauri::App<R>,
+    endpoint: yaz_zotero::local_api::Endpoint,
+) {
+    use tauri::Manager as _;
+    app.state::<plugin_host::PluginHost>()
+        .use_remote_zotero(endpoint);
+}
+
 /// Give a host the whole command surface: the state and every command.
 ///
 /// Generic over the runtime because the web server builds the same handler on
