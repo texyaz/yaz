@@ -80,6 +80,24 @@ export interface Index {
 export function index(text: string): Index {
   if (text === memoisedText) return memoised;
 
+  memoised = walk(text);
+  memoisedText = text;
+  return memoised;
+}
+
+/**
+ * The commands in a fragment: a macro's body, an argument.
+ *
+ * Not remembered, and that is the point of it. There is one remembered answer
+ * and it is the document's; asking {@link tokensIn} about forty characters of
+ * it would throw that away, and the next scanner would walk the manuscript
+ * again to get it back.
+ */
+export function tokensOfFragment(text: string): Token[] {
+  return walk(text).tokens;
+}
+
+function walk(text: string): Index {
   const tokens: Token[] = [];
   const comments: Span[] = [];
 
@@ -137,9 +155,7 @@ export function index(text: string): Index {
     at += 1;
   }
 
-  memoisedText = text;
-  memoised = { tokens, comments };
-  return memoised;
+  return { tokens, comments };
 }
 
 /**

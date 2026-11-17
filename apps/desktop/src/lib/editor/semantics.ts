@@ -23,7 +23,12 @@
  * each.
  */
 
-import { braceCommands, matchBrace, plainText } from "./structure";
+import {
+  braceCommands,
+  matchBrace,
+  matchBracket,
+  plainText,
+} from "./structure";
 import { Kind, commentRanges, tokensIn, within } from "./tokens";
 import { commandsOfKind, renderingOf } from "./vocabulary";
 import type { BraceCommand, Heading } from "./structure";
@@ -103,6 +108,14 @@ export function semantics(
       optTo: command.optTo,
     };
 
+    const rendering = renderingOf(command.command);
+    if (rendering?.kind === "quotation" && rendering.leading) {
+      // What was read as the passage is the first of the arguments in front
+      // of it. Without this `\foreignquote{english}{shall}` quoted the word
+      // "english" and left the passage standing beside it in braces.
+      if (!pastLeading(text, occurrence, rendering.leading)) continue;
+    }
+
     // Sorted by what the vocabulary says the command *means*, not by its
     // name — which is what lets a plugin's `\parencite` land in the same list
     // as LaTeX's `\cite` without this module knowing that either exists.
@@ -131,6 +144,42 @@ export function semantics(
   }
 
   return found;
+}
+
+/**
+ * Move an occurrence's argument past the brace groups in front of it.
+ *
+ * `leading` counts them, and the first has already been read as the argument.
+ * An option may sit between them and the passage, which is where
+ * `\foreigntextquote{french}[\cite{key}]{…}` keeps its source.
+ */
+function pastLeading(
+  text: string,
+  occurrence: Occurrence,
+  leading: number,
+): boolean {
+  let cursor = occurrence.to;
+  for (let skipped = 1; skipped < leading; skipped += 1) {
+    if (text[cursor] !== "{") return false;
+    const end = matchBrace(text, cursor);
+    if (end === null) return false;
+    cursor = end;
+  }
+  if (text[cursor] === "[") {
+    const close = matchBracket(text, cursor);
+    if (close === null) return false;
+    occurrence.optFrom = cursor + 1;
+    occurrence.optTo = close - 1;
+    cursor = close;
+  }
+  if (text[cursor] !== "{") return false;
+  const end = matchBrace(text, cursor);
+  if (end === null) return false;
+  occurrence.argFrom = cursor + 1;
+  occurrence.argTo = end - 1;
+  occurrence.to = end;
+  occurrence.key = text.slice(occurrence.argFrom, occurrence.argTo).trim();
+  return true;
 }
 
 /**
@@ -191,6 +240,13 @@ export interface Target {
   title: string;
   /** What kind of thing it is, as a message-key suffix. */
   kind: "heading" | "figure" | "table" | "equation" | "unknown";
+  /**
+   * What the document itself calls this kind of thing, where it has a word.
+   *
+   * A reference to a statement declared as "Hypothese" prints that word, and
+   * no catalogue of the interface's can know it.
+   */
+  name?: string;
   /** Where to go when the reference is clicked. */
   at: number;
 }

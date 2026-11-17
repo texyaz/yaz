@@ -1245,6 +1245,26 @@
     --yaz-editor-active-line: #f4f4f5;
     --yaz-editor-gutter-bg: #fafafa;
     --yaz-editor-gutter-text: #a1a1aa;
+    /* Said again, though the stylesheet already says a heading is the colour
+       of the text: a custom property that refers to another is worked out
+       where it is declared, on the root, and what is inherited from there is
+       the dark theme's near-white — on white paper. */
+    --yaz-heading-0: var(--yaz-text-primary);
+    --yaz-heading-1: var(--yaz-text-primary);
+    --yaz-heading-2: var(--yaz-text-primary);
+    --yaz-heading-3: var(--yaz-text-primary);
+    --yaz-heading-4: var(--yaz-text-primary);
+    --yaz-heading-5: var(--yaz-text-primary);
+    --yaz-heading-6: var(--yaz-text-primary);
+    /* Markup the caret has brought back, in the colours the light theme gives
+       it. The dark theme's are pale by design, which is what white is too. */
+    --yaz-accent: #2f6ce2;
+    --yaz-syntax-command: #8250df;
+    --yaz-syntax-environment: #0550ae;
+    --yaz-syntax-math: #0f7b6c;
+    --yaz-syntax-comment: #767d87;
+    --yaz-syntax-string: #b8770b;
+    --yaz-syntax-reference: #2f6ce2;
   }
 
   /* The continuous view: a column of a sensible measure, centred in the pane.

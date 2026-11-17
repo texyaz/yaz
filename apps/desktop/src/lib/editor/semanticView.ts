@@ -21,7 +21,9 @@ import { Decoration, EditorView, WidgetType } from "@codemirror/view";
 
 import { t } from "../i18n";
 import { glossaryEntries } from "./generated";
-import { drawable, replace } from "./pass";
+import { definitions, expand, statements } from "./definitions";
+import { drawDefined, drawings, printed, quantities } from "./ownView";
+import { drawable, replace, touched } from "./pass";
 import { showLineBreaks, showMachinery } from "./viewModes";
 import type { Pass } from "./pass";
 import {
@@ -42,7 +44,7 @@ import {
 import type { Occurrence, Target } from "./semantics";
 import { braceCommands, environments, headings } from "./structure";
 import type { Environment } from "./structure";
-import { environmentsOfKind } from "./vocabulary";
+import { environmentRenderingOf, environmentsOfKind } from "./vocabulary";
 import {
   ALIGNMENTS,
   SHAPES,
@@ -152,7 +154,7 @@ class ReferenceWidget extends WidgetType {
       // whole reason anyone uses them.
       const named = this.command === "autoref" || this.command.endsWith("cref");
       return named
-        ? `${t(`reference-kind-${this.target.kind}`)} ${this.target.number}`
+        ? `${this.target.name ?? t(`reference-kind-${this.target.kind}`)} ${this.target.number}`
         : this.target.number;
     }
     return this.target.title || this.key;
@@ -197,7 +199,7 @@ class ReferenceWidget extends WidgetType {
 
 /** How a target reads in a tooltip. */
 function describe(target: Target): string {
-  const kind = t(`reference-kind-${target.kind}`);
+  const kind = target.name ?? t(`reference-kind-${target.kind}`);
   const number = target.number ? ` ${target.number}` : "";
   return target.title
     ? `${kind}${number}: ${target.title}`
@@ -254,14 +256,11 @@ function drawCaption(
  * document, because taking the one in front would join the wrapper's line to
  * the paragraph above it.
  */
-function hideWrapper(pass: Pass, from: number, to: number): void {
+function hideWrapper(pass: Pass, from: number, to: number): boolean {
   const first = pass.state.doc.lineAt(from);
   const last = pass.state.doc.lineAt(to);
   const whole = first.from === from && last.to === to;
-  if (!whole) {
-    replace(pass, from, to);
-    return;
-  }
+  if (!whole) return replace(pass, from, to);
 
   // The break *before* the lines, which is how CodeMirror collapses a line
   // away: a block replacement has to run between line boundaries, and one that
@@ -271,8 +270,9 @@ function hideWrapper(pass: Pass, from: number, to: number): void {
     start === first.from && last.to < pass.state.doc.length
       ? last.to + 1
       : last.to;
-  if (!pass.covered.claim(start, end)) return;
+  if (!pass.covered.claim(start, end)) return false;
   pass.ranges.push(Decoration.replace({ block: true }).range(start, end));
+  return true;
 }
 
 /**
@@ -325,18 +325,27 @@ class CaptionWidget extends WidgetType {
   constructor(
     readonly text: string,
     readonly number: string,
+    readonly kind: "figure" | "table" = "table",
   ) {
     super();
   }
 
   override eq(other: CaptionWidget): boolean {
-    return other.text === this.text && other.number === this.number;
+    return (
+      other.text === this.text &&
+      other.number === this.number &&
+      other.kind === this.kind
+    );
   }
 
   override toDOM(): HTMLElement {
     const node = document.createElement("div");
     node.className = "cm-yaz-figure-caption";
-    const label = t("figure-caption-table", { number: this.number });
+    // Both keys written out, so the message-key check sees them (ADR-0011).
+    const label =
+      this.kind === "figure"
+        ? t("figure-caption-figure", { number: this.number })
+        : t("figure-caption-table", { number: this.number });
     node.textContent = this.text ? `${label}: ${this.text}` : label;
     return node;
   }
@@ -795,9 +804,43 @@ export function semanticMarkup(pass: Pass): Meaning {
     found.captions,
   );
 
+  const numbers = sectionNumbers(structure);
+
+  // What the document defines for itself, and the statements it then makes
+  // with them. A label inside one names the statement and takes its number,
+  // which is the counter LaTeX last stepped there.
+  const defined = definitions(pass.text);
+  const stated = statements(pass.text, defined, structure, numbers);
+  // Both are in document order, so one walk of each.
+  let labelIndex = 0;
+  for (const statement of stated) {
+    while (
+      labelIndex < found.labels.length &&
+      found.labels[labelIndex]!.from < statement.headTo
+    ) {
+      labelIndex += 1;
+    }
+    for (
+      ;
+      labelIndex < found.labels.length &&
+      found.labels[labelIndex]!.from < statement.bodyTo;
+      labelIndex += 1
+    ) {
+      const label = found.labels[labelIndex]!;
+      targeted.set(label.key, {
+        key: label.key,
+        number: statement.number,
+        title: statement.note ? printed(statement.note, defined) : "",
+        kind: "unknown",
+        name: statement.title,
+        at: statement.from,
+      });
+    }
+  }
+
   const meaning: Meaning = {
     labelled: labelsByHeading(structure, found.labels),
-    numbers: sectionNumbers(structure),
+    numbers,
     targets: targeted,
     listMarkers: new Map(),
   };
@@ -816,6 +859,7 @@ export function semanticMarkup(pass: Pass): Meaning {
   // Figures, drawn as figures. Before the labels and captions inside them are
   // looked at on their own account, because the whole environment is claimed.
   drawFigures(pass, floats, found.captions, targeted, resolve);
+  drawings(pass);
 
   /*
    * A table float's wrapper, hidden.
@@ -830,14 +874,27 @@ export function semanticMarkup(pass: Pass): Meaning {
    * it, which reads as the preview having failed.
    */
   for (const float of floats) {
-    if (!float.name.startsWith("table")) continue;
+    // A figure drawn as a figure has claimed itself whole, and these are then
+    // refused. One that could not be — a `tikzpicture` rather than a file —
+    // is left with its wrapper to hide like a table's.
     const opening = {
       from: float.from,
       to: afterFloatOpening(pass.text, float),
     };
     const closing = { from: float.bodyTo, to: float.to };
-    if (drawable(pass, opening.from, opening.to)) {
-      hideWrapper(pass, opening.from, opening.to);
+    if (
+      drawable(pass, opening.from, opening.to) &&
+      !hideWrapper(pass, opening.from, opening.to)
+    ) {
+      // Refused, because the space after the opening ran into something that
+      // had claimed itself already — a comment on the next line, hidden with
+      // its line break. The opening without that space is still the opening.
+      hideWrapper(
+        pass,
+        opening.from,
+        opening.from +
+          pass.text.slice(opening.from, opening.to).trimEnd().length,
+      );
     }
     if (drawable(pass, closing.from, closing.to)) {
       hideWrapper(pass, closing.from, closing.to);
@@ -853,29 +910,39 @@ export function semanticMarkup(pass: Pass): Meaning {
    */
   for (const caption of found.captions) {
     if (!drawable(pass, caption.from, caption.to)) continue;
-    const inTable = floats.some(
-      (float) =>
-        float.name.startsWith("table") &&
-        caption.from >= float.from &&
-        caption.to <= float.to,
+    const float = floats.find(
+      (candidate) =>
+        caption.from >= candidate.from && caption.to <= candidate.to,
     );
-    if (!inTable) continue;
+    if (!float) continue;
+    const rendering = environmentRenderingOf(float.name);
+    const counts = rendering?.kind === "float" ? rendering.counts : "table";
+    const source = pass.text.slice(caption.argFrom, caption.argTo);
+    const filled = expand(source, defined);
     drawCaption(
       pass,
       caption.from,
       caption.to,
       new CaptionWidget(
-        pass.text.slice(caption.argFrom, caption.argTo),
-        // The number this table will carry, through whichever label names it.
+        // Flattened only where a definition was filled in: the value a script
+        // wrote is source of its own, and `\num{1885}` is not a caption.
+        filled === source ? source : printed(source, defined),
+        // The number this float will carry, through whichever label names it.
         [...targeted.values()].find(
           (target) =>
-            target.kind === "table" &&
+            target.kind === counts &&
             target.at >= caption.from - CAPTION_REACH &&
             target.at <= caption.to + CAPTION_REACH,
         )?.number ?? "",
+        counts,
       ),
     );
   }
+
+  // After the captions, which are drawn whole from their source: a `\data{…}`
+  // claimed inside one first would leave the caption unable to claim itself.
+  drawDefined(pass, defined, stated);
+  quantities(pass);
 
   // A label is folded into whatever it labels — the heading shows it on hover
   // — so nothing of it is left on screen.
@@ -1071,6 +1138,21 @@ export function semanticMarkup(pass: Pass): Meaning {
 
     if (drawable(pass, declaration.from, declaration.to)) {
       replace(pass, declaration.from, declaration.to);
+    }
+
+    // The braces of the group go with the declaration that was their reason:
+    // `{\Large Title\par}` is a title, and the pair around it is how TeX was
+    // told where the size stops. Once per group, however many declarations it
+    // opens with — the second is refused by the claim the first one made.
+    const open = declaration.bodyFrom - 1;
+    const close = declaration.bodyTo;
+    if (
+      pass.text[open] === "{" &&
+      pass.text[close] === "}" &&
+      !touched(pass.state, open, close + 1)
+    ) {
+      replace(pass, open, open + 1);
+      replace(pass, close, close + 1);
     }
   }
 
@@ -1302,6 +1384,23 @@ export const semanticTheme = EditorView.baseTheme({
   ".cm-yaz-align-end": { textAlign: "end" },
   // What the document declares about itself, shown where it is written.
   ".cm-yaz-declared": { color: "inherit" },
+  // A statement's head: its title and number, run in before the statement.
+  ".cm-yaz-statement": { fontWeight: "700" },
+  // An environment of the document's own, set apart from the text around it.
+  ".cm-yaz-own": {
+    borderInlineStart: "2px solid var(--yaz-border)",
+    paddingInlineStart: "var(--yaz-space-3)",
+    color: "var(--yaz-text-secondary)",
+  },
+  ".cm-yaz-own-name": {
+    fontFamily: "var(--yaz-font-sans)",
+    fontSize: "0.75em",
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+    color: "var(--yaz-text-muted)",
+  },
+  // A figure and its unit, which a line end must not part.
+  ".cm-yaz-quantity": { whiteSpace: "nowrap" },
   ".cm-yaz-sans": { fontFamily: "var(--yaz-font-sans)" },
   ".cm-yaz-space": { whiteSpace: "pre" },
 });
