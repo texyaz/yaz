@@ -105,6 +105,7 @@
   import PdfView from "./lib/PdfView.svelte";
   import Picker from "./lib/Picker.svelte";
   import * as ipc from "./lib/ipc";
+  import { describeError } from "./lib/errors";
   import {
     PluginRuntime,
     type PickerRequest,
@@ -652,7 +653,7 @@
     try {
       await ipc.setFormatPreferences({ disabled });
     } catch (error) {
-      failure = String(error);
+      failure = describeError(error);
     }
   }
   const shortcuts = $derived(resolveShortcuts(keyPreferences));
@@ -678,7 +679,7 @@
     try {
       await ipc.setAppearance(appearance);
     } catch (error) {
-      failure = String(error);
+      failure = describeError(error);
     }
   }
   let failure = $state<string | null>(null);
@@ -721,7 +722,7 @@
       vcs = await ipc.vcsStatus(project.root);
       commits = vcs.enabled ? await ipc.vcsHistory(project.root) : [];
     } catch (error) {
-      failure = String(error);
+      failure = describeError(error);
     }
   }
 
@@ -741,7 +742,7 @@
       commits = vcs.enabled ? await ipc.vcsHistory(project.root) : [];
       showNotice(t(vcs.enabled ? "vcs-recording" : "vcs-not-recording"));
     } catch (error) {
-      failure = String(error);
+      failure = describeError(error);
     } finally {
       vcsBusy = false;
     }
@@ -763,7 +764,7 @@
       }
       await refreshVcs();
     } catch (error) {
-      failure = String(error);
+      failure = describeError(error);
     } finally {
       vcsBusy = false;
     }
@@ -779,7 +780,7 @@
       if (currentFile) await openFile(currentFile);
       await refreshVcs();
     } catch (error) {
-      failure = String(error);
+      failure = describeError(error);
     } finally {
       vcsBusy = false;
     }
@@ -808,7 +809,7 @@
       if (found.path !== currentFile) await openFile(found.path);
       revealLine(found.line, found.path);
     } catch (error) {
-      failure = String(error);
+      failure = describeError(error);
     }
   }
 
@@ -920,7 +921,7 @@
       showNotice(t("theme-installed", { name: installed.name }));
       await changeAppearance({ theme: installed.id });
     } catch (error) {
-      failure = String(error);
+      failure = describeError(error);
     }
   }
 
@@ -932,7 +933,7 @@
       const written = await ipc.exportTheme(chosen, manifest, css);
       showNotice(t("theme-exported", { path: written }));
     } catch (error) {
-      failure = String(error);
+      failure = describeError(error);
     }
   }
 
@@ -951,7 +952,7 @@
       await changeAppearance({ theme: id });
       showNotice(t("theme-installed", { name }));
     } catch (error) {
-      failure = String(error);
+      failure = describeError(error);
     }
     buildingTheme = false;
   }
@@ -1017,7 +1018,7 @@
       entryText = next;
       showNotice(t("format-package-added", { package: name, file: open.entry }));
     } catch (error) {
-      failure = String(error);
+      failure = describeError(error);
     }
   }
 
@@ -1039,7 +1040,7 @@
     try {
       await ipc.setKeyPreferences(keyPreferences);
     } catch (error) {
-      failure = String(error);
+      failure = describeError(error);
     }
   }
 
@@ -1346,7 +1347,7 @@
       const shown = tasks.find((one) => one.id === task.id);
       if (shown) showTaskDetail(shown);
     } catch (error) {
-      failure = String(error);
+      failure = describeError(error);
     } finally {
       tasksBusy = false;
     }
@@ -1369,7 +1370,7 @@
       const shown = tasks.find((one) => one.id === task.id);
       if (shown) showTaskDetail(shown);
     } catch (error) {
-      failure = String(error);
+      failure = describeError(error);
     } finally {
       tasksBusy = false;
     }
@@ -1591,7 +1592,7 @@
     try {
       await ipc.writeProjectBytes(open.root, path, bytes);
     } catch (error) {
-      failure = String(error);
+      failure = describeError(error);
       return null;
     }
 
@@ -1922,7 +1923,7 @@
       await refreshProject();
       showNotice(t("files-deleted", { name: path }));
     } catch (error) {
-      failure = String(error);
+      failure = describeError(error);
     }
   }
 
@@ -2005,7 +2006,7 @@
       await adoptProject(info);
       showNotice(t("new-project-created", { name }));
     } catch (error) {
-      newProjectFailure = String(error);
+      newProjectFailure = describeError(error);
     }
   }
 
@@ -2080,7 +2081,7 @@
           ? await held.provider.listSections(taskProject.id).catch(() => [])
           : [];
     } catch (error) {
-      failure = String(error);
+      failure = describeError(error);
       tasks = [];
       taskSections = [];
     } finally {
@@ -2142,7 +2143,7 @@
           : chosen;
       await held.provider.link(linked);
     } catch (error) {
-      failure = String(error);
+      failure = describeError(error);
     } finally {
       tasksBusy = false;
     }
@@ -2162,7 +2163,7 @@
     try {
       await held.provider.createTask(taskProject.id, title);
     } catch (error) {
-      failure = String(error);
+      failure = describeError(error);
     } finally {
       tasksBusy = false;
     }
@@ -2180,7 +2181,7 @@
       // checkbox does what a checkbox does.
       tasks = tasks.filter((held) => held.id !== task.id);
     } catch (error) {
-      failure = String(error);
+      failure = describeError(error);
       await loadTasks();
     } finally {
       tasksBusy = false;
@@ -2384,7 +2385,7 @@ ${entryText}`,
         showNotice(t("bib-fix-declared-in", { file: open.entry }));
       }
     } catch (error) {
-      failure = String(error);
+      failure = describeError(error);
       return;
     }
 
@@ -2413,7 +2414,7 @@ ${entryText}`,
       }
       showNotice(t("bib-fix-created", { file: name }));
     } catch (error) {
-      failure = String(error);
+      failure = describeError(error);
     }
   }
 
@@ -2539,7 +2540,7 @@ ${entryText}`,
         selectedEngine = settings.engineId ?? engines.find((e) => e.available)?.id ?? null;
       }
     } catch (error) {
-      failure = String(error);
+      failure = describeError(error);
     }
   }
 
@@ -2574,7 +2575,7 @@ ${entryText}`,
         latexInstallHealth = { ...latexInstallHealth, [install.path]: verified ? "live" : "off" };
       }
     } catch (error) {
-      failure = String(error);
+      failure = describeError(error);
     }
   }
 
@@ -2587,7 +2588,7 @@ ${entryText}`,
       latexInstallCandidates = found.filter((install) => !known.has(install.path));
       if (latexInstallCandidates.length === 0) showNotice(t("latex-install-scan-none"));
     } catch (error) {
-      failure = String(error);
+      failure = describeError(error);
     } finally {
       latexInstallsBusy = false;
     }
@@ -2601,7 +2602,7 @@ ${entryText}`,
       latexInstallCandidates = latexInstallCandidates.filter((c) => c.path !== path);
       latexInstallHealth = { ...latexInstallHealth, [install.path]: "live" };
     } catch (error) {
-      failure = String(error);
+      failure = describeError(error);
     }
   }
 
@@ -2620,7 +2621,7 @@ ${entryText}`,
       const { [path]: _removed, ...rest } = latexInstallHealth;
       latexInstallHealth = rest;
     } catch (error) {
-      failure = String(error);
+      failure = describeError(error);
     }
   }
 
@@ -2637,7 +2638,7 @@ ${entryText}`,
       zoteroStatus = await ipc.zoteroStatus(ZOTERO_PLUGIN_ID);
       showNotice(t(zoteroStatus.liveStatusKey));
     } catch (error) {
-      failure = String(error);
+      failure = describeError(error);
     } finally {
       connectionsBusy = false;
     }
@@ -2792,7 +2793,7 @@ ${entryText}`,
     try {
       await command.callback();
     } catch (error) {
-      failure = String(error);
+      failure = describeError(error);
     }
   }
 
@@ -3661,7 +3662,7 @@ ${entryText}`,
         await ipc.mcpSetProject(project?.root ?? null);
       }
     } catch (error) {
-      failure = String(error);
+      failure = describeError(error);
     }
   }
 
@@ -3707,7 +3708,7 @@ ${entryText}`,
     try {
       await ipc.setDevelopmentPlugin(picked);
     } catch (error) {
-      failure = String(error);
+      failure = describeError(error);
     }
   }
 
@@ -3717,7 +3718,7 @@ ${entryText}`,
     try {
       await ipc.setDevelopmentPlugin(null);
     } catch (error) {
-      failure = String(error);
+      failure = describeError(error);
     }
   }
 
@@ -4207,7 +4208,7 @@ ${entryText}`,
       vcs = vcs?.enabled ? await ipc.vcsEnable(project.root, id) : { ...vcs!, backend: id };
       await refreshVcs();
     } catch (error) {
-      failure = String(error);
+      failure = describeError(error);
     } finally {
       vcsBusy = false;
     }
@@ -4359,7 +4360,7 @@ ${entryText}`,
         refreshCommands();
       })
       .catch((error) => {
-        failure = String(error);
+        failure = describeError(error);
       });
   });
 
@@ -4369,7 +4370,7 @@ ${entryText}`,
     try {
       await ipc.setProjectEngine(project.root, id);
     } catch (error) {
-      failure = String(error);
+      failure = describeError(error);
     }
   }
 
@@ -4384,7 +4385,7 @@ ${entryText}`,
     try {
       await adoptProject(await ipc.openProject(picked));
     } catch (error) {
-      failure = String(error);
+      failure = describeError(error);
     }
   }
 
@@ -4447,7 +4448,7 @@ ${entryText}`,
       // A failed chunk load leaves the pane empty forever otherwise, with no
       // clue why. Better to say so than to look merely broken.
       editorLoadFailed = true;
-      failure = String(error);
+      failure = describeError(error);
     }
   }
 
@@ -4644,7 +4645,7 @@ ${entryText}`,
       pdfPages = null;
       updateLayout(layoutTree.focusTab(layout, "pdf"));
     } catch (error) {
-      failure = String(error);
+      failure = describeError(error);
     }
   }
 
@@ -4681,7 +4682,7 @@ ${entryText}`,
       currentFile = relativePath;
       dirty = false;
     } catch (error) {
-      failure = String(error);
+      failure = describeError(error);
     }
   }
 
@@ -4698,7 +4699,7 @@ ${entryText}`,
         try {
           await ipc.writeFile(project.root, file, text);
         } catch (error) {
-          failure = t("joined-save-failed", { file, error: String(error) });
+          failure = t("joined-save-failed", { file, error: describeError(error) });
           return;
         }
       }
@@ -4731,7 +4732,7 @@ ${entryText}`,
       // follow — whatever was being read before.
       pdfFile = null;
     } catch (error) {
-      failure = String(error);
+      failure = describeError(error);
     } finally {
       busy = false;
     }
@@ -4906,7 +4907,7 @@ ${entryText}`,
       const name = value?.trim();
       if (!pending || !name) return;
       void pending.onname(name).catch((error: unknown) => {
-        failure = String(error);
+        failure = describeError(error);
       });
     }}
   />
