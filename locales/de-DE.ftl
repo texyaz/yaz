@@ -295,6 +295,11 @@ tab-editor-source = Quelltext zeigen
 tab-editor-wrap = Lange Zeilen umbrechen
 workspace-tab-editor = Editor
 workspace-tab-pdf = PDF
+# Die Ein-Bereich-Ansicht für schmale Bildschirme.
+compact-bar = Bereiche und Dokument
+compact-pane-side = Gliederung
+compact-view-preview = Vorschau
+compact-view-source = Quelltext
 menu-view-tabs = Reiter
 menu-view-reset-layout = Anordnung zurücksetzen
 

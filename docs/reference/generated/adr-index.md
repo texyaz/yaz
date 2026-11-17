@@ -46,3 +46,4 @@ useful than a tidy directory.
 | [0028 — The file list edits the project](/adr/0028-the-file-list-edits-the-project) | Accepted |
 | [0029 — A format brings its own preview](/adr/0029-a-format-brings-its-own-preview) | Accepted |
 | [0030 — A web server hosts the same commands](/adr/0030-a-web-server-hosts-the-same-commands) | Accepted |
+| [0031 — A narrow window shows one pane](/adr/0031-a-narrow-window-shows-one-pane) | Accepted |

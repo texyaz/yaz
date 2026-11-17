@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from "svelte";
-  import { EditorState, Compartment } from "@codemirror/state";
+  import { Annotation, EditorState, Compartment } from "@codemirror/state";
   import {
     EditorView,
     keymap,
@@ -651,6 +651,20 @@
   let view: EditorView | undefined;
   let loadedDocId = "";
 
+  /**
+   * Marks the transaction that puts a different document in the buffer.
+   *
+   * It changes the text, so it looks like an edit, and it is not one: nobody
+   * typed it, and the application already holds exactly this text — it is
+   * where the text came from. Reported as an edit, a freshly opened file was
+   * "modified", and a freshly joined document was a whole-buffer replacement
+   * that maps to no single file, which is the definition of the map having
+   * drifted — so joining announced that edits were no longer being written.
+   * Whether that happened depended on whether the editor had finished loading
+   * before the files had been read, which over a network it always has.
+   */
+  const documentSwap = Annotation.define<boolean>();
+
   const vimCompartment = new Compartment();
   const numberCompartment = new Compartment();
   const keyCompartment = new Compartment();
@@ -843,7 +857,12 @@
         },
       }),
       EditorView.updateListener.of((update) => {
-        if (update.docChanged) {
+        if (
+          update.docChanged &&
+          !update.transactions.some((transaction) =>
+            transaction.annotation(documentSwap),
+          )
+        ) {
           onChange(update.state.doc.toString(), changesIn(update.changes));
         }
         // The outline highlights the section the caret is in, so it needs the
@@ -944,6 +963,7 @@
         ? {
             changes: { from: 0, to: view.state.doc.length, insert: doc },
             selection: { anchor: 0 },
+            annotations: documentSwap.of(true),
           }
         : {}),
       effects: setSegments.of(nextSegments ? [...nextSegments] : []),

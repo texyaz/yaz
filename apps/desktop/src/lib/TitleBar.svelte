@@ -809,4 +809,41 @@
     clip-path: inset(50%);
     white-space: nowrap;
   }
+
+  /*
+    A narrow window (the same width `App.svelte` switches layouts at).
+
+    The bar keeps what is reached for constantly — the project menu, save, and
+    find — and gives up what a phone has no room or no use for: the title that
+    only filled the space between them, and undo and redo, which a touch
+    keyboard already has. The search field takes the room that frees.
+  */
+  @media (max-width: 720px) {
+    .bar {
+      padding-inline-end: var(--yaz-space-2);
+    }
+
+    .drag {
+      display: none;
+    }
+
+    /* Undo and redo: the third and fourth of the four tools. */
+    .tools .tool:nth-child(n + 3) {
+      display: none;
+    }
+
+    .finder {
+      flex: 1;
+      min-inline-size: 0;
+    }
+
+    .search {
+      min-inline-size: 0;
+    }
+
+    .search :global(input) {
+      min-inline-size: 0;
+      inline-size: 100%;
+    }
+  }
 </style>

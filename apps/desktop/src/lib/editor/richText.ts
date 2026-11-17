@@ -1596,6 +1596,14 @@ const cursorStaysOutOfTheFold = EditorState.transactionFilter.of(
       transaction,
       {
         selection: EditorSelection.create(moved, selection.mainIndex),
+        // The targets were read from the document *after* the change, so they
+        // must be applied after it. Without this they are taken as positions
+        // in the old document and mapped forward: wrong whenever the change
+        // moved anything, and a RangeError when the new document is longer
+        // than the old one — which is every joined document, whose preamble
+        // alone can outrun the single file it replaces. That error left the
+        // old text on screen under a notice saying the files had been joined.
+        sequential: true,
       },
     ];
   },
