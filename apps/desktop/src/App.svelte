@@ -2147,7 +2147,12 @@
 
     tasksBusy = true;
     try {
-      tasksReady = await held.provider.isReady();
+      // Asked on every project open, by a list nobody may ever look at. If
+      // the question cannot be answered — a machine with no keychain, such as
+      // a server yaz is being used from a browser on — the provider is simply
+      // not signed in. The error belongs to the moment somebody signs in,
+      // where it is still raised, not to opening a thesis.
+      tasksReady = await held.provider.isReady().catch(() => false);
       if (!tasksReady) {
         tasks = [];
         taskProject = null;
