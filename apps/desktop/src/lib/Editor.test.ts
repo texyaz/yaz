@@ -120,6 +120,20 @@ describe("Editor", () => {
     expect(currentApi(ready).getText()).toBe("second file");
   });
 
+  it("does not report a different document as an edit", async () => {
+    // Nobody typed it, and the owner is where the text came from. Reported, a
+    // freshly opened file was "modified" and a freshly joined document was a
+    // whole-buffer change that belongs to no one file.
+    const { component, ready, onChange } = mount("first file", "a.tex");
+    await tick();
+
+    await component.rerender({ doc: "second file", docId: "b.tex" });
+    await tick();
+
+    expect(currentApi(ready).getText()).toBe("second file");
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it("reports edits to its owner", async () => {
     const { ready, onChange } = mount("x");
     await tick();
