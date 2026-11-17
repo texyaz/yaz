@@ -77,7 +77,7 @@ import {
   touched,
 } from "./pass";
 import { definitions, expand } from "./definitions";
-import { flow } from "./flow";
+import { flow } from "./paragraphs";
 import { conditionals } from "./ownView";
 import { semanticMarkup, semanticTheme } from "./semanticView";
 import type { Meaning } from "./semanticView";
