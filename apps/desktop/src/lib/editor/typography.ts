@@ -81,9 +81,12 @@ export function declarations(text: string): Declaration[] {
     // An alignment is nearly always the first thing in an environment rather
     // than inside a brace — `\begin{titlepage}` then `\centering` is how every
     // title page is written — so it falls back to the environment it opens.
+    // A size or a shape does the same in a float: `\begin{table}`,
+    // `\centering`, `\small` is how a table is set a size down.
     const group =
       groupAround(text, token.at) ??
-      (token.name in ALIGNMENTS ? environmentAround(text, token.at) : null);
+      environmentAround(text, token.at) ??
+      restOfEnvironment(text, token.after);
     if (!group) continue;
     found.push({
       command: token.name,
@@ -163,6 +166,46 @@ function groupAround(
  * drawing it as though it applied to the whole thing would move text that
  * LaTeX will leave where it is.
  */
+/**
+ * Whether a stretch holds nothing but declarations and a float's placement.
+ *
+ * What may stand between an environment's opening and a declaration that
+ * still applies to all of it: `[htbp]`, and the declarations before this one.
+ */
+function onlyDeclarations(between: string): boolean {
+  return (
+    between
+      .replace(/^\[[a-zA-Z!]*\]/, "")
+      .replace(/\\([a-zA-Z]+)/g, (whole, name: string) =>
+        name in SIZES || name in SHAPES || name in ALIGNMENTS ? "" : whole,
+      )
+      .trim() === ""
+  );
+}
+
+/**
+ * From a declaration to the end of the environment it is in.
+ *
+ * Which is how far TeX applies it: `\small` after a table's caption sets the
+ * rest of the float small and not the caption. Never the document itself — a
+ * size switched on in the open text is in force until the next one, and
+ * following that would mean reading the manuscript as a program.
+ */
+function restOfEnvironment(
+  text: string,
+  after: number,
+): { from: number; to: number } | null {
+  let best: { name: string; from: number; to: number } | null = null;
+  for (const found of environments(text)) {
+    if (after < found.bodyFrom || after > found.bodyTo) continue;
+    if (!best || found.bodyFrom > best.from) {
+      best = { name: found.name, from: found.bodyFrom, to: found.bodyTo };
+    }
+  }
+  if (!best || best.name === "document") return null;
+  return { from: after, to: best.to };
+}
+
 function environmentAround(
   text: string,
   at: number,
@@ -171,7 +214,7 @@ function environmentAround(
 
   for (const found of environments(text)) {
     if (at < found.bodyFrom || at >= found.bodyTo) continue;
-    if (text.slice(found.bodyFrom, at).trim() !== "") continue;
+    if (!onlyDeclarations(text.slice(found.bodyFrom, at))) continue;
     if (!best || found.bodyFrom > best.from) {
       best = { from: found.bodyFrom, to: found.bodyTo };
     }

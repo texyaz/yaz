@@ -151,3 +151,22 @@ export function drawable(pass: Pass, from: number, to: number): boolean {
   pass.covered.claim(from, to);
   return false;
 }
+
+/** Where a construct is the whole line, the range that hides the line with it. */
+export function lineHide(
+  state: EditorState,
+  from: number,
+  to: number,
+): { from: number; to: number } | null {
+  const line = state.doc.lineAt(from);
+  if (line.number !== state.doc.lineAt(to).number) return null;
+  // Only when the command is the whole line. `\begin{itemize} \item a` on one
+  // line has text on it to keep.
+  if (line.text.trim() !== state.doc.sliceString(from, to).trim()) return null;
+
+  // Swallow a line break with it, or an empty line is left behind. The one
+  // before is preferred: taking the one after would pull the first item up.
+  if (line.from > 0) return { from: line.from - 1, to: line.to };
+  if (line.to < state.doc.length) return { from: line.from, to: line.to + 1 };
+  return { from: line.from, to: line.to };
+}

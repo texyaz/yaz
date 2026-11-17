@@ -70,10 +70,13 @@ import {
   Covered,
   drawable,
   emptyLayout,
+  lineHide,
   NO_LAYOUT,
   replace,
   touched,
 } from "./pass";
+import { definitions, expand } from "./definitions";
+import { conditionals } from "./ownView";
 import { semanticMarkup, semanticTheme } from "./semanticView";
 import type { Meaning } from "./semanticView";
 import { labelledMarker } from "./semantics";
@@ -96,6 +99,7 @@ import {
 import {
   lockTables,
   setShowLineBreaks,
+  setShowMachinery,
   showLineBreaks,
   showMachinery,
 } from "./viewModes";
@@ -636,6 +640,10 @@ function build(state: EditorState): Rendered {
   structure(pass);
   tables(pass);
   mathematics(pass);
+  // Before anything claims a single command. A conditional's line is hidden
+  // whole, and a `\relax` or one of the document's own commands on it, drawn
+  // first, would refuse it.
+  conditionals(pass);
   // Before the lists, which need to know when one sets its own markers, and
   // before the headings, which show the label they carry.
   const meaning = semanticMarkup(pass);
@@ -1009,6 +1017,7 @@ function tables(pass: Pass): void {
   // tables — and the keystroke tripwire caught it at 29x the cost for 6x the
   // document.
   const declared = metadata(pass.text);
+  const defined = definitions(pass.text);
 
   for (const table of environments(pass.text, environmentsOfKind("table"))) {
     // How many `{...}` arguments come before the column specification is a
@@ -1025,9 +1034,11 @@ function tables(pass: Pass): void {
     // Filled before it is drawn: a table is rendered from its source, so
     // `\theauthor` in a cell would otherwise reach the screen as those letters.
     // The title page of a real thesis sets the author and the reviewer this way.
-    const body = fillMetadata(
-      pass.text.slice(read.bodyFrom, table.bodyTo),
-      declared,
+    // And the document's own commands with them, for the same reason: the
+    // supervisors on a title page are `\newcommand`s in a `tabular`.
+    const body = expand(
+      fillMetadata(pass.text.slice(read.bodyFrom, table.bodyTo), declared),
+      defined,
     );
     // A construct this parser would draw wrongly is shown as source instead.
     // The author can see that source is source; they cannot see that a drawn
@@ -1379,25 +1390,6 @@ function inlineMarkup(pass: Pass, meaning: Meaning): void {
   }
 }
 
-/** Where a construct is the whole line, the range that hides the line with it. */
-function lineHide(
-  state: EditorState,
-  from: number,
-  to: number,
-): { from: number; to: number } | null {
-  const line = state.doc.lineAt(from);
-  if (line.number !== state.doc.lineAt(to).number) return null;
-  // Only when the command is the whole line. `\begin{itemize} \item a` on one
-  // line has text on it to keep.
-  if (line.text.trim() !== state.doc.sliceString(from, to).trim()) return null;
-
-  // Swallow a line break with it, or an empty line is left behind. The one
-  // before is preferred: taking the one after would pull the first item up.
-  if (line.from > 0) return { from: line.from - 1, to: line.to };
-  if (line.to < state.doc.length) return { from: line.from, to: line.to + 1 };
-  return { from: line.from, to: line.to };
-}
-
 /** The marker for an item, given its list's kind, depth and position. */
 function itemLabel(kind: string, depth: number, index: number): string {
   if (kind === "enumerate") {
@@ -1487,6 +1479,7 @@ const rendered = StateField.define<Rendered>({
         effect.is(setRichText) ||
         effect.is(setWrapperCollapsed) ||
         effect.is(setShowComments) ||
+        effect.is(setShowMachinery) ||
         effect.is(setShowLineBreaks),
     );
     // Where a generated list can be read changes what its card says, and a
