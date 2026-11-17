@@ -298,6 +298,11 @@ tab-editor-source = Show source
 tab-editor-wrap = Wrap long lines
 workspace-tab-editor = Editor
 workspace-tab-pdf = PDF
+# The one-pane-at-a-time layout a narrow screen gets.
+compact-bar = Panes and document
+compact-pane-side = Outline
+compact-view-preview = Preview
+compact-view-source = Source
 menu-view-tabs = Tabs
 menu-view-reset-layout = Reset layout
 

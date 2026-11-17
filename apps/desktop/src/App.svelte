@@ -100,12 +100,15 @@
   } from "./lib/editor/search";
   import type { Match, SearchOptions } from "./lib/editor/search";
   import Pane from "./lib/workspace/Pane.svelte";
+  import Compact from "./lib/workspace/Compact.svelte";
+  import type { CompactPane } from "./lib/workspace/Compact.svelte";
   import * as layoutTree from "./lib/workspace/layout";
   import type { Node as LayoutNode, TabId } from "./lib/workspace/layout";
   import PdfView from "./lib/PdfView.svelte";
   import Picker from "./lib/Picker.svelte";
   import * as ipc from "./lib/ipc";
   import { describeError } from "./lib/errors";
+  import { rememberProject, rememberedProject } from "./lib/session";
   import {
     PluginRuntime,
     type PickerRequest,
@@ -302,6 +305,66 @@
   let vimMode = $state(false);
   /** Render the source as styled text. Same buffer, decorations only. */
   let richText = $state(false);
+
+  /**
+   * Whether the window is too narrow to split.
+   *
+   * A width, not a device: a phone, a tablet held upright and a desktop window
+   * dragged to a sliver are all the same problem, and get the same answer —
+   * one pane at a time (see `Compact.svelte`).
+   */
+  const COMPACT_QUERY = "(max-width: 720px)";
+  let compact = $state(
+    typeof matchMedia === "function" && matchMedia(COMPACT_QUERY).matches,
+  );
+  $effect(() => {
+    if (typeof matchMedia !== "function") return;
+    const query = matchMedia(COMPACT_QUERY);
+    const follow = () => (compact = query.matches);
+    query.addEventListener("change", follow);
+    return () => query.removeEventListener("change", follow);
+  });
+
+  /*
+   * What the narrow layout remembers, which is nothing beyond the session.
+   *
+   * Kept apart from the preferences on purpose. On a phone the preview is the
+   * way to write and the ribbon is in the way; at a desk neither is true, and
+   * picking the phone up must not change what the desk looks like tomorrow.
+   */
+  let compactPane = $state<CompactPane>("editor");
+  let compactSideTab = $state<TabId>("outline");
+  let compactRich = $state(true);
+  let compactRibbonOpen = $state(false);
+
+  /** Whether the preview is what is asked for, wherever that is decided. */
+  const showRich = $derived(compact ? compactRich : richText);
+
+  function setRich(on: boolean) {
+    if (compact) compactRich = on;
+    else richText = on;
+  }
+
+  /**
+   * Bring a tab on screen in the narrow layout. Nothing at a desk, where the
+   * workspace tree already did it.
+   */
+  function showTab(tab: TabId) {
+    if (!compact) return;
+    if (tab === "editor" || tab === "pdf") {
+      compactPane = tab;
+      return;
+    }
+    compactSideTab = tab;
+    compactPane = "side";
+  }
+
+  /** What the first narrow pane offers: how to get around, then whatever was asked for. */
+  const compactSideTabs = $derived<TabId[]>(
+    ["outline", "files", "search"].includes(compactSideTab)
+      ? ["outline", "files", "search"]
+      : ["outline", "files", "search", compactSideTab],
+  );
   /** Caret offset, so the outline can show where the reader is. */
   let cursor = $state(0);
   /**
@@ -821,6 +884,7 @@
    * holds gives the same answer the editor would.
    */
   function revealLine(line: number, file?: string) {
+    showTab("editor");
     // Joined, a line number from elsewhere counts lines in *its own file* and
     // the buffer holds all of them, so the file's own start has to be added
     // back. Without this a click near the end of a chapter landed near the
@@ -896,6 +960,15 @@
         // because it could not read a colour preference would be worse.
       }
       await applyAppearance();
+
+      // A reloaded tab comes back to the project it had (see `session.ts`).
+      // After the preferences, so the document is drawn once, the right way.
+      const last = rememberedProject();
+      if (last && !project) {
+        await openProjectAt(last);
+        // Moved or deleted since: say so once, not on every reload after.
+        if (!project) rememberProject(null);
+      }
     })();
 
     return theming.watchSystemMode(() => {
@@ -1057,10 +1130,10 @@
         openCommandPalette();
         return;
       case "view.toggleRichText":
-        richText = !richText;
+        setRich(!showRich);
         return;
       case "view.toggleSource":
-        richText = false;
+        setRich(false);
         return;
       case "view.togglePageView":
         // Round the three rather than to a fixed one, for the same reason the
@@ -1092,6 +1165,10 @@
         focusSearch(true);
         return;
       case "navigate.outline":
+        if (compact) {
+          showTab("outline");
+          return;
+        }
         updateLayout(
           layoutTree.isOpen(layout, "outline")
             ? layoutTree.closeTab(layout, "outline")
@@ -1503,6 +1580,7 @@
   function focusSearch(withReplace: boolean) {
     if (withReplace) replacing = true;
     titleBar?.focusSearch();
+    showTab("search");
     if (!layoutTree.isOpen(layout, "search")) {
       updateLayout(layoutTree.openTab(layout, "search"));
     }
@@ -1512,6 +1590,7 @@
   async function goToMatch(file: string, match: Match) {
     if (file !== currentFile) await openFile(file);
     editorApi?.revealRange(match.from, match.to);
+    showTab("editor");
   }
 
   /**
@@ -1707,11 +1786,11 @@
         {
           // Named for what choosing it *does*, not for what is on screen. A
           // menu is read as a list of actions.
-          labelKey: richText ? "tab-editor-source" : "tab-editor-preview",
-          icon: richText ? "code" : "text",
+          labelKey: showRich ? "tab-editor-source" : "tab-editor-preview",
+          icon: showRich ? "code" : "text",
           disabled: !previewable,
           action: () => {
-            richText = !richText;
+            setRich(!showRich);
           },
         },
         {
@@ -1775,6 +1854,11 @@
 
   /** Open or close a tab from a switch, saving the arrangement once. */
   function toggleTab(tab: TabId) {
+    if (compact) {
+      // Nothing is open or closed here; asking for a tab means going to it.
+      showTab(tab);
+      return;
+    }
     updateLayout(
       layoutTree.isOpen(layout, tab)
         ? layoutTree.closeTab(layout, tab)
@@ -2470,6 +2554,7 @@ ${entryText}`,
       ? layout
       : layoutTree.openTab(layout, tab);
     updateLayout(layoutTree.focusTab(opened, tab));
+    showTab(tab);
   }
 
   /**
@@ -2906,7 +2991,7 @@ ${entryText}`,
           labelKey: "menu-view-rich-text",
           icon: "text" as const,
           group: "group-views",
-          checked: richText && previewable,
+          checked: showRich && previewable,
           // Enabled for any format that brought a preview with it, which is
           // LaTeX and whatever a format plugin has contributed — Markdown, as
           // of the formats plugin. A switch that appears to do something and
@@ -2914,7 +2999,7 @@ ${entryText}`,
           // no preview still greys it.
           disabled: !previewable,
           action: () => {
-            richText = !richText;
+            setRich(!showRich);
           },
         },
         {
@@ -3549,8 +3634,8 @@ ${entryText}`,
               kind: "action" as const,
               labelKey: "view-mode-source",
               icon: "code" as const,
-              checked: !richText,
-              onclick: () => (richText = !richText),
+              checked: !showRich,
+              onclick: () => (setRich(!showRich)),
             },
             {
               kind: "action" as const,
@@ -4216,6 +4301,7 @@ ${entryText}`,
 
   function closeProject() {
     project = null;
+    rememberProject(null);
     currentFile = null;
     joined = false;
     joinedSegments = null;
@@ -4413,6 +4499,7 @@ ${entryText}`,
       joinedMissing = [];
 
       project = info;
+      rememberProject(info.root);
       // Filesystem capabilities are scoped to the open project, so the brokers
       // have to be told. Without this a plugin keeps writing into whichever
       // project was open when it loaded.
@@ -4644,6 +4731,7 @@ ${entryText}`,
       pdfFile = relativePath;
       pdfPages = null;
       updateLayout(layoutTree.focusTab(layout, "pdf"));
+      showTab("pdf");
     } catch (error) {
       failure = describeError(error);
     }
@@ -4656,6 +4744,7 @@ ${entryText}`,
       return;
     }
     void ensureEditorLoaded();
+    showTab("editor");
 
     if (joined) {
       // The file is already on screen; opening it means going to it. This is
@@ -4731,6 +4820,9 @@ ${entryText}`,
       // Back to the compile's own output, which is the one inverse search can
       // follow — whatever was being read before.
       pdfFile = null;
+      // On a narrow screen the PDF is a swipe away and out of sight, and the
+      // reason to compile was to look at it.
+      if (pdfData) showTab("pdf");
     } catch (error) {
       failure = describeError(error);
     } finally {
@@ -4760,7 +4852,7 @@ ${entryText}`,
           if (joined) recordJoinedChanges(changes);
         }}
         onSave={save}
-        rich={richText && previewable}
+        rich={showRich && previewable}
         {formatPreview}
         {numbering}
         {shortcuts}
@@ -4837,6 +4929,7 @@ ${entryText}`,
         // The offsets address the raw source, which is the same buffer in both
         // views — so this works identically in rich text.
         editorApi?.revealRange(heading.titleFrom, heading.titleTo);
+        showTab("editor");
       }}
     />
   {:else if tab === "search"}
@@ -4852,7 +4945,10 @@ ${entryText}`,
       works={documentCitations}
       file={currentFile}
       hasBibliography={bibEntries.size > 0}
-      onnavigate={(at) => editorApi?.revealRange(at, at)}
+      onnavigate={(at) => {
+        editorApi?.revealRange(at, at);
+        showTab("editor");
+      }}
       onexplain={(key) => void explainCitation(key)}
       onselect={showCitationDetail}
     />
@@ -4990,7 +5086,18 @@ ${entryText}`,
     {projectMenu}
   />
 
-  {#if !ribbonVertical}
+  {#if compact}
+    <!-- Always across the top and shut until asked for: sideways is the one
+         direction a phone has less of than a ribbon needs. -->
+    <Ribbon
+      tabs={ribbonTabs}
+      actions={ribbonActions}
+      height="compact"
+      orientation="horizontal"
+      expanded={compactRibbonOpen}
+      ontoggle={() => (compactRibbonOpen = !compactRibbonOpen)}
+    />
+  {:else if !ribbonVertical}
     <Ribbon
       tabs={ribbonTabs}
       actions={ribbonActions}
@@ -5002,27 +5109,50 @@ ${entryText}`,
   {/if}
 
   <div class="body">
-    {#if ribbonVertical}
-      <Ribbon
-        tabs={ribbonTabs}
-        actions={ribbonActions}
-        height={ribbonHeight}
-        orientation="vertical"
-        expanded={ribbonOpen}
-        ontoggle={() => (ribbonOpen = !ribbonOpen)}
+    {#if compact}
+      <Compact
+        pane={compactPane}
+        onpane={(pane) => (compactPane = pane)}
+        sideTabs={compactSideTabs}
+        sideTab={compactSideTab}
+        onsidetab={(tab) => (compactSideTab = tab)}
+        titles={{ ...tabTitles, search: t("workspace-tab-search") }}
+        content={tabContent}
+        rich={showRich && previewable}
+        onrich={previewable ? () => setRich(!showRich) : undefined}
+        compiling={busy}
+        canCompile={project !== null}
+        oncompile={() => void compile()}
+        problem={failure ??
+          (result !== null && !result.succeeded ? t("compile-failed") : null)}
+        ondismiss={() => {
+          failure = null;
+          if (result !== null && !result.succeeded) result = null;
+        }}
+      />
+    {:else}
+      {#if ribbonVertical}
+        <Ribbon
+          tabs={ribbonTabs}
+          actions={ribbonActions}
+          height={ribbonHeight}
+          orientation="vertical"
+          expanded={ribbonOpen}
+          ontoggle={() => (ribbonOpen = !ribbonOpen)}
+        />
+      {/if}
+      <Pane
+        node={layout}
+        titles={tabTitles}
+        content={tabContent}
+        onmove={(tab, target, zone) =>
+          updateLayout(layoutTree.moveTab(layout, tab, target, zone))}
+        onfocus={(tab) => updateLayout(layoutTree.focusTab(layout, tab))}
+        onclose={(tab) => updateLayout(layoutTree.closeTab(layout, tab))}
+        onresize={(path, sizes) => updateLayout(layoutTree.resize(layout, path, sizes))}
+        {tabMenu}
       />
     {/if}
-    <Pane
-      node={layout}
-      titles={tabTitles}
-      content={tabContent}
-      onmove={(tab, target, zone) =>
-        updateLayout(layoutTree.moveTab(layout, tab, target, zone))}
-      onfocus={(tab) => updateLayout(layoutTree.focusTab(layout, tab))}
-      onclose={(tab) => updateLayout(layoutTree.closeTab(layout, tab))}
-      onresize={(path, sizes) => updateLayout(layoutTree.resize(layout, path, sizes))}
-      {tabMenu}
-    />
   </div>
 
   {#if picker}
@@ -5073,39 +5203,41 @@ ${entryText}`,
     <output class="notice">{notice}</output>
   {/if}
 
-  <StatusBar
-    compileMessage={failure ??
-      (result
-        ? result.succeeded
-          ? t("compile-succeeded", { seconds: (result.elapsedMs / 1000).toFixed(1) })
-          : t("compile-failed")
-        : null)}
-    compileFailed={Boolean(failure) || (result !== null && !result.succeeded)}
-    compileErrors={errorCount}
-    {health}
-    healthLabel={t(healthKey)}
-    onhealth={connectZotero}
-    page={null}
-    pages={pdfPages}
-    words={wordCount}
-    language={properties.language}
-    languages={LANGUAGES.map((language) => ({
-      value: language.option,
-      label: t(language.labelKey),
-    }))}
-    onlanguage={(value) => changeProperty("language", value)}
-    view={shownView}
-    onview={() => {
-      chosenView =
-        DOCUMENT_VIEWS[
-          (DOCUMENT_VIEWS.indexOf(chosenView) + 1) % DOCUMENT_VIEWS.length
-        ] ?? "continuous";
-    }}
-    rich={richText}
-    onsource={() => (richText = !richText)}
-    {zoom}
-    onzoom={(percent) => (zoom = percent)}
-  />
+  {#if !compact}
+    <StatusBar
+      compileMessage={failure ??
+        (result
+          ? result.succeeded
+            ? t("compile-succeeded", { seconds: (result.elapsedMs / 1000).toFixed(1) })
+            : t("compile-failed")
+          : null)}
+      compileFailed={Boolean(failure) || (result !== null && !result.succeeded)}
+      compileErrors={errorCount}
+      {health}
+      healthLabel={t(healthKey)}
+      onhealth={connectZotero}
+      page={null}
+      pages={pdfPages}
+      words={wordCount}
+      language={properties.language}
+      languages={LANGUAGES.map((language) => ({
+        value: language.option,
+        label: t(language.labelKey),
+      }))}
+      onlanguage={(value) => changeProperty("language", value)}
+      view={shownView}
+      onview={() => {
+        chosenView =
+          DOCUMENT_VIEWS[
+            (DOCUMENT_VIEWS.indexOf(chosenView) + 1) % DOCUMENT_VIEWS.length
+          ] ?? "continuous";
+      }}
+      rich={showRich}
+      onsource={() => (setRich(!showRich))}
+      {zoom}
+      onzoom={(percent) => (zoom = percent)}
+    />
+  {/if}
 </div>
 
 <style>
@@ -5113,6 +5245,9 @@ ${entryText}`,
     display: flex;
     flex-direction: column;
     block-size: 100vh;
+    /* Where it exists: the height that is left once a phone's address bar and
+       keyboard have taken theirs, which `vh` does not account for. */
+    block-size: 100dvh;
     background: var(--yaz-bg-primary);
     color: var(--yaz-text-primary);
     font-family: var(--yaz-font-ui);
