@@ -88,6 +88,33 @@ pub struct Settings {
     /// [ADR-0006]: https://github.com/texyaz/yaz/blob/main/docs/adr/0006-plugin-runtime-and-capabilities.md
     #[serde(default)]
     pub plugins: BTreeMap<String, serde_json::Value>,
+
+    /// LaTeX distributions the user has pointed yaz at, beyond what `PATH`
+    /// finds on its own.
+    ///
+    /// Application-wide rather than per project, for the same reason
+    /// `recent_projects` is: an install is a fact about the machine, not about
+    /// any one paper, and a system TeX distribution is frequently not on
+    /// `PATH` at all (common on Windows), so yaz needs somewhere durable to
+    /// remember where the user showed it one.
+    #[serde(default)]
+    pub latex_installs: Vec<LatexInstall>,
+}
+
+/// A LaTeX distribution the user pointed yaz at, beyond what `PATH` finds.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LatexInstall {
+    /// The directory containing the engine binaries — a TeX Live or MiKTeX
+    /// `bin` directory, not the distribution's install root.
+    pub path: Utf8PathBuf,
+    /// Engine binaries found there, e.g. `xelatex`, `lualatex`, `pdflatex`,
+    /// `latexmk`. Bare names, without a platform executable extension.
+    #[serde(default)]
+    pub engines: Vec<String>,
+    /// First line of `--version` output from whichever engine responded,
+    /// for display only — not parsed or compared against anywhere.
+    #[serde(default)]
+    pub version: Option<String>,
 }
 
 /// Text formats whose support the user switched off.
@@ -137,6 +164,7 @@ impl Default for Settings {
             view: ViewPreferences::default(),
             development_plugin: None,
             plugins: BTreeMap::new(),
+            latex_installs: Vec::new(),
         }
     }
 }
@@ -310,6 +338,32 @@ mod tests {
         settings.remember_project(Utf8Path::new("/gone"));
         settings.forget_project(Utf8Path::new("/gone"));
         assert!(settings.recent_projects.is_empty());
+    }
+
+    #[test]
+    fn latex_installs_round_trip() {
+        let (_guard, dir) = temp();
+        let mut settings = Settings::default();
+        settings.latex_installs.push(LatexInstall {
+            path: Utf8PathBuf::from("/opt/texlive/2024/bin/x86_64-linux"),
+            engines: vec!["xelatex".to_owned(), "pdflatex".to_owned()],
+            version: Some("XeTeX 3.141592653-2.6-0.999996".to_owned()),
+        });
+        settings.save(&dir).unwrap();
+
+        let loaded = Settings::load(&dir);
+        assert_eq!(loaded.latex_installs, settings.latex_installs);
+    }
+
+    #[test]
+    fn a_settings_file_without_latex_installs_defaults_to_empty() {
+        let (_guard, dir) = temp();
+        std::fs::write(
+            dir.join(Settings::FILE_NAME).as_std_path(),
+            "theme = \"yaz\"\ncolour_mode = \"system\"\ninterface_locale = \"en-US\"\ncheck_for_updates = false\n",
+        )
+        .unwrap();
+        assert!(Settings::load(&dir).latex_installs.is_empty());
     }
 }
 

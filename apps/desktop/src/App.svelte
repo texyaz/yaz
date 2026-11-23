@@ -697,6 +697,12 @@
   let enginesLoaded = $state(false);
   let recent = $state<ipc.RecentProject[]>([]);
 
+  let latexInstalls = $state<ipc.LatexInstall[]>([]);
+  let latexInstallCandidates = $state<ipc.LatexInstall[]>([]);
+  let latexInstallHealth = $state<Record<string, Health>>({});
+  let latexInstallsLoaded = $state(false);
+  let latexInstallsBusy = $state(false);
+
   let vcs = $state<ipc.VcsStatus | null>(null);
   let vcsBackends = $state<ipc.VcsBackend[]>([]);
   let commits = $state<ipc.Commit[]>([]);
@@ -2541,6 +2547,7 @@ ${entryText}`,
     settingsSection = section;
     settingsOpen = true;
     void loadEngines();
+    void loadLatexInstalls();
     // Detecting git is a process start, so it happens when the dialog that
     // shows the answer is opened rather than at launch.
     if (vcsBackends.length === 0) {
@@ -2548,6 +2555,72 @@ ${entryText}`,
         .vcsBackends()
         .then((found) => (vcsBackends = found))
         .catch(() => {});
+    }
+  }
+
+  /**
+   * Load registered LaTeX installs and verify each once.
+   *
+   * Verifying is a process spawn per install, so — like {@link loadEngines} —
+   * this waits for the settings dialog rather than running at startup.
+   */
+  async function loadLatexInstalls() {
+    if (latexInstallsLoaded) return;
+    try {
+      latexInstalls = await ipc.getLatexInstalls();
+      latexInstallsLoaded = true;
+      for (const install of latexInstalls) {
+        const verified = await ipc.verifyLatexInstall(install.path);
+        latexInstallHealth = { ...latexInstallHealth, [install.path]: verified ? "live" : "off" };
+      }
+    } catch (error) {
+      failure = String(error);
+    }
+  }
+
+  /** Probe conventional install locations for a distribution to register. */
+  async function scanForLatexInstalls() {
+    latexInstallsBusy = true;
+    try {
+      const found = await ipc.scanLatexInstalls();
+      const known = new Set(latexInstalls.map((install) => install.path));
+      latexInstallCandidates = found.filter((install) => !known.has(install.path));
+      if (latexInstallCandidates.length === 0) showNotice(t("latex-install-scan-none"));
+    } catch (error) {
+      failure = String(error);
+    } finally {
+      latexInstallsBusy = false;
+    }
+  }
+
+  /** Register a LaTeX install, found by scanning or chosen by hand. */
+  async function registerLatexInstall(path: string) {
+    try {
+      const install = await ipc.addLatexInstall(path);
+      latexInstalls = [...latexInstalls.filter((existing) => existing.path !== path), install];
+      latexInstallCandidates = latexInstallCandidates.filter((c) => c.path !== path);
+      latexInstallHealth = { ...latexInstallHealth, [install.path]: "live" };
+    } catch (error) {
+      failure = String(error);
+    }
+  }
+
+  /** Browse for a directory to register manually. */
+  async function chooseLatexInstall() {
+    const picked = await open({ directory: true, multiple: false });
+    if (typeof picked !== "string") return;
+    await registerLatexInstall(picked);
+  }
+
+  /** Forget a registered install. Does not touch the distribution itself. */
+  async function removeLatexInstall(path: string) {
+    try {
+      await ipc.removeLatexInstall(path);
+      latexInstalls = latexInstalls.filter((install) => install.path !== path);
+      const { [path]: _removed, ...rest } = latexInstallHealth;
+      latexInstallHealth = rest;
+    } catch (error) {
+      failure = String(error);
     }
   }
 
@@ -3730,6 +3803,65 @@ ${entryText}`,
                   : undefined,
             },
             ...(project ? [] : [{ kind: "note" as const, labelKey: "settings-engine-no-project" }]),
+          ],
+        },
+        {
+          titleKey: "settings-group-latex-installs",
+          fields: [
+            ...latexInstalls.flatMap((install) => [
+              {
+                kind: "status" as const,
+                labelKey: "latex-install-path",
+                health: latexInstallHealth[install.path] ?? "unknown",
+                statusLabelKey:
+                  latexInstallHealth[install.path] === "live"
+                    ? "latex-install-status-verified"
+                    : latexInstallHealth[install.path] === "off"
+                      ? "latex-install-status-missing"
+                      : "latex-install-status-unverified",
+                noteText: `${install.path} — ${install.engines.join(", ")}`,
+              },
+              {
+                kind: "button" as const,
+                labelKey: "latex-install-remove",
+                actionKey: "latex-install-remove-action",
+                onclick: () => void removeLatexInstall(install.path),
+              },
+            ]),
+            ...(latexInstalls.length === 0
+              ? [{ kind: "note" as const, labelKey: "latex-install-none" }]
+              : []),
+            {
+              kind: "button" as const,
+              labelKey: "latex-install-scan",
+              helpKey: "latex-install-scan-help",
+              actionKey: latexInstallsBusy
+                ? "latex-install-scan-busy"
+                : "latex-install-scan-action",
+              onclick: () => void scanForLatexInstalls(),
+            },
+            ...latexInstallCandidates.flatMap((candidate) => [
+              {
+                kind: "note" as const,
+                labelKey: "latex-install-candidate",
+                text: `${candidate.path} — ${candidate.engines.join(", ")}`,
+              },
+              {
+                kind: "button" as const,
+                labelKey: "latex-install-candidate-add",
+                actionKey: "latex-install-add-action",
+                onclick: () => void registerLatexInstall(candidate.path),
+              },
+            ]),
+            {
+              kind: "path" as const,
+              labelKey: "latex-install-add-manual",
+              helpKey: "latex-install-add-help",
+              value: null,
+              emptyKey: "latex-install-add-manual-empty",
+              onchoose: () => void chooseLatexInstall(),
+              onclear: () => {},
+            },
           ],
         },
       ],

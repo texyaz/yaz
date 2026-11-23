@@ -75,6 +75,11 @@ jobs:
             triplet: arm64-windows-static-release
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The app embeds the core plugins from their own submodules
+          # (ADR-0021) — without this the build fails looking for a manifest
+          # that is never there.
+          submodules: recursive
 
       - uses: dtolnay/rust-toolchain@stable
         with:

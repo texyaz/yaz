@@ -15,6 +15,7 @@
 
 mod appearance;
 mod commands;
+mod latex_installs;
 mod mcp;
 mod mcp_commands;
 mod plugin_host;
@@ -96,6 +97,11 @@ fn main() {
             appearance::set_format_preferences,
             appearance::get_development_plugin,
             appearance::set_development_plugin,
+            latex_installs::get_latex_installs,
+            latex_installs::scan_latex_installs,
+            latex_installs::add_latex_install,
+            latex_installs::remove_latex_install,
+            latex_installs::verify_latex_install,
             mcp_commands::mcp_start,
             mcp_commands::mcp_stop,
             mcp_commands::mcp_status,

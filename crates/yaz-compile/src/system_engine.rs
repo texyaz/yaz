@@ -14,6 +14,7 @@
 use camino::Utf8PathBuf;
 use std::process::Command;
 use yaz_core::project::Project;
+use yaz_core::settings::LatexInstall;
 
 use crate::diagnostics::parse_log;
 use crate::engine::{CompileEngine, CompileOutput};
@@ -22,17 +23,69 @@ use crate::engine::{CompileEngine, CompileOutput};
 #[derive(Debug, Clone)]
 pub struct SystemEngine {
     /// The typesetter to run, e.g. `pdflatex`, `xelatex`, `lualatex`.
+    ///
+    /// A stable, bare name — this is what `id()` returns and what
+    /// `EngineChoice::System` persists, regardless of which install (or
+    /// `PATH`) actually provides the binary. See [`Self::binary`].
     pub engine: String,
     /// Where artefacts are written, relative to the project root.
     pub build_dir: Utf8PathBuf,
+    /// What is actually passed to [`Command::new`] to invoke the engine.
+    ///
+    /// Either the bare `engine` name (resolved against `PATH` the way a
+    /// shell would) or a full path into a registered [`LatexInstall`], when
+    /// one claims to provide it. Kept separate from `engine` so that which
+    /// install currently answers for an engine can change without touching
+    /// the stable id a project's `yaz.toml` persists.
+    binary: Utf8PathBuf,
+    /// What is passed to [`Command::new`] for `latexmk`, resolved the same
+    /// way as `binary` — from the same install when it provides one, else a
+    /// bare `PATH` lookup.
+    latexmk_binary: Utf8PathBuf,
 }
 
 impl SystemEngine {
-    /// A system engine driving the named typesetter.
+    /// A system engine driving the named typesetter, found on `PATH`.
     pub fn new(engine: impl Into<String>) -> Self {
+        let engine = engine.into();
+        let binary = Utf8PathBuf::from(&engine);
         Self {
-            engine: engine.into(),
+            engine,
             build_dir: Utf8PathBuf::from("build"),
+            binary,
+            latexmk_binary: Utf8PathBuf::from("latexmk"),
+        }
+    }
+
+    /// A system engine driving the named typesetter, preferring a registered
+    /// install that provides it over a bare `PATH` lookup.
+    ///
+    /// This is how a TeX distribution the user pointed yaz at — but which is
+    /// not on `PATH`, the common case on Windows — actually gets invoked: the
+    /// engine still reports itself by its stable bare name, but runs the
+    /// binary at the install's own path. `latexmk` is resolved from the same
+    /// install when it provides one, for the same reason.
+    pub fn resolve(engine: impl Into<String>, installs: &[LatexInstall]) -> Self {
+        let engine = engine.into();
+        let exe = std::env::consts::EXE_SUFFIX;
+        let own_install = installs
+            .iter()
+            .find(|install| install.engines.iter().any(|provided| provided == &engine));
+
+        let binary = own_install
+            .map(|install| install.path.join(format!("{engine}{exe}")))
+            .unwrap_or_else(|| Utf8PathBuf::from(&engine));
+
+        let latexmk_binary = own_install
+            .filter(|install| install.engines.iter().any(|provided| provided == "latexmk"))
+            .map(|install| install.path.join(format!("latexmk{exe}")))
+            .unwrap_or_else(|| Utf8PathBuf::from("latexmk"));
+
+        Self {
+            engine,
+            build_dir: Utf8PathBuf::from("build"),
+            binary,
+            latexmk_binary,
         }
     }
 
@@ -41,16 +94,19 @@ impl SystemEngine {
     /// Preference is XeTeX first because it handles Unicode and system fonts
     /// without ceremony, then LuaTeX, then pdfTeX. A project that needs a
     /// specific one says so in its settings and overrides this entirely.
-    pub fn detect_all() -> Vec<SystemEngine> {
+    ///
+    /// `installs` is checked ahead of a bare `PATH` lookup, so a distribution
+    /// registered in Settings but not on `PATH` is still found.
+    pub fn detect_all(installs: &[LatexInstall]) -> Vec<SystemEngine> {
         ["xelatex", "lualatex", "pdflatex"]
             .iter()
-            .filter(|name| binary_exists(name))
-            .map(|name| SystemEngine::new(*name))
+            .map(|name| SystemEngine::resolve(*name, installs))
+            .filter(|engine| engine.is_available())
             .collect()
     }
 
     fn use_latexmk(&self) -> bool {
-        binary_exists("latexmk")
+        binary_exists(self.latexmk_binary.as_str())
     }
 }
 
@@ -77,7 +133,7 @@ fn latexmk_flag(engine: &str) -> &'static str {
 /// like something crashing.
 ///
 /// A no-op everywhere else: only Windows has this behaviour.
-fn suppress_console(command: &mut Command) {
+pub(crate) fn suppress_console(command: &mut Command) {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -102,7 +158,7 @@ fn suppress_console(command: &mut Command) {
 /// The cache means a TeX distribution installed while yaz is running is not
 /// noticed until restart. That is the right trade: the alternative charges every
 /// user, on every launch, for a change that almost never happens.
-fn binary_exists(name: &str) -> bool {
+pub(crate) fn binary_exists(name: &str) -> bool {
     use std::collections::HashMap;
     use std::sync::{Mutex, OnceLock};
 
@@ -142,7 +198,7 @@ impl CompileEngine for SystemEngine {
     }
 
     fn is_available(&self) -> bool {
-        binary_exists(&self.engine)
+        binary_exists(self.binary.as_str())
     }
 
     fn compile(&self, project: &Project) -> yaz_core::Result<CompileOutput> {
@@ -153,7 +209,7 @@ impl CompileEngine for SystemEngine {
         })?;
 
         let mut command = if self.use_latexmk() {
-            let mut c = Command::new("latexmk");
+            let mut c = Command::new(&self.latexmk_binary);
             c.arg(latexmk_flag(&self.engine))
                 .arg("-interaction=nonstopmode")
                 .arg("-file-line-error")
@@ -161,7 +217,7 @@ impl CompileEngine for SystemEngine {
                 .arg(format!("-outdir={}", self.build_dir));
             c
         } else {
-            let mut c = Command::new(&self.engine);
+            let mut c = Command::new(&self.binary);
             c.arg("-interaction=nonstopmode")
                 .arg("-file-line-error")
                 .arg("-synctex=1")
@@ -202,5 +258,57 @@ impl CompileEngine for SystemEngine {
             synctex: synctex.exists().then_some(synctex),
             diagnostics,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolve_falls_back_to_a_bare_path_lookup_with_no_installs() {
+        let engine = SystemEngine::resolve("pdflatex", &[]);
+        assert_eq!(engine.engine, "pdflatex");
+        assert_eq!(engine.binary, Utf8PathBuf::from("pdflatex"));
+        assert_eq!(engine.latexmk_binary, Utf8PathBuf::from("latexmk"));
+    }
+
+    #[test]
+    fn resolve_prefers_a_registered_install_over_a_bare_path_lookup() {
+        let installs = [LatexInstall {
+            path: Utf8PathBuf::from("/opt/texlive/2024/bin/x86_64-linux"),
+            engines: vec!["pdflatex".to_owned(), "latexmk".to_owned()],
+            version: None,
+        }];
+        let engine = SystemEngine::resolve("pdflatex", &installs);
+        assert_eq!(
+            engine.binary,
+            Utf8PathBuf::from(format!(
+                "/opt/texlive/2024/bin/x86_64-linux/pdflatex{}",
+                std::env::consts::EXE_SUFFIX
+            ))
+        );
+        assert_eq!(
+            engine.latexmk_binary,
+            Utf8PathBuf::from(format!(
+                "/opt/texlive/2024/bin/x86_64-linux/latexmk{}",
+                std::env::consts::EXE_SUFFIX
+            ))
+        );
+
+        // An engine the install does not provide still falls back to `PATH`.
+        let other = SystemEngine::resolve("xelatex", &installs);
+        assert_eq!(other.binary, Utf8PathBuf::from("xelatex"));
+    }
+
+    #[test]
+    fn resolve_does_not_borrow_latexmk_from_an_install_that_lacks_it() {
+        let installs = [LatexInstall {
+            path: Utf8PathBuf::from("/opt/texlive/2024/bin/x86_64-linux"),
+            engines: vec!["pdflatex".to_owned()],
+            version: None,
+        }];
+        let engine = SystemEngine::resolve("pdflatex", &installs);
+        assert_eq!(engine.latexmk_binary, Utf8PathBuf::from("latexmk"));
     }
 }

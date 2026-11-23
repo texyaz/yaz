@@ -106,6 +106,10 @@ jobs:
             runner: windows-11-arm
     steps:
       - uses: actions/checkout@v7
+        with:
+          # yaz-app embeds the core plugins from their own submodules
+          # (ADR-0021) — without this, build.rs cannot find their manifests.
+          submodules: recursive
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -162,6 +166,11 @@ jobs:
     if: needs.detect.outputs.frontend == 'true'
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The frontend imports the core plugins by relative path for type
+          # checking (ADR-0021) — without this, svelte-check cannot resolve
+          # them and every plugin import fails.
+          submodules: recursive
       - uses: actions/setup-node@v7
         with:
           node-version: 22

@@ -1,0 +1,10 @@
+{
+  "id": "gruvbox",
+  "name": "Gruvbox",
+  "version": "1.0.0",
+  "minAppVersion": "0.3.0",
+  "author": "yaz contributors",
+  "description": "The warm, retro-groove palette by morhetz, with its official light and dark ladders.",
+  "modes": ["light", "dark"],
+  "tokensVersion": 2
+}

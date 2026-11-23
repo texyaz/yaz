@@ -17,7 +17,7 @@ fn fixture_root() -> Utf8PathBuf {
 
 #[test]
 fn compiles_the_minimal_fixture() {
-    let Some(engine) = SystemEngine::detect_all().into_iter().next() else {
+    let Some(engine) = SystemEngine::detect_all(&[]).into_iter().next() else {
         eprintln!("no system TeX distribution found; skipping");
         return;
     };

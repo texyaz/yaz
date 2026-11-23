@@ -1,0 +1,10 @@
+{
+  "id": "nord",
+  "name": "Nord",
+  "version": "1.0.0",
+  "minAppVersion": "0.3.0",
+  "author": "yaz contributors",
+  "description": "The arctic, north-bluish palette by Arctic Ice Studio and Sven Greb.",
+  "modes": ["light", "dark"],
+  "tokensVersion": 2
+}

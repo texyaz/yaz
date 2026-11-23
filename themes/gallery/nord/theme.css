@@ -1,0 +1,139 @@
+/*
+ * Nord — an installable yaz theme.
+ *
+ * The arctic, north-bluish colour palette by Arctic Ice Studio and Sven
+ * Greb <https://www.nordtheme.com>. Frost blues carry the accent and state
+ * colours in both modes; only the snow/polar-night ends of the palette swap.
+ *
+ * Not an official Nord variant for light mode — Nord ships dark only — so
+ * this pairs the same frost and aurora hues with the palette's own "Snow
+ * Storm" tones, darkened where a light background needs the contrast Nord's
+ * originals assume a dark one gives for free.
+ *
+ * Anything not set here keeps whatever themes/tokens.css says, so this file
+ * stays short and still inherits improvements to the defaults.
+ */
+
+/* ============================================================ Light ======= */
+
+[data-yaz-theme="nord"][data-yaz-mode="light"] {
+  /* ---- Surfaces ----------------------------------------------------------
+   * Snow Storm (nord6/nord5/nord4), the palette's own light end.
+   */
+  --yaz-bg-primary: #eceff4;
+  --yaz-bg-secondary: #e5e9f0;
+  --yaz-bg-tertiary: #d8dee9;
+  --yaz-bg-overlay: #eceff4;
+  --yaz-bg-hover: rgba(46, 52, 64, 0.06);
+  --yaz-bg-active: rgba(46, 52, 64, 0.1);
+  --yaz-bg-selection: rgba(94, 129, 172, 0.22);
+  --yaz-scrim: rgba(46, 52, 64, 0.4);
+
+  /* ---- Text ---------------------------------------------------------------
+   * Polar Night (nord0/nord1/nord3) on the light end, for contrast.
+   */
+  --yaz-text-primary: #2e3440;
+  --yaz-text-secondary: #3b4252;
+  --yaz-text-muted: #4c566a;
+  --yaz-text-on-accent: #eceff4;
+
+  /* ---- Accent and state ---------------------------------------------------
+   * nord10, darker than the signature nord8, because Frost's lightest blue
+   * does not clear AA on a Snow Storm background.
+   */
+  --yaz-accent: #5e81ac;
+  --yaz-accent-hover: #4c6f99;
+  --yaz-success: #71976a;
+  --yaz-warning: #ad8a2c;
+  --yaz-error: #bf616a;
+  --yaz-info: #5e81ac;
+
+  /* ---- Borders and separation ---------------------------------------------- */
+  --yaz-border: #d8dee9;
+  --yaz-border-strong: #c4cbda;
+  --yaz-focus-ring: var(--yaz-accent);
+
+  /* ---- Editor --------------------------------------------------------------- */
+  --yaz-editor-bg: var(--yaz-bg-primary);
+  --yaz-editor-text: var(--yaz-text-primary);
+  --yaz-editor-gutter-bg: var(--yaz-bg-secondary);
+  --yaz-editor-gutter-text: var(--yaz-text-muted);
+  --yaz-editor-cursor: var(--yaz-accent);
+  --yaz-editor-active-line: rgba(46, 52, 64, 0.045);
+
+  --yaz-syntax-command: #b48ead;
+  --yaz-syntax-environment: #5e81ac;
+  --yaz-syntax-math: #4d7d75;
+  --yaz-syntax-comment: #4c566a;
+  --yaz-syntax-string: #ad8a2c;
+  --yaz-syntax-reference: #5e81ac;
+  --yaz-syntax-error: var(--yaz-error);
+
+  /* ---- PDF viewer ------------------------------------------------------- */
+  --yaz-pdf-bg: #4c566a;
+  --yaz-pdf-page-shadow: rgba(46, 52, 64, 0.3);
+
+  --yaz-shadow-overlay: 0 8px 24px rgba(46, 52, 64, 0.18);
+}
+
+/* ============================================================= Dark ======= */
+
+[data-yaz-theme="nord"][data-yaz-mode="dark"] {
+  /* ---- Surfaces ----------------------------------------------------------
+   * Polar Night (nord0/nord1/nord2), Nord's own dark end.
+   */
+  --yaz-bg-primary: #2e3440;
+  --yaz-bg-secondary: #3b4252;
+  --yaz-bg-tertiary: #434c5e;
+  --yaz-bg-overlay: #3b4252;
+  --yaz-bg-hover: rgba(236, 239, 244, 0.05);
+  --yaz-bg-active: rgba(236, 239, 244, 0.09);
+  --yaz-bg-selection: rgba(136, 192, 208, 0.25);
+  --yaz-scrim: rgba(0, 0, 0, 0.55);
+
+  /* ---- Text ----------------------------------------------------------------
+   * Snow Storm (nord6/nord4/nord3), read against Polar Night.
+   */
+  --yaz-text-primary: #eceff4;
+  --yaz-text-secondary: #d8dee9;
+  --yaz-text-muted: #9aa5b1;
+  --yaz-text-on-accent: #2e3440;
+
+  /* ---- Accent and state -----------------------------------------------------
+   * Frost (nord7/nord8/nord14/nord13/nord11) and Aurora, the palette's
+   * signature.
+   */
+  --yaz-accent: #88c0d0;
+  --yaz-accent-hover: #8fbcbb;
+  --yaz-success: #a3be8c;
+  --yaz-warning: #ebcb8b;
+  --yaz-error: #bf616a;
+  --yaz-info: #81a1c1;
+
+  /* ---- Borders and separation ------------------------------------------- */
+  --yaz-border: #434c5e;
+  --yaz-border-strong: #4c566a;
+  --yaz-focus-ring: var(--yaz-accent);
+
+  /* ---- Editor ----------------------------------------------------------- */
+  --yaz-editor-bg: var(--yaz-bg-primary);
+  --yaz-editor-text: var(--yaz-text-primary);
+  --yaz-editor-gutter-bg: var(--yaz-bg-secondary);
+  --yaz-editor-gutter-text: var(--yaz-text-muted);
+  --yaz-editor-cursor: var(--yaz-accent);
+  --yaz-editor-active-line: rgba(236, 239, 244, 0.04);
+
+  --yaz-syntax-command: #b48ead;
+  --yaz-syntax-environment: #81a1c1;
+  --yaz-syntax-math: #8fbcbb;
+  --yaz-syntax-comment: #7b88a1;
+  --yaz-syntax-string: #ebcb8b;
+  --yaz-syntax-reference: #88c0d0;
+  --yaz-syntax-error: var(--yaz-error);
+
+  /* ---- PDF viewer ------------------------------------------------------- */
+  --yaz-pdf-bg: #242933;
+  --yaz-pdf-page-shadow: rgba(0, 0, 0, 0.55);
+
+  --yaz-shadow-overlay: 0 8px 24px rgba(0, 0, 0, 0.4);
+}

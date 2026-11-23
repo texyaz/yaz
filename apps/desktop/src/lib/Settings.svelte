@@ -12,6 +12,7 @@
 -->
 <script lang="ts">
   import { t } from "./i18n";
+  import type { Health } from "./StatusLight.svelte";
 
   /** A control in a section. */
   export type Field =
@@ -87,6 +88,17 @@
         kind: "panel";
         labelKey: string;
         render: (container: HTMLElement) => void;
+      }
+    | {
+        kind: "status";
+        labelKey: string;
+        helpKey?: string | undefined;
+        /** `live` pulses; see `StatusLight.svelte`, whose colours this reuses. */
+        health: Health;
+        /** Message key describing the current state, shown beside the dot. */
+        statusLabelKey: string;
+        /** Raw text, e.g. a path — not translated, like `note`'s `text`. */
+        noteText?: string | undefined;
       }
     | {
         kind: "note";
@@ -288,6 +300,22 @@
               {#each group.fields as field, index (index)}
                 {#if field.kind === "note"}
                   <p class="note">{field.text ?? t(field.labelKey)}</p>
+                {:else if field.kind === "status"}
+                  <div class="row">
+                    <span class="label">{t(field.labelKey)}</span>
+                    <div class="control">
+                      <div class="status">
+                        <span class="dot {field.health}" aria-hidden="true"></span>
+                        <span>{t(field.statusLabelKey)}</span>
+                      </div>
+                      {#if field.noteText}
+                        <p class="help">{field.noteText}</p>
+                      {/if}
+                      {#if field.helpKey}
+                        <p class="help">{t(field.helpKey)}</p>
+                      {/if}
+                    </div>
+                  </div>
                 {:else if field.kind === "panel"}
                   <!-- Mounted for as long as there is somewhere to mount into.
                        A plugin writing into a detached node for the rest of the
@@ -754,5 +782,53 @@
     margin: var(--yaz-space-1) 0 0;
     font-size: var(--yaz-font-size-sm);
     color: var(--yaz-warning);
+  }
+
+  /* Mirrors StatusLight.svelte's dot: only `live` pulses, so a glance tells a
+     currently-verified install apart from one that has not been checked. */
+  .status {
+    display: flex;
+    align-items: center;
+    gap: var(--yaz-space-2);
+    font-size: var(--yaz-font-size-sm);
+  }
+
+  .status .dot {
+    flex: none;
+    inline-size: 0.5rem;
+    block-size: 0.5rem;
+    border-radius: 50%;
+    background: var(--yaz-text-muted);
+  }
+
+  .status .dot.live {
+    background: var(--yaz-success);
+    animation: status-pulse 2s ease-in-out infinite;
+  }
+
+  .status .dot.degraded {
+    background: var(--yaz-warning);
+  }
+
+  .status .dot.off {
+    background: var(--yaz-error);
+  }
+
+  @keyframes status-pulse {
+    0%,
+    100% {
+      opacity: 1;
+      box-shadow: 0 0 0 0 var(--yaz-success);
+    }
+    50% {
+      opacity: 0.65;
+      box-shadow: 0 0 0 0.25rem transparent;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .status .dot.live {
+      animation: none;
+    }
   }
 </style>

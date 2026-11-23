@@ -1,0 +1,10 @@
+{
+  "id": "dracula",
+  "name": "Dracula",
+  "version": "1.0.0",
+  "minAppVersion": "0.3.0",
+  "author": "yaz contributors",
+  "description": "The dark, purple-grounded palette behind Dracula, with a paired light mode.",
+  "modes": ["light", "dark"],
+  "tokensVersion": 2
+}

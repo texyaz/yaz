@@ -58,6 +58,29 @@ engine-language-typst = Typst
 engine-system-not-installed = Not installed on this computer.
 engine-unavailable-suffix = unavailable
 
+## LaTeX installs
+
+settings-group-latex-installs = Installations
+latex-install-path = Install
+latex-install-none = No installs added yet.
+latex-install-remove = Remove
+latex-install-remove-action = Remove
+latex-install-scan = Scan for installs
+latex-install-scan-help = Looks in the places a TeX Live or MiKTeX install normally puts itself.
+latex-install-scan-action = Scan
+latex-install-scan-busy = Scanning…
+latex-install-scan-none = No new installs found.
+latex-install-candidate = Found
+latex-install-candidate-add = Add
+latex-install-add-action = Add
+latex-install-add-manual = Add install manually
+latex-install-add-manual-empty = No folder chosen
+latex-install-add-help = Point yaz at the folder containing pdflatex, xelatex, lualatex or latexmk.
+latex-install-not-found = No LaTeX engine was found in this folder.
+latex-install-status-verified = Verified just now
+latex-install-status-unverified = Not verified this session
+latex-install-status-missing = No longer found at this path
+
 ## Zotero — keys come from yaz-zotero::ActiveSource::status_key()
 
 zotero-source-better-bibtex = Zotero: connected via Better BibTeX
