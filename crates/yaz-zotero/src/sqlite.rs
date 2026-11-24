@@ -27,6 +27,7 @@ use rusqlite::{Connection, OpenFlags};
 
 use crate::error::{Error, Result};
 use crate::model::{Annotation, AnnotationKind, Item};
+use crate::reveal::{AnnotationLocation, LibraryRef, Location};
 
 /// The `userdata` schema versions this module has been checked against.
 ///
@@ -225,6 +226,137 @@ impl SqliteSource {
         id.map(|id| self.hydrate(id)).transpose()
     }
 
+    /// Every item whose native `citationKey` field is `citation_key`, personal
+    /// library first.
+    ///
+    /// More than one is possible and not an error: the same work is often in
+    /// the personal library *and* a group, with the same key. The personal copy
+    /// comes first because that is the one the writer curates. Feeds are left
+    /// out — an item in an RSS feed is not something anybody cited.
+    ///
+    /// A library from before Zotero had the field simply finds nothing, which
+    /// is the truth: it holds no citation keys to match.
+    pub fn locate_citation_key(&self, citation_key: &str) -> Result<Vec<Location>> {
+        let mut statement = self
+            .connection
+            .prepare(
+                "SELECT i.key, l.type, g.groupID
+                 FROM items i
+                 JOIN itemData d ON d.itemID = i.itemID
+                 JOIN fields f ON f.fieldID = d.fieldID AND f.fieldName = 'citationKey'
+                 JOIN itemDataValues v ON v.valueID = d.valueID
+                 JOIN libraries l ON l.libraryID = i.libraryID
+                 LEFT JOIN groups g ON g.libraryID = i.libraryID
+                 WHERE v.value = ?1
+                   AND l.type IN ('user', 'group')
+                   AND i.itemID NOT IN (SELECT itemID FROM deletedItems)
+                 ORDER BY l.type = 'user' DESC, i.libraryID",
+            )
+            .map_err(database)?;
+        let rows = statement
+            .query_map([citation_key], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<i64>>(2)?,
+                ))
+            })
+            .map_err(database)?
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(database)?;
+        Ok(rows
+            .into_iter()
+            .filter_map(|(item_key, kind, group)| {
+                let library = match (kind.as_str(), group) {
+                    ("user", _) => LibraryRef::User,
+                    // A group library without its `groups` row cannot be linked
+                    // to; leaving it out beats a link to the wrong library.
+                    (_, Some(group)) => LibraryRef::Group(group),
+                    _ => return None,
+                };
+                Some(Location { item_key, library })
+            })
+            .collect())
+    }
+
+    /// Where the annotation with this key is: its PDF, page and library.
+    ///
+    /// Usually one row. More than one only if the same eight characters name
+    /// annotations in several libraries; the personal library comes first, as
+    /// for [`Self::locate_citation_key`].
+    pub fn locate_annotation(&self, annotation_key: &str) -> Result<Vec<AnnotationLocation>> {
+        let mut statement = self
+            .connection
+            .prepare(
+                "SELECT an.key, att.key, a.position, l.type, g.groupID, a.text, a.comment, a.color,
+                        (SELECT v.value FROM itemData d
+                         JOIN fields f ON f.fieldID = d.fieldID AND f.fieldName = 'citationKey'
+                         JOIN itemDataValues v ON v.valueID = d.valueID
+                         WHERE d.itemID = ia.parentItemID)
+                 FROM items an
+                 JOIN itemAnnotations a ON a.itemID = an.itemID
+                 JOIN items att ON att.itemID = a.parentItemID
+                 LEFT JOIN itemAttachments ia ON ia.itemID = att.itemID
+                 JOIN libraries l ON l.libraryID = an.libraryID
+                 LEFT JOIN groups g ON g.libraryID = an.libraryID
+                 WHERE an.key = ?1
+                   AND l.type IN ('user', 'group')
+                   AND an.itemID NOT IN (SELECT itemID FROM deletedItems)
+                   AND att.itemID NOT IN (SELECT itemID FROM deletedItems)
+                 ORDER BY l.type = 'user' DESC, an.libraryID",
+            )
+            .map_err(database)?;
+        let rows = statement
+            .query_map([annotation_key], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, Option<i64>>(4)?,
+                    row.get::<_, Option<String>>(8)?,
+                    (
+                        row.get::<_, Option<String>>(5)?,
+                        row.get::<_, Option<String>>(6)?,
+                        row.get::<_, Option<String>>(7)?,
+                    ),
+                ))
+            })
+            .map_err(database)?
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(database)?;
+        Ok(rows
+            .into_iter()
+            .filter_map(
+                |(
+                    annotation_key,
+                    attachment_key,
+                    position,
+                    kind,
+                    group,
+                    citation_key,
+                    (text, comment, color),
+                )| {
+                    let library = match (kind.as_str(), group) {
+                        ("user", _) => LibraryRef::User,
+                        (_, Some(group)) => LibraryRef::Group(group),
+                        _ => return None,
+                    };
+                    Some(AnnotationLocation {
+                        annotation_key,
+                        attachment_key,
+                        page: page_of(&position),
+                        library,
+                        citation_key,
+                        text,
+                        comment,
+                        color,
+                    })
+                },
+            )
+            .collect())
+    }
+
     fn candidate_ids(&self, pattern: &str, limit: usize) -> Result<Vec<i64>> {
         let mut statement = self
             .connection
@@ -324,7 +456,9 @@ impl SqliteSource {
 
         Ok(Item {
             key,
-            citation_key: None,
+            // Zotero 7's own field, which Better BibTeX also writes. Absent on
+            // older libraries, where the key is still ours to make up.
+            citation_key: field("citationKey")?,
             item_type,
             title: field("title")?.unwrap_or_default(),
             creators: creators.into_iter().flatten().collect(),
@@ -535,6 +669,15 @@ fn escape_like(query: &str) -> String {
         .replace('\\', "\\\\")
         .replace('%', "\\%")
         .replace('_', "\\_")
+}
+
+/// The one-based page from an annotation's `position`, which Zotero stores as
+/// JSON with a zero-based `pageIndex` for PDFs and something else for EPUBs
+/// and snapshots.
+fn page_of(position: &str) -> Option<u32> {
+    let value: serde_json::Value = serde_json::from_str(position).ok()?;
+    let index = value.get("pageIndex")?.as_u64()?;
+    u32::try_from(index).ok()?.checked_add(1)
 }
 
 #[cfg(test)]

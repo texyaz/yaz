@@ -63,6 +63,14 @@ pub enum Error {
         detail: String,
     },
 
+    /// Zotero could not be shown an item, because the system has nothing that
+    /// opens `zotero://` links or starting it failed.
+    #[error("could not open Zotero: {detail}")]
+    CannotOpen {
+        /// What was tried.
+        detail: String,
+    },
+
     /// A live source answered, but not in a shape this build understands.
     #[error("unexpected response from {source_name}")]
     UnexpectedResponse {
@@ -110,6 +118,7 @@ impl Error {
             Error::UnsupportedJournalMode { .. } => "zotero-error-unsupported-journal",
             Error::NotRunning => "zotero-error-not-running",
             Error::CannotLaunch { .. } => "zotero-error-cannot-launch",
+            Error::CannotOpen { .. } => "zotero-error-cannot-open",
             Error::UnexpectedResponse { .. } => "zotero-error-unexpected-response",
             Error::Http { .. } => "zotero-error-http",
             Error::Database { .. } => "zotero-error-database",

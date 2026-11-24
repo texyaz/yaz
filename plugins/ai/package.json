@@ -1,0 +1,19 @@
+{
+  "name": "yaz-ai",
+  "version": "0.1.0",
+  "description": "Write with an AI as a white box: every AI sentence tied to its evidence, proofed by you.",
+  "license": "MIT",
+  "type": "module",
+  "main": "src/main.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/texyaz/yaz-ai.git"
+  },
+  "scripts": {
+    "check": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@yaz/api": "^0.3.0",
+    "typescript": "^6.0.0"
+  }
+}

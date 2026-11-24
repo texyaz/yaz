@@ -12,6 +12,18 @@
   box-sizing: border-box;
 }
 
+/* Tell the engine which mode the theme is in, so the controls it draws itself
+   follow it. WebKitGTK (Linux) paints a <select> with its own light widget
+   whatever its CSS background says, so without this every dropdown is a white
+   box with near-invisible text in a dark theme. Not a colour, so not a token. */
+:root[data-yaz-mode="dark"] {
+  color-scheme: dark;
+}
+
+:root[data-yaz-mode="light"] {
+  color-scheme: light;
+}
+
 html,
 body {
   margin: 0;

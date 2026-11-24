@@ -206,6 +206,37 @@ impl VersionControl for Git {
         Ok(self.history(root, 1)?.into_iter().next())
     }
 
+    fn commit_files(
+        &self,
+        root: &Utf8Path,
+        message: &str,
+        paths: &[&Utf8Path],
+    ) -> Result<Option<Commit>> {
+        if !root.join(".git").as_std_path().exists() {
+            return Err(Error::NotInitialised);
+        }
+        if paths.is_empty() {
+            return Ok(None);
+        }
+        let mut add = vec!["add", "--"];
+        add.extend(paths.iter().map(|path| path.as_str()));
+        run(root, &add)?;
+
+        let mut staged = vec!["diff", "--cached", "--name-only", "--"];
+        staged.extend(paths.iter().map(|path| path.as_str()));
+        if run(root, &staged)?.trim().is_empty() {
+            return Ok(None);
+        }
+
+        // A pathspec on `commit` means `--only`: these files, whatever else
+        // happens to be staged. Hooks run as for any commit — the paper's
+        // `commit-msg` hook is one of the white-box guarantees (ADR-0030).
+        let mut commit = vec!["commit", "--message", message, "--"];
+        commit.extend(paths.iter().map(|path| path.as_str()));
+        run(root, &commit)?;
+        Ok(self.history(root, 1)?.into_iter().next())
+    }
+
     fn history(&self, root: &Utf8Path, limit: usize) -> Result<Vec<Commit>> {
         if !root.join(".git").as_std_path().exists() {
             return Err(Error::NotInitialised);

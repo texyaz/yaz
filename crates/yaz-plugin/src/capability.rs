@@ -90,6 +90,15 @@ pub enum Capability {
     /// declared, and cannot ask to read it back
     /// ([ADR-0026](https://github.com/texyaz/yaz/blob/main/docs/adr/0026-task-providers-and-credentials.md)).
     Credential,
+
+    /// Record a version of named files in the project's own version control.
+    ///
+    /// Only the files it names, only inside the open project, and only into a
+    /// repository the project already has: it cannot create one, rewrite
+    /// history or push. A version is a fact other people may later read, so
+    /// recording one in the author's name is something the author should be
+    /// told about before installing (ADR-0032).
+    Vcs,
 }
 
 impl Capability {
@@ -108,6 +117,7 @@ impl Capability {
             Capability::Notifications => "notifications",
             Capability::ShellOpen => "shell:open",
             Capability::Credential => "credential",
+            Capability::Vcs => "vcs",
         }
     }
 
@@ -160,6 +170,7 @@ impl Capability {
             Capability::Notifications,
             Capability::ShellOpen,
             Capability::Credential,
+            Capability::Vcs,
         ];
         // Not reached; it exists so that a new variant fails to compile here.
         if false {
@@ -175,7 +186,8 @@ impl Capability {
                 | Capability::Clipboard
                 | Capability::Notifications
                 | Capability::ShellOpen
-                | Capability::Credential => {}
+                | Capability::Credential
+                | Capability::Vcs => {}
             }
         }
         all

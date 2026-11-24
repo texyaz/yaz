@@ -1,0 +1,47 @@
+{
+  "id": "com.yaz.ai",
+  "name": "AI writing",
+  "version": "0.1.0",
+  "minAppVersion": "0.3.0",
+  "author": "yaz",
+  "description": "Write with an AI as a white box: every AI sentence tied to the highlight it rests on, and proofed by you.",
+  "icon": "✎",
+  "repository": "https://github.com/texyaz/yaz-ai",
+  "capabilities": [
+    {
+      "kind": "zotero"
+    },
+    {
+      "kind": "fs-project"
+    },
+    {
+      "kind": "vcs"
+    }
+  ],
+  "provides": {
+    "tools": [
+      {
+        "name": "insert_ai_text",
+        "descriptionKey": "ai-tool-insert-ai-text",
+        "writes": true
+      },
+      {
+        "name": "list_ai_marks",
+        "descriptionKey": "ai-tool-list-ai-marks"
+      },
+      {
+        "name": "writing_style",
+        "descriptionKey": "ai-tool-writing-style"
+      },
+      {
+        "name": "propose_style_guide",
+        "descriptionKey": "ai-tool-propose-style-guide"
+      }
+    ]
+  },
+  "updates": {
+    "source": "github",
+    "repository": "texyaz/yaz-ai",
+    "channel": "release"
+  }
+}

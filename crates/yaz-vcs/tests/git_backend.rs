@@ -252,3 +252,40 @@ fn restoring_does_not_rewrite_line_endings() {
         "the restored file differs from what was recorded"
     );
 }
+
+#[test]
+fn a_files_only_version_leaves_other_changes_alone() {
+    let (_guard, root, backend) = project_or_skip!();
+    backend.initialise(&root).unwrap();
+    backend.commit(&root, "Start").unwrap();
+
+    std::fs::write(root.join("main.tex").as_std_path(), "\\proofed[K]{A.}\n").unwrap();
+    std::fs::write(root.join("notes.txt").as_std_path(), "unrelated work\n").unwrap();
+
+    let commit = backend
+        .commit_files(
+            &root,
+            "Proofed one sentence",
+            &[camino::Utf8Path::new("main.tex")],
+        )
+        .unwrap()
+        .expect("main.tex changed, so a version is recorded");
+    assert_eq!(commit.summary, "Proofed one sentence");
+
+    // The unrelated file is still waiting, untouched and unrecorded.
+    let left: Vec<String> = backend
+        .changes(&root)
+        .unwrap()
+        .into_iter()
+        .map(|change| change.path)
+        .collect();
+    assert_eq!(left, vec!["notes.txt".to_owned()]);
+
+    // And recording the same file again with no edit records nothing.
+    assert!(
+        backend
+            .commit_files(&root, "Again", &[camino::Utf8Path::new("main.tex")])
+            .unwrap()
+            .is_none()
+    );
+}

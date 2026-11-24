@@ -39,6 +39,7 @@ pub mod launch;
 pub mod library;
 pub mod local_api;
 pub mod model;
+pub mod reveal;
 pub mod sqlite;
 
 pub use error::{Error, Result};

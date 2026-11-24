@@ -696,3 +696,113 @@ async fn a_running_zotero_does_not_take_over_the_query_path() {
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].key, "ITEMAAAA");
 }
+
+/// Citation keys live in Zotero's native `citationKey` field, and an item key
+/// is only unique within its library — so the fixture gains libraries, a group,
+/// and the same work in both.
+#[test]
+fn a_citation_key_is_located_in_its_library_personal_first() {
+    use yaz_zotero::reveal::{LibraryRef, Location};
+
+    let dir = tempfile::tempdir().unwrap();
+    let db = Utf8PathBuf::from_path_buf(dir.path().join("zotero.sqlite")).unwrap();
+    build_fixture(&db, 125);
+    {
+        let c = Connection::open(db.as_std_path()).unwrap();
+        c.execute_batch(
+            "
+            ALTER TABLE items ADD COLUMN libraryID INT NOT NULL DEFAULT 1;
+            CREATE TABLE libraries (libraryID INTEGER PRIMARY KEY, type TEXT NOT NULL);
+            CREATE TABLE groups (groupID INTEGER PRIMARY KEY, libraryID INT NOT NULL UNIQUE, name TEXT);
+            INSERT INTO libraries VALUES (1,'user'),(2,'group'),(3,'feed');
+            INSERT INTO groups VALUES (98765, 2, 'Lab');
+            INSERT INTO fields VALUES (9,'citationKey');
+            INSERT INTO itemDataValues VALUES (900,'hagedorn2024semantic'),(901,'trashed2020'),(902,'fromafeed');
+
+            -- The fixture's item, keyed in the personal library.
+            INSERT INTO itemData VALUES (10,9,900);
+            -- The same work again in the group, listed first in rowid order.
+            INSERT INTO items VALUES (5, 1, 'GROUPAAA', '2024-01-01 00:00:00', 2);
+            INSERT INTO itemData VALUES (5,9,900);
+            -- A trashed item and a feed item, which must never be offered.
+            INSERT INTO items VALUES (40, 1, 'TRASHAAA', '2024-01-01 00:00:00', 1);
+            INSERT INTO itemData VALUES (40,9,901);
+            INSERT INTO deletedItems VALUES (40, '2024-02-01 00:00:00');
+            INSERT INTO items VALUES (41, 1, 'FEEDAAAA', '2024-01-01 00:00:00', 3);
+            INSERT INTO itemData VALUES (41,9,902);
+            ",
+        )
+        .unwrap();
+    }
+    let source = SqliteSource::open(&db, &scratch_in(&dir)).unwrap();
+
+    assert_eq!(
+        source.locate_citation_key("hagedorn2024semantic").unwrap(),
+        vec![
+            Location {
+                item_key: "ITEMAAAA".into(),
+                library: LibraryRef::User
+            },
+            Location {
+                item_key: "GROUPAAA".into(),
+                library: LibraryRef::Group(98765)
+            },
+        ]
+    );
+    assert!(
+        source
+            .locate_citation_key("trashed2020")
+            .unwrap()
+            .is_empty()
+    );
+    assert!(source.locate_citation_key("fromafeed").unwrap().is_empty());
+    assert!(source.locate_citation_key("nosuchkey").unwrap().is_empty());
+}
+
+#[test]
+fn an_annotation_is_located_on_its_pdf_and_page() {
+    use yaz_zotero::reveal::{AnnotationLocation, LibraryRef};
+
+    let dir = tempfile::tempdir().unwrap();
+    let db = Utf8PathBuf::from_path_buf(dir.path().join("zotero.sqlite")).unwrap();
+    build_fixture(&db, 125);
+    {
+        let c = Connection::open(db.as_std_path()).unwrap();
+        c.execute_batch(
+            r#"
+            ALTER TABLE items ADD COLUMN libraryID INT NOT NULL DEFAULT 1;
+            CREATE TABLE libraries (libraryID INTEGER PRIMARY KEY, type TEXT NOT NULL);
+            CREATE TABLE groups (groupID INTEGER PRIMARY KEY, libraryID INT NOT NULL UNIQUE, name TEXT);
+            INSERT INTO libraries VALUES (1,'user');
+            INSERT INTO fields VALUES (9,'citationKey');
+            INSERT INTO itemDataValues VALUES (900,'hagedorn2024semantic');
+            INSERT INTO itemData VALUES (10,9,900);
+            -- Zotero stores a zero-based pageIndex; links are one-based.
+            UPDATE itemAnnotations SET position = '{"pageIndex":20,"rects":[[1,2,3,4]]}' WHERE itemID = 30;
+            INSERT INTO deletedItems VALUES (32, '2024-02-01 00:00:00');
+            "#,
+        )
+        .unwrap();
+    }
+    let source = SqliteSource::open(&db, &scratch_in(&dir)).unwrap();
+
+    assert_eq!(
+        source.locate_annotation("ANNOAAAA").unwrap(),
+        vec![AnnotationLocation {
+            annotation_key: "ANNOAAAA".into(),
+            attachment_key: "ATTACHAA".into(),
+            page: Some(21),
+            library: LibraryRef::User,
+            citation_key: Some("hagedorn2024semantic".into()),
+            text: Some("information containers must be validated".into()),
+            comment: Some("key claim".into()),
+            color: Some("#ffd400".into()),
+        }]
+    );
+    // No pageIndex (EPUB, snapshot): still located, opened without a page.
+    assert_eq!(source.locate_annotation("ANNOBBBB").unwrap()[0].page, None);
+    // Trashed, an item rather than an annotation, or unknown: not found.
+    assert!(source.locate_annotation("ANNOCCCC").unwrap().is_empty());
+    assert!(source.locate_annotation("ITEMAAAA").unwrap().is_empty());
+    assert!(source.locate_annotation("NOSUCHKY").unwrap().is_empty());
+}

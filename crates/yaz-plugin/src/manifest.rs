@@ -92,6 +92,14 @@ pub struct ToolDeclaration {
     pub name: String,
     /// Message key for what the tool does, shown to a person and to an agent.
     pub description_key: String,
+    /// Whether the tool changes the document.
+    ///
+    /// A writing tool is refused until the user allows an agent to write
+    /// (ADR-0031), and the refusal happens in the Rust process, which reads
+    /// this flag from the manifest rather than from anything the plugin says
+    /// at runtime.
+    #[serde(default)]
+    pub writes: bool,
 }
 
 impl Provides {
@@ -103,6 +111,13 @@ impl Provides {
     /// and then actively misleads, because people trust it.
     pub fn declares_tool(&self, name: &str) -> bool {
         self.tools.iter().any(|tool| tool.name == name)
+    }
+
+    /// Whether the declared tool by this name changes the document.
+    pub fn tool_writes(&self, name: &str) -> bool {
+        self.tools
+            .iter()
+            .any(|tool| tool.name == name && tool.writes)
     }
 }
 
@@ -327,6 +342,7 @@ mod tests {
             tools: vec![ToolDeclaration {
                 name: "search-library".to_owned(),
                 description_key: "zotero-tool-search".to_owned(),
+                writes: false,
             }],
         };
         assert!(provides.declares_tool("search-library"));
@@ -341,9 +357,24 @@ mod tests {
             tools: vec![ToolDeclaration {
                 name: "search-library".to_owned(),
                 description_key: "zotero-tool-search".to_owned(),
+                writes: false,
             }],
         };
         assert!(!provides.declares_tool("delete-everything"));
+    }
+
+    #[test]
+    fn a_tool_writes_only_when_its_declaration_says_so() {
+        let provides: Provides = serde_json::from_value(serde_json::json!({
+            "tools": [
+                { "name": "search", "descriptionKey": "k" },
+                { "name": "insert", "descriptionKey": "k", "writes": true }
+            ]
+        }))
+        .unwrap();
+        assert!(!provides.tool_writes("search"));
+        assert!(provides.tool_writes("insert"));
+        assert!(!provides.tool_writes("undeclared"));
     }
 
     #[test]

@@ -181,6 +181,21 @@ export abstract class Plugin {
     throw new Error("not implemented");
   }
 
+  /**
+   * Offer something to do with a cited work, from its right-click menu in the
+   * Citations tab.
+   *
+   * The tab is yaz's, because a `.bib` is a `.bib` whoever filled it; what a
+   * reference manager can do with one of its works — show it in the manager —
+   * is the manager's plugin's to offer. The action receives the citation key
+   * and nothing else.
+   *
+   * \since 0.4.0
+   */
+  registerCitationAction(_action: CitationAction): void {
+    throw new Error("not implemented");
+  }
+
   /** Read this plugin's persisted settings. */
   loadData<T>(): Promise<T | null> {
     throw new Error("not implemented");
@@ -226,6 +241,83 @@ export interface App {
   readonly zotero: ZoteroApi;
   /** Obsidian vault access. Requires the `obsidian` capability. */
   readonly obsidian: ObsidianApi;
+  /**
+   * What this plugin remembers across projects, as a journal it appends to.
+   *
+   * @since 0.4.0
+   */
+  readonly journal: JournalApi;
+  /**
+   * Recording versions in the project's version control. Requires the `vcs`
+   * capability.
+   *
+   * @since 0.4.0
+   */
+  readonly vcs: VcsApi;
+}
+
+/**
+ * Something to do with a cited work, offered on its right-click menu in the
+ * Citations tab.
+ *
+ * @since 0.4.0
+ */
+export interface CitationAction {
+  /** Unique within the plugin. */
+  id: string;
+  /** Message key for the menu entry. */
+  labelKey: string;
+  /**
+   * Whether it can be done right now — "Show in Zotero" while Zotero is not
+   * reachable cannot. Shown greyed out when not, rather than missing, so the
+   * entry is still discoverable. Asked when the menu opens.
+   */
+  isAvailable?(citationKey: string): boolean | Promise<boolean>;
+  run(citationKey: string): void | Promise<void>;
+}
+
+/**
+ * A journal a plugin appends to and reads back.
+ *
+ * Kept with the user's configuration, not with any project, so what it
+ * remembers carries from one paper to the next — and stays on this machine:
+ * it is never committed and never synced by yaz. Namespaced by plugin, like
+ * settings. Each entry is one JSON value of at most 64 KiB.
+ *
+ * @since 0.4.0
+ */
+export interface JournalApi {
+  /** Add an entry at the end. */
+  append(entry: Record<string, unknown>): Promise<void>;
+  /** The last `limit` entries (default 200, at most 2000), oldest first. */
+  read<T = Record<string, unknown>>(limit?: number): Promise<T[]>;
+}
+
+/**
+ * Recording versions in the project's own version control.
+ *
+ * Only files inside the open project, only into a repository the project
+ * already has (creating one is the author's decision), and only the files
+ * named — other work in progress stays out. Commits are made in the user's
+ * name and run the repository's hooks. Requires the `vcs` capability.
+ *
+ * @since 0.4.0
+ */
+export interface VcsApi {
+  /**
+   * Save the open document, then record a version of the files it is made
+   * of. Resolves to `null` when nothing in them changed.
+   */
+  commitDocument(message: string): Promise<VcsCommit | null>;
+  /** Record a version of these project-relative files. */
+  commit(message: string, paths: string[]): Promise<VcsCommit | null>;
+}
+
+/** A recorded version. @since 0.4.0 */
+export interface VcsCommit {
+  id: string;
+  shortId: string;
+  summary: string;
 }
 
 /**
@@ -947,6 +1039,69 @@ export interface ZoteroApi {
    * @since 0.3.0
    */
   launch(): Promise<void>;
+
+  /**
+   * Select the item behind a citation key in Zotero.
+   *
+   * Takes the key as it appears in `\cite{…}`. The item is found by Zotero's
+   * own `citationKey` field, so this answers for every library — personal and
+   * group — and prefers the personal copy when a work is in both.
+   *
+   * Takes no URL. Which link is opened is decided in the Rust process from the
+   * library itself, so a plugin can make this show Zotero and nothing else
+   * ({@link https://generalpawz.github.io/yaz/adr/0006-plugin-runtime-and-capabilities | ADR-0006}).
+   *
+   * Resolves `false` when no item carries the key, which is a normal answer: a
+   * reference typed by hand into the `.bib` is not in the library.
+   *
+   * @since 0.4.0
+   */
+  reveal(citationKey: string): Promise<boolean>;
+
+  /**
+   * Open Zotero's PDF reader at the highlight behind a sentence.
+   *
+   * Takes the annotation keys of a `\ai[KEY]{…}` or `\proofed[KEY]{…}`
+   * marker (ADR-0030). With several keys, `citationKey` picks the highlight
+   * in that source; otherwise the first key that resolves is opened. Like
+   * {@link ZoteroApi.reveal}, it takes no URL: the link is built in the Rust
+   * process from the library itself.
+   *
+   * Resolves `false` when none of the keys is an annotation in the library —
+   * for example because the copy has not been refreshed since it was made.
+   *
+   * @since 0.4.0
+   */
+  revealAnnotation(
+    annotationKeys: string[],
+    citationKey?: string | null,
+  ): Promise<boolean>;
+
+  /**
+   * One highlight by its annotation key — where it is and what it says — or
+   * `null` when the library has no such annotation. Opens nothing.
+   *
+   * @since 0.4.0
+   */
+  highlight(annotationKey: string): Promise<ZoteroHighlight | null>;
+}
+
+/** A highlight looked up by its annotation key. \since 0.4.0 */
+export interface ZoteroHighlight {
+  /** The annotation key, as written in `\ai[KEY]{…}`. */
+  key: string;
+  /** The PDF it is drawn on. */
+  attachmentKey: string;
+  /** One-based page, when it has one. */
+  page: number | null;
+  /** Citation key of the source, when Zotero has one. */
+  citationKey: string | null;
+  /** The highlighted passage. */
+  text: string | null;
+  /** The comment on it — for an AI highlight, why it backs the sentence. */
+  comment: string | null;
+  /** Its colour, e.g. `#a28ae5` for AI highlights. */
+  color: string | null;
 }
 
 /**

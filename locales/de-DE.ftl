@@ -17,6 +17,9 @@ app-tagline = Aus Ideen und Quellen werden Aufsätze.
 
 error-fs-not-found = { $path } wurde nicht gefunden.
 error-mcp-listen = Der Agenten-Server konnte nicht starten: { $detail }
+error-mcp-no-project = Erst ein Paper öffnen, damit die KI weiß, an welchem sie arbeitet.
+error-mcp-not-running = Die KI-Verbindung läuft nicht.
+error-mcp-client-config = Die Verbindungsdatei für die KI konnte nicht geschrieben werden: { $detail }
 error-plugin-manifest = In diesem Ordner liegt eine manifest.json, die nicht als Plugin gelesen werden konnte.
 error-plugin-repository = Dieses Plugin nennt ein Repository, mit dem yaz nichts anfangen kann: { $detail }
 error-plugin-update-check = Das Repository des Plugins war nicht erreichbar: { $detail }
@@ -102,6 +105,7 @@ capability-clipboard-description = Die Zwischenablage lesen und ändern.
 capability-notifications-description = Systembenachrichtigungen anzeigen.
 capability-shell-open-description = Links und Dateien mit Ihren anderen Anwendungen öffnen.
 capability-credential-description = Eine Anmeldung für diesen Dienst im Schlüsselbund des Systems ablegen.
+capability-vcs-description = Versionen der genannten Dateien in der Versionsverwaltung des Projekts speichern, in deinem Namen.
 
 ## Plugin-Verwaltung
 
@@ -166,6 +170,11 @@ zotero-command-cite = Aus Zotero zitieren
 zotero-command-cite-description = Ihre Zotero-Bibliothek durchsuchen und eine Zitation einfügen.
 zotero-command-quote = Markierte Stelle zitieren
 zotero-command-quote-description = Eine in Zotero markierte Stelle samt Zitation einfügen.
+zotero-citation-show = In Zotero zeigen
+zotero-command-reveal = Quelle in Zotero zeigen
+zotero-command-reveal-description = Die Quelle der Zitation unter dem Cursor in Zotero auswählen, oder das PDF an der Markierung öffnen, wenn der Satz mit \ai[…] oder \proofed[…] markiert ist.
+zotero-command-reveal-highlight = Markierung in Zotero zeigen
+zotero-command-reveal-highlight-description = Das PDF in Zotero an der Markierung öffnen, auf der der Satz unter dem Cursor beruht – für Sätze mit \ai[…] oder \proofed[…].
 zotero-command-reconnect = Erneut mit Zotero verbinden
 zotero-command-reconnect-description = Erneut nach einem laufenden Zotero suchen und sonst auf die Bibliothek auf der Festplatte zurückfallen.
 
@@ -186,6 +195,14 @@ zotero-notice-unavailable = Unter { $detail } wurde keine Zotero-Bibliothek gefu
 zotero-notice-no-annotations = In dieser Quelle haben Sie nichts markiert.
 zotero-notice-no-quotable-annotations = Diese Quelle enthält Markierungen, aber keine davon ist zitierbarer Text.
 zotero-notice-generated-key = { $key } eingefügt. Dieser Schlüssel stammt von yaz und kann von dem Ihrer Mitautorinnen und Mitautoren abweichen.
+zotero-notice-no-citation-here = Setze den Cursor auf eine Zitation, um sie in Zotero zu zeigen.
+zotero-notice-citation-not-in-library = Kein Eintrag in deiner Zotero-Bibliothek hat den Zitierschlüssel { $key }.
+zotero-notice-highlight-not-in-library = Die Markierung { $key } ist (noch) nicht in deiner Zotero-Bibliothek. Ist sie neu, hat die Kopie auf diesem Rechner sie vielleicht noch nicht.
+zotero-notice-no-highlight-here = Der Cursor steht in keinem Satz mit \ai[…] oder \proofed[…], daher gibt es keine Markierung zu zeigen.
+zotero-tool-search-library = Die Zotero-Bibliothek der Autorin oder des Autors nach Titel, Person oder Jahr durchsuchen. Liefert Eintrags- und Zitierschlüssel jeder Quelle.
+zotero-tool-list-highlights = Die Markierungen einer Quelle (per Eintragsschlüssel) auflisten: Schlüssel, Textstelle, Kommentar und Seite jeder Markierung, und ob eine KI sie gesetzt hat.
+zotero-tool-add-to-bibliography = Eine Quelle in die .bib-Datei des Papers aufnehmen, falls sie fehlt, und den Zitierschlüssel für \cite zurückgeben. Braucht die Schreiberlaubnis.
+zotero-notice-reveal-failed = Zotero konnte bei dieser Quelle nicht geöffnet werden.
 
 ## Zotero — Arten von Markierungen
 
@@ -209,6 +226,7 @@ zotero-error-unsupported-schema = Diese Zotero-Bibliothek stammt von einem neuer
 zotero-error-unsupported-journal = Diese Zotero-Bibliothek legt die letzten Änderungen getrennt ab; yaz hätte nur einen veralteten Stand gelesen.
 zotero-error-not-running = Zotero läuft nicht.
 zotero-error-cannot-launch = Zotero konnte nicht gestartet werden. Möglicherweise ist es nicht dort installiert, wo yaz gesucht hat.
+zotero-error-cannot-open = Zotero konnte nicht bei diesem Eintrag geöffnet werden. Auf diesem Computer öffnet nichts zotero://-Links.
 zotero-error-unexpected-response = Zotero hat auf eine Weise geantwortet, die yaz nicht versteht.
 zotero-error-http = Zotero war nicht erreichbar.
 zotero-error-database = Ihre Zotero-Bibliothek ließ sich nicht lesen.
@@ -332,6 +350,10 @@ vcs-error-not-implemented = Diese Versionsverwaltung ist noch nicht gebaut.
 vcs-error-tool = Die Versionsverwaltung hat ein Problem gemeldet.
 vcs-error-io = Eine Datei ließ sich nicht lesen oder schreiben.
 vcs-error-unknown-backend = Unbekannte Versionsverwaltung.
+vcs-error-message = Eine Version braucht eine Nachricht, und keine sehr lange.
+vcs-error-paths = Eine Version kann nur Dateien innerhalb des Projekts nennen.
+error-no-project = Öffne zuerst ein Projekt.
+error-journal-entry = Dieser Eintrag ist zu groß, um ihn zu merken.
 workspace-tab-history = Verlauf
 
 ## Formatierte Ansicht und Gliederung
@@ -602,6 +624,15 @@ ribbon-start = Start
 ribbon-connections = Verbindungen
 connections-zotero-group = Zotero
 connections-obsidian-group = Obsidian
+connections-ai-group = KI
+connections-ai-connect = KI-Agent verbinden
+connections-ai-disconnect = KI-Agent trennen
+connections-ai-allow-writing = KI schreiben lassen
+connections-ai-forbid-writing = KI nicht mehr schreiben lassen
+connections-ai-connected = KI-Verbindung bereit. Claude Code im Ordner dieses Papers starten; es findet yaz über { $file }. Der Agent kann lesen; damit er Text einfügen darf, „KI schreiben lassen“ klicken.
+connections-ai-disconnected = KI-Agent getrennt. Er kann dieses Paper nicht mehr lesen oder ändern.
+connections-ai-writing-allowed = Die KI darf jetzt Text einfügen – nur als \ai[…] markiert, nie \proofed.
+connections-ai-writing-forbidden = Die KI kann das Paper nicht mehr ändern.
 
 date-today = Der Tag der Übersetzung
 date-on = Ein bestimmter Tag
@@ -976,3 +1007,54 @@ error-fs-bad-name = Dieser Name lässt sich für Datei oder Ordner nicht verwend
 error-fs-exists = Dort liegt bereits etwas dieses Namens.
 error-fs-delete-root = Ein Projekt kann sich nicht selbst löschen.
 error-project-unknown-kind = yaz kennt diese Art Dokument nicht.
+
+## AI writing plugin (ADR-0032)
+
+ai-tab-title = KI-Schreiben
+ai-no-document = Öffne ein Dokument, um seine KI-Sätze zu sehen.
+ai-empty = Noch keine KI-Sätze in diesem Dokument. Ein unter Verbindungen → KI verbundener KI-Agent schreibt sie als \ai[…]{…}.
+ai-all-done = Hier ist nichts mehr zu prüfen.
+ai-progress = { $proofed } von { $total } geprüft
+ai-filter-todo = Zu prüfen
+ai-filter-edited = Von dir bearbeitet
+ai-filter-proofed = Geprüft
+ai-filter-all = Alle
+ai-line = Zeile { $line }
+ai-status-open = offen
+ai-status-edited = von dir bearbeitet
+ai-status-proofed = geprüft
+ai-action-previous = ↑ Zurück
+ai-action-next = ↓ Weiter
+ai-action-show = In Zotero zeigen
+ai-action-proof = Geprüft ✓
+ai-action-reject = Verwerfen ✗
+ai-detail-your-edit = Deine Änderungen an dem, was die KI schrieb
+ai-detail-highlight = Markierung in { $source }, Seite { $page }
+ai-detail-highlight-missing = Markierung { $key } ist (noch) nicht in der Bibliothek.
+ai-detail-comment = KI-Kommentar: { $comment }
+ai-guide-title = Dein Schreibstil
+ai-guide-explain = Die KI liest diesen Leitfaden und deine letzten Änderungen, bevor sie schreibt. Er bleibt auf diesem Computer und gilt für jedes Paper.
+ai-guide-placeholder = Kurze Regeln, z. B. „Aktiv formulieren.“ oder „Nie ‚signifikant‘ ohne Zahl.“
+ai-guide-proposed = Die KI schlägt diesen Leitfaden vor, aus der Art, wie du ihre Sätze bearbeitet hast:
+ai-guide-accept = Diesen Leitfaden verwenden
+ai-guide-dismiss = Verwerfen
+ai-guide-learned = Gelernt aus { $decided } Entscheidungen: { $rewritten } Umformulierungen, { $rejected } verworfen.
+ai-setting-commit = Eine Git-Version speichern, wenn ich einen Satz prüfe oder verwerfe
+ai-command-next = Nächster zu prüfender KI-Satz
+ai-command-next-description = Zum nächsten mit \ai markierten Satz springen, den du noch nicht geprüft hast.
+ai-command-previous = Vorheriger zu prüfender KI-Satz
+ai-command-previous-description = Zum vorherigen mit \ai markierten Satz springen, den du noch nicht geprüft hast.
+ai-command-proof = Diesen KI-Satz als geprüft markieren
+ai-command-proof-description = Du hast den Satz unter dem Cursor mit seiner Markierung abgeglichen: \ai wird zu \proofed, und eine Version wird gespeichert.
+ai-command-reject = Diesen KI-Satz verwerfen
+ai-command-reject-description = Den KI-Satz unter dem Cursor löschen und als verworfen merken.
+ai-notice-all-proofed = Jeder KI-Satz in diesem Dokument ist geprüft.
+ai-notice-no-mark-here = Der Cursor steht in keinem KI-Satz.
+ai-notice-mark-moved = Dieser Satz hat sich geändert oder verschoben; die Ansicht wurde aktualisiert.
+ai-notice-highlight-not-in-library = Markierung { $key } ist (noch) nicht in der Bibliothek.
+ai-notice-no-repository = Geprüft, aber keine Version gespeichert: Dieses Projekt hat kein Git-Repository.
+ai-notice-commit-failed = Geprüft, aber das Speichern der Version ist fehlgeschlagen: { $error }
+ai-tool-insert-ai-text = Sätze in das offene Paper einfügen, gekennzeichnet als von KI geschrieben und noch nicht geprüft: yaz setzt sie in \ai[MARKIERUNGEN]{…}. Jede Einfügung muss die Zotero-Markierungen nennen, auf denen sie beruht. Zuerst writing_style aufrufen. Braucht die Schreiberlaubnis.
+ai-tool-list-ai-marks = Jeden Satz im offenen Paper auflisten, der mit \ai oder \proofed markiert ist, mit Status (offen, von der Autorin oder dem Autor bearbeitet, geprüft), Markierungsschlüsseln und Zeile.
+ai-tool-writing-style = Wie diese Person schreibt: ihr Stil-Leitfaden und die letzten KI-Sätze, die sie umformuliert oder verworfen hat, aus all ihren Papern. Vor dem Schreiben lesen.
+ai-tool-propose-style-guide = Einen neuen Stil-Leitfaden vorschlagen, abgeleitet aus writing_style. Die Person nimmt ihn in yaz an oder verwirft ihn; vorher gilt er nicht.

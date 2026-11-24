@@ -29,6 +29,7 @@
 
 import type {
   App,
+  CitationAction,
   Command,
   Detail,
   EditorApi,
@@ -105,6 +106,18 @@ export interface HostContext {
    * cannot include — in which case the shell has already said so.
    */
   saveImage(bytes: Uint8Array, type: string): Promise<string | null>;
+  /**
+   * Write the open document to disk and answer which project files it is
+   * made of — one, or several when the project is edited joined (ADR-0020).
+   * Empty when nothing is open.
+   */
+  saveDocument(): Promise<string[]>;
+}
+
+/** Something a plugin offered to do with a cited work. */
+export interface RegisteredCitationAction {
+  pluginId: string;
+  action: CitationAction;
 }
 
 /** A text format a plugin contributed, and who contributed it. */
@@ -243,6 +256,8 @@ export class PluginRuntime {
    * plugin cannot make itself the one in use.
    */
   readonly taskProviders: RegisteredTaskProvider[] = [];
+  /** What plugins offered on a cited work's right-click menu. */
+  readonly citationActions: RegisteredCitationAction[] = [];
   private readonly loaded = new Map<string, Plugin>();
   /** Stops a second `start()` adding a second listener for the same events. */
   private listening = false;
@@ -438,6 +453,10 @@ export class PluginRuntime {
         flavours: [...handler.flavours],
         handle: handler.handle.bind(handler),
       });
+    };
+
+    plugin.registerCitationAction = function registerCitationAction(action) {
+      runtime.citationActions.push({ pluginId, action });
     };
 
     plugin.registerLatexVocabulary = function registerLatexVocabulary(
@@ -693,6 +712,38 @@ export class PluginRuntime {
         refresh: () => ipc.zoteroReconnect(pluginId),
         isInstalled: () => ipc.zoteroInstalled(pluginId),
         launch: () => ipc.zoteroLaunch(pluginId),
+        reveal: (citationKey: string) =>
+          ipc.zoteroReveal(pluginId, citationKey),
+        revealAnnotation: (
+          annotationKeys: string[],
+          citationKey: string | null = null,
+        ) => ipc.zoteroRevealAnnotation(pluginId, annotationKeys, citationKey),
+        highlight: (annotationKey: string) =>
+          ipc.zoteroHighlight(pluginId, annotationKey),
+      },
+
+      journal: {
+        append: (entry: Record<string, unknown>) =>
+          ipc.pluginJournalAppend(pluginId, entry),
+        read: async <T>(limit?: number) =>
+          (await ipc.pluginJournalRead(pluginId, limit)) as T[],
+      },
+
+      vcs: {
+        async commit(message: string, paths: string[]) {
+          const made = await ipc.pluginVcsCommit(pluginId, message, paths);
+          return made
+            ? { id: made.id, shortId: made.shortId, summary: made.summary }
+            : null;
+        },
+        async commitDocument(message: string) {
+          const files = await context.saveDocument();
+          if (files.length === 0) throw new Error("no document is open");
+          const made = await ipc.pluginVcsCommit(pluginId, message, files);
+          return made
+            ? { id: made.id, shortId: made.shortId, summary: made.summary }
+            : null;
+        },
       },
 
       obsidian: {

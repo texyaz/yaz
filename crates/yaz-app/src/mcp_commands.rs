@@ -6,6 +6,12 @@
 //! absent: an agent that can edit the document is a much larger decision than
 //! one that can read it, and it should be taken on purpose rather than by
 //! adding one more tool that seemed handy at the time.
+//!
+//! That decision has since been taken, in [ADR-0031]: plugins may declare a
+//! tool that writes, it is refused until the author allows writing, and no
+//! agent may ever send `\proofed`. The core tools here still only read.
+//!
+//! [ADR-0031]: https://github.com/texyaz/yaz/blob/main/docs/adr/0031-an-agent-writes-only-marked-text.md
 
 use std::sync::Arc;
 
@@ -45,6 +51,147 @@ pub async fn mcp_status(state: tauri::State<'_, McpState>) -> Result<McpStatus> 
     Ok(state.status().await)
 }
 
+/// Allow or forbid an agent to call tools that change the document.
+///
+/// Only the window calls this, from a button the author presses (ADR-0031);
+/// there is no tool for it, so an agent cannot grant itself the permission.
+#[tauri::command]
+pub async fn mcp_set_write_allowed(
+    allowed: bool,
+    state: tauri::State<'_, McpState>,
+) -> Result<McpStatus> {
+    state.set_write_allowed(allowed);
+    Ok(state.status().await)
+}
+
+/// Write the open project's `.mcp.json`, so an agent started in the paper's
+/// folder finds this yaz by itself (ADR-0031).
+///
+/// The file carries the token, so it is written owner-only, kept out of git
+/// through `.git/info/exclude`, and removed again by
+/// [`mcp_forget_client_config`]. An existing `.mcp.json` keeps its other
+/// servers; only the `yaz` entry is ours. Takes no path: the project is the
+/// one the window has open, as for every MCP command.
+#[tauri::command]
+pub async fn mcp_write_client_config(
+    state: tauri::State<'_, McpState>,
+    project: tauri::State<'_, OpenProject>,
+) -> Result<String> {
+    let root = project
+        .root()
+        .ok_or_else(|| CommandError::new("error-mcp-no-project", "no project is open"))?;
+    let status = state.status().await;
+    let (Some(address), Some(token)) = (status.address, status.token) else {
+        return Err(CommandError::new(
+            "error-mcp-not-running",
+            "the server is not running",
+        ));
+    };
+    let root = std::path::PathBuf::from(root);
+    let file = root.join(".mcp.json");
+    let mut config: Value = std::fs::read_to_string(&file)
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .filter(Value::is_object)
+        .unwrap_or_else(|| json!({}));
+    let servers = config
+        .as_object_mut()
+        .expect("checked to be an object")
+        .entry("mcpServers")
+        .or_insert_with(|| json!({}));
+    if !servers.is_object() {
+        *servers = json!({});
+    }
+    servers["yaz"] = json!({
+        "type": "http",
+        "url": format!("http://{address}/"),
+        "headers": { "Authorization": format!("Bearer {token}") },
+    });
+    let text = serde_json::to_string_pretty(&config).map_err(io_error)?;
+    write_private(&file, &text).map_err(io_error)?;
+    exclude_from_git(&root, ".mcp.json");
+    Ok(file.to_string_lossy().into_owned())
+}
+
+/// Take the `yaz` entry out of the project's `.mcp.json` again, and the file
+/// with it when nothing else was in it.
+#[tauri::command]
+pub async fn mcp_forget_client_config(project: tauri::State<'_, OpenProject>) -> Result<()> {
+    let Some(root) = project.root() else {
+        return Ok(());
+    };
+    let file = std::path::PathBuf::from(root).join(".mcp.json");
+    let Some(mut config) = std::fs::read_to_string(&file)
+        .ok()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+    else {
+        return Ok(());
+    };
+    let emptied = match config.get_mut("mcpServers").and_then(Value::as_object_mut) {
+        Some(servers) => {
+            servers.remove("yaz");
+            servers.is_empty()
+        }
+        None => return Ok(()),
+    };
+    if emptied && config.as_object().is_some_and(|object| object.len() == 1) {
+        std::fs::remove_file(&file).map_err(io_error)?;
+    } else {
+        let text = serde_json::to_string_pretty(&config).map_err(io_error)?;
+        write_private(&file, &text).map_err(io_error)?;
+    }
+    Ok(())
+}
+
+fn write_private(file: &std::path::Path, text: &str) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::io::Write;
+        use std::os::unix::fs::OpenOptionsExt;
+        let mut handle = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(file)?;
+        handle.write_all(text.as_bytes())?;
+        // An existing file keeps its old mode through `open`; narrow it too.
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(file, std::fs::Permissions::from_mode(0o600))
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::write(file, text)
+    }
+}
+
+/// Add `entry` to the repository's local ignore list, if it is a repository.
+///
+/// `.git/info/exclude` rather than `.gitignore`: it is never committed, so
+/// the paper's history does not learn that yaz exists, and a token can never
+/// be committed by accident.
+fn exclude_from_git(root: &std::path::Path, entry: &str) {
+    let info = root.join(".git").join("info");
+    if !info.is_dir() {
+        return;
+    }
+    let exclude = info.join("exclude");
+    let current = std::fs::read_to_string(&exclude).unwrap_or_default();
+    if current.lines().any(|line| line.trim() == entry) {
+        return;
+    }
+    let separator = if current.is_empty() || current.ends_with('\n') {
+        ""
+    } else {
+        "\n"
+    };
+    let _ = std::fs::write(&exclude, format!("{current}{separator}{entry}\n"));
+}
+
+fn io_error(error: impl std::fmt::Display) -> CommandError {
+    CommandError::new("error-mcp-client-config", error.to_string())
+}
+
 /// Tell the server which project the window has open.
 ///
 /// The frontend owns that fact, so it is told rather than guessed at. Without
@@ -80,8 +227,10 @@ pub async fn mcp_set_plugin_tools(
     let handle = app.clone();
 
     let mut declared = Vec::new();
-    for tool in tools {
+    for mut tool in tools {
         if host.declares_tool(&plugin_id, &tool.name).await {
+            // From the manifest, never from the webview's own report.
+            tool.writes = host.tool_writes(&plugin_id, &tool.name).await;
             declared.push(tool);
         } else {
             tracing::warn!(

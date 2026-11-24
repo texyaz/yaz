@@ -68,6 +68,7 @@ const CORE_MANIFESTS: &[&str] = &[
     include_str!("../../../plugins/learn/manifest.json"),
     include_str!("../../../plugins/latex-packages/manifest.json"),
     include_str!("../../../plugins/todoist/manifest.json"),
+    include_str!("../../../plugins/ai/manifest.json"),
 ];
 
 /// A core plugin the application ships with.
@@ -115,6 +116,9 @@ pub struct PluginHost {
     /// alternative — trusting the webview's own copy — would make the
     /// declaration decorative, which is the one thing ADR-0022 says it is not.
     declared_tools: RwLock<HashMap<String, Vec<String>>>,
+    /// The subset of `declared_tools` whose declaration says it changes the
+    /// document (ADR-0031). Read from the manifest, for the same reason.
+    writing_tools: RwLock<HashMap<String, Vec<String>>>,
     /// Where each plugin's updates come from, by plugin id.
     updates: RwLock<HashMap<String, yaz_plugin::Updates>>,
     /// An explicit Zotero data directory, overriding discovery.
@@ -141,6 +145,7 @@ impl PluginHost {
             project_root: RwLock::new(None),
             zotero_data_dir: RwLock::new(None),
             declared_tools: RwLock::new(HashMap::new()),
+            writing_tools: RwLock::new(HashMap::new()),
             updates: RwLock::new(HashMap::new()),
         }
     }
@@ -162,6 +167,11 @@ impl PluginHost {
             .write()
             .await
             .insert(plugin_id.to_owned(), Arc::new(broker));
+    }
+
+    /// The open project's root, which the filesystem capabilities are scoped to.
+    pub async fn project_root(&self) -> Option<Utf8PathBuf> {
+        self.project_root.read().await.clone()
     }
 
     /// Point the filesystem capabilities at a new project root.
@@ -196,7 +206,7 @@ impl PluginHost {
     }
 
     /// Authorise a request, converting a refusal into an IPC error.
-    async fn authorise(&self, plugin_id: &str, request: &Request<'_>) -> Result<()> {
+    pub(crate) async fn authorise(&self, plugin_id: &str, request: &Request<'_>) -> Result<()> {
         let broker = self.broker(plugin_id).await?;
         broker
             .authorise(request)
@@ -256,6 +266,17 @@ impl PluginHost {
                         .write()
                         .await
                         .insert(manifest.id.clone(), tools.clone());
+                    let writing: Vec<String> = manifest
+                        .provides
+                        .tools
+                        .iter()
+                        .filter(|tool| tool.writes)
+                        .map(|tool| tool.name.clone())
+                        .collect();
+                    self.writing_tools
+                        .write()
+                        .await
+                        .insert(manifest.id.clone(), writing);
                     if let Some(updates) = manifest.updates.clone() {
                         self.updates
                             .write()
@@ -307,6 +328,15 @@ impl PluginHost {
     /// [ADR-0022]: https://github.com/texyaz/yaz/blob/main/docs/adr/0022-mcp-and-tool-declaration.md
     pub async fn declares_tool(&self, plugin_id: &str, name: &str) -> bool {
         self.declared_tools
+            .read()
+            .await
+            .get(plugin_id)
+            .is_some_and(|tools| tools.iter().any(|tool| tool == name))
+    }
+
+    /// Whether a declared tool changes the document, per the manifest.
+    pub async fn tool_writes(&self, plugin_id: &str, name: &str) -> bool {
+        self.writing_tools
             .read()
             .await
             .get(plugin_id)
@@ -794,6 +824,126 @@ pub async fn plugin_zotero_launch(
     host.authorise(&plugin_id, &Request::Zotero).await?;
     yaz_zotero::launch::launch().map_err(zotero_error)?;
     Ok(())
+}
+
+/// Select the item behind a citation key in Zotero.
+///
+/// Takes a citation key, never a URL. The link is built in `yaz-zotero` from an
+/// item key it has validated and the library the database says it is in, so a
+/// plugin can make this open Zotero and nothing else (ADR-0006).
+///
+/// `false` when no item in the library carries the key — a reference typed by
+/// hand into the `.bib`, or a library without Zotero's `citationKey` field.
+#[tauri::command]
+pub async fn plugin_zotero_reveal(
+    plugin_id: String,
+    citation_key: String,
+    host: tauri::State<'_, PluginHost>,
+) -> Result<bool> {
+    host.authorise(&plugin_id, &Request::Zotero).await?;
+    let library = host.library().await?;
+    let found = library
+        .locate_citation_key(&citation_key)
+        .await
+        .map_err(zotero_error)?;
+    let Some(first) = found.first() else {
+        return Ok(false);
+    };
+    yaz_zotero::reveal::reveal(first).map_err(zotero_error)?;
+    Ok(true)
+}
+
+/// One highlight, as a plugin sees it: where it is and what it says.
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ZoteroHighlightDto {
+    /// The annotation key, as written in `\ai[KEY]{…}`.
+    pub key: String,
+    /// The PDF it is drawn on.
+    pub attachment_key: String,
+    /// One-based page, when the annotation has one.
+    pub page: Option<u32>,
+    /// Citation key of the source, when Zotero has one.
+    pub citation_key: Option<String>,
+    /// The highlighted passage.
+    pub text: Option<String>,
+    /// The comment on it.
+    pub comment: Option<String>,
+    /// Its colour, e.g. `#a28ae5`.
+    pub color: Option<String>,
+}
+
+/// Look up one highlight by its annotation key, without opening anything.
+///
+/// For checking that a key an agent proposes really is a highlight before it
+/// goes into the document (ADR-0031), and for listing what backs a sentence.
+/// `null` when the library has no annotation with that key.
+#[tauri::command]
+pub async fn plugin_zotero_highlight(
+    plugin_id: String,
+    annotation_key: String,
+    host: tauri::State<'_, PluginHost>,
+) -> Result<Option<ZoteroHighlightDto>> {
+    host.authorise(&plugin_id, &Request::Zotero).await?;
+    let library = host.library().await?;
+    let found = library
+        .locate_annotation(&annotation_key)
+        .await
+        .map_err(zotero_error)?;
+    Ok(found.into_iter().next().map(|location| ZoteroHighlightDto {
+        key: location.annotation_key,
+        attachment_key: location.attachment_key,
+        page: location.page,
+        citation_key: location.citation_key,
+        text: location.text,
+        comment: location.comment,
+        color: location.color,
+    }))
+}
+
+/// Open Zotero at the highlight that backs a sentence (ADR-0030).
+///
+/// Takes annotation keys from a `\ai[KEY]{…}` or `\proofed[KEY]{…}` marker,
+/// never a URL: the `zotero://open-pdf` link is built in `yaz-zotero` from keys
+/// it has validated and the attachment, page and library the database gives.
+///
+/// With several keys, `citation_key` picks the one whose source the cursor is
+/// on; without a match the first key that resolves wins. `false` when none of
+/// the keys is an annotation in the library.
+#[tauri::command]
+pub async fn plugin_zotero_reveal_annotation(
+    plugin_id: String,
+    annotation_keys: Vec<String>,
+    citation_key: Option<String>,
+    host: tauri::State<'_, PluginHost>,
+) -> Result<bool> {
+    host.authorise(&plugin_id, &Request::Zotero).await?;
+    let library = host.library().await?;
+    let mut found = Vec::new();
+    for key in annotation_keys.iter().take(32) {
+        if let Some(first) = library
+            .locate_annotation(key)
+            .await
+            .map_err(zotero_error)?
+            .into_iter()
+            .next()
+        {
+            found.push(first);
+        }
+    }
+    let chosen = citation_key
+        .as_deref()
+        .and_then(|wanted| {
+            found
+                .iter()
+                .find(|location| location.citation_key.as_deref() == Some(wanted))
+        })
+        .or_else(|| found.first());
+    let Some(chosen) = chosen else {
+        return Ok(false);
+    };
+    yaz_zotero::reveal::reveal_annotation(chosen).map_err(zotero_error)?;
+    Ok(true)
 }
 
 /// What a plugin has stored, or `null` where it has stored nothing.

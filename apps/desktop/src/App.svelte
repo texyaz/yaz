@@ -168,6 +168,7 @@
   import LearnPlugin from "../../../plugins/learn/src/main";
   import LatexPackagesPlugin from "../../../plugins/latex-packages/src/main";
   import TodoistPlugin from "../../../plugins/todoist/src/main";
+  import AiWritingPlugin from "../../../plugins/ai/src/main";
 
   /**
    * The editor component itself, not the plugin-facing handle.
@@ -692,6 +693,20 @@
 
   let zoteroStatus = $state<ipc.ZoteroStatus | null>(null);
   let connectionsBusy = $state(false);
+
+  /**
+   * What yaz can be driven by, and what is driving it.
+   *
+   * Held rather than derived: the server is a live thing, and asking Rust each
+   * time the dialog rendered would put an IPC call in a reactive expression.
+   */
+  let mcp = $state<ipc.McpStatus>({
+    running: false,
+    address: null,
+    token: null,
+    tools: 0,
+    writeAllowed: false,
+  });
   let settingsOpen = $state(false);
   let settingsSection = $state<string | undefined>(undefined);
   let enginesLoaded = $state(false);
@@ -2685,9 +2700,64 @@ ${entryText}`,
     // The same path the clipboard paste takes, so a picture from a plugin
     // lands where a pasted one does and is named the same way.
     saveImage: (bytes: Uint8Array, type: string) => savePastedImage(bytes, type),
+    // A plugin recording a version names the files the buffer is made of, so
+    // what is on disk has to be what is on screen first.
+    saveDocument: async () => {
+      if (!project) return [];
+      if (joined) {
+        await save();
+        return [...joinedFiles.keys()];
+      }
+      if (!currentFile) return [];
+      if (dirty) {
+        await ipc.writeFile(project.root, currentFile, docText);
+        dirty = false;
+      }
+      return [currentFile];
+    },
   });
 
   let commands = $state<ReturnType<PluginRuntime["availableCommands"]>>([]);
+
+  /** The right-click menu on a cited work, while it is open. */
+  let citationMenu = $state<{ x: number; y: number; items: MenuItem[] } | null>(
+    null,
+  );
+
+  /**
+   * What plugins offer for a cited work, asked when the menu opens.
+   *
+   * An action that cannot run right now is shown greyed out rather than left
+   * out, so "Show in Zotero" is still findable while Zotero is closed. A
+   * plugin whose availability check fails counts as unavailable, not as a
+   * menu that never opens.
+   */
+  async function openCitationMenu(key: string, x: number, y: number) {
+    const offered = runtime.citationActions;
+    if (offered.length === 0) return;
+    const items = await Promise.all(
+      offered.map(async ({ action }) => {
+        let available = true;
+        try {
+          available = (await action.isAvailable?.(key)) ?? true;
+        } catch {
+          available = false;
+        }
+        return {
+          labelKey: action.labelKey,
+          disabled: !available,
+          action: async () => {
+            try {
+              await action.run(key);
+            } catch (error) {
+              showNotice(String(error));
+            }
+          },
+        } satisfies MenuItem;
+      }),
+    );
+    citationMenu = { x, y, items };
+  }
 
   /**
    * Everything the palette can run: yaz's own commands and the plugins'.
@@ -3176,6 +3246,28 @@ ${entryText}`,
                   ]),
             ]
           : []),
+        // An AI agent working on this paper (ADR-0031). Core rather than a
+        // plugin's: the connection is yaz's own MCP server, and the rules an
+        // agent cannot get past — no \proofed, no writing without permission —
+        // are held in the Rust process.
+        {
+          labelKey: mcp.running ? "connections-ai-disconnect" : "connections-ai-connect",
+          icon: "plug" as const,
+          group: "connections-ai-group",
+          dot: (mcp.running ? "live" : "off") as Health,
+          disabled: connectionsBusy || (!mcp.running && !project),
+          action: () => void switchAi(),
+        },
+        {
+          labelKey: mcp.writeAllowed
+            ? "connections-ai-forbid-writing"
+            : "connections-ai-allow-writing",
+          icon: "pencil" as const,
+          group: "connections-ai-group",
+          dot: (mcp.writeAllowed ? "live" : "off") as Health,
+          disabled: !mcp.running,
+          action: () => void switchAiWriting(),
+        },
         {
           labelKey: "connections-obsidian",
           icon: "folder" as const,
@@ -3623,18 +3715,6 @@ ${entryText}`,
 
   const selectedEngineInfo = $derived(engines.find((e) => e.id === selectedEngine) ?? null);
 
-  /**
-   * What yaz can be driven by, and what is driving it.
-   *
-   * Held rather than derived: the server is a live thing, and asking Rust each
-   * time the dialog rendered would put an IPC call in a reactive expression.
-   */
-  let mcp = $state<ipc.McpStatus>({
-    running: false,
-    address: null,
-    token: null,
-    tools: 0,
-  });
 
   /** The bundled plugins, as Rust reported them at startup. */
   let plugins = $state<ipc.CorePlugin[]>([]);
@@ -3647,6 +3727,48 @@ ${entryText}`,
 
   /** A directory a plugin is being developed in, if the user picked one. */
   let developmentPlugin = $state<string | null>(null);
+
+  /**
+   * Connect or disconnect an AI agent for the open paper (ADR-0031).
+   *
+   * Connecting starts the MCP server and writes the paper folder's
+   * `.mcp.json`, so an agent started there (Claude Code) finds this window
+   * with no setup. Disconnecting takes writing away first, then the file, then
+   * the server — in that order, so there is no moment where an agent could
+   * still write but the author thinks it is gone.
+   */
+  async function switchAi(): Promise<void> {
+    connectionsBusy = true;
+    try {
+      if (mcp.running) {
+        mcp = await ipc.mcpSetWriteAllowed(false);
+        await ipc.mcpForgetClientConfig();
+        await switchMcp(false);
+        showNotice(t("connections-ai-disconnected"));
+      } else {
+        await switchMcp(true);
+        if (!mcp.running) return;
+        const file = await ipc.mcpWriteClientConfig();
+        showNotice(t("connections-ai-connected", { file }));
+      }
+    } catch (error) {
+      failure = String(error);
+    } finally {
+      connectionsBusy = false;
+    }
+  }
+
+  /** Allow the connected agent to write marked text, or take that back. */
+  async function switchAiWriting(): Promise<void> {
+    try {
+      mcp = await ipc.mcpSetWriteAllowed(!mcp.writeAllowed);
+      showNotice(
+        t(mcp.writeAllowed ? "connections-ai-writing-allowed" : "connections-ai-writing-forbidden"),
+      );
+    } catch (error) {
+      failure = String(error);
+    }
+  }
 
   /** Switch the MCP server on or off, and remember what happened. */
   async function switchMcp(on: boolean): Promise<void> {
@@ -4316,6 +4438,7 @@ ${entryText}`,
         "com.yaz.learn": LearnPlugin,
         "com.yaz.latex-packages": LatexPackagesPlugin,
         "com.yaz.todoist": TodoistPlugin,
+        "com.yaz.ai": AiWritingPlugin,
       })
       .then(() => {
         // What the plugins offered, handed to the registry once they have all
@@ -4373,8 +4496,32 @@ ${entryText}`,
     }
   }
 
+  /**
+   * Where a folder picker for a project starts: beside the project open now,
+   * else beside the one opened last — so the papers folder, not wherever yaz
+   * was started from.
+   */
+  async function projectStartFolder(): Promise<{ defaultPath?: string }> {
+    let root = project?.root;
+    if (!root) {
+      try {
+        root = (await ipc.recentProjects())[0]?.root;
+      } catch {
+        root = undefined;
+      }
+    }
+    if (!root) return {};
+    const trimmed = root.replace(/[\\/]+$/, "");
+    const cut = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+    return { defaultPath: cut > 0 ? trimmed.slice(0, cut) : trimmed };
+  }
+
   async function chooseProject() {
-    const picked = await open({ directory: true, multiple: false });
+    const picked = await open({
+      directory: true,
+      multiple: false,
+      ...(await projectStartFolder()),
+    });
     if (typeof picked !== "string") return;
     await openProjectAt(picked);
   }
@@ -4854,6 +5001,7 @@ ${entryText}`,
       onnavigate={(at) => editorApi?.revealRange(at, at)}
       onexplain={(key) => void explainCitation(key)}
       onselect={showCitationDetail}
+      oncontext={(key, x, y) => void openCitationMenu(key, x, y)}
     />
   {:else if tab === "details"}
     <Details {detail} />
@@ -4886,6 +5034,15 @@ ${entryText}`,
     />
   {/if}
 {/snippet}
+
+{#if citationMenu}
+  <ContextMenu
+    items={citationMenu.items}
+    x={citationMenu.x}
+    y={citationMenu.y}
+    onclose={() => (citationMenu = null)}
+  />
+{/if}
 
 {#if fileMenu}
   <ContextMenu
@@ -4931,7 +5088,11 @@ ${entryText}`,
   <NewProject
     failure={newProjectFailure}
     onbrowse={async () => {
-      const picked = await open({ directory: true, multiple: false });
+      const picked = await open({
+        directory: true,
+        multiple: false,
+        ...(await projectStartFolder()),
+      });
       return typeof picked === "string" ? picked : null;
     }}
     oncreate={(parent, name, kind) => void createProject(parent, name, kind)}

@@ -10,6 +10,8 @@ Each of these is **its own repository**, present here as a git submodule
 | `formats`        | [texyaz/yaz-formats](https://github.com/texyaz/yaz-formats)               | Markdown, TOML, YAML and BibTeX highlighting           |
 | `latex-packages` | [texyaz/yaz-latex-packages](https://github.com/texyaz/yaz-latex-packages) | Preview support for what the common LaTeX packages add |
 | `learn`          | [texyaz/yaz-learn](https://github.com/texyaz/yaz-learn)                   | Capture the application, for documenting it            |
+| `todoist`        | in this repository, until it has its own                                  | A paper's task list in Todoist                         |
+| `ai`             | in this repository, until it has its own                                  | AI writing as a white box: proof, reject, learn style  |
 
 All but `learn` ship enabled in a new installation. They are what the
 application is _for_, and an editor that arrives unable to do any of it until

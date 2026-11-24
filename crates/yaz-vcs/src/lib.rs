@@ -169,6 +169,24 @@ pub trait VersionControl: Send + Sync {
     /// on save: a save with no edits should not manufacture an empty version.
     fn commit(&self, root: &Utf8Path, message: &str) -> Result<Option<Commit>>;
 
+    /// Record a version of these files only, leaving every other change in
+    /// the working tree as it was.
+    ///
+    /// For a version that marks one event — a sentence proofed — rather than
+    /// "everything since last time": sweeping unrelated work in would put it
+    /// under a message that does not describe it. Paths are relative to
+    /// `root`; the caller has checked they stay inside it. `None` when none of
+    /// them changed.
+    fn commit_files(
+        &self,
+        root: &Utf8Path,
+        message: &str,
+        paths: &[&Utf8Path],
+    ) -> Result<Option<Commit>> {
+        let _ = (root, message, paths);
+        Err(Error::NotImplemented { backend: self.id() })
+    }
+
     /// Recorded versions, most recent first.
     fn history(&self, root: &Utf8Path, limit: usize) -> Result<Vec<Commit>>;
 

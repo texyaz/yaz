@@ -317,6 +317,39 @@ impl Library {
         source.annotations(item_key)
     }
 
+    /// Where the item behind a citation key is, personal library first.
+    ///
+    /// Always the copied database, never the live API: the copy holds Zotero's
+    /// native `citationKey` field for every library in one query, and the API
+    /// would need a request per library to answer the same question
+    /// (ADR-0008, amendment). Without a copy there is no answer, and saying so
+    /// beats a slow one that may be incomplete.
+    pub async fn locate_citation_key(
+        &self,
+        citation_key: &str,
+    ) -> Result<Vec<crate::reveal::Location>> {
+        let source = self
+            .offline_source()
+            .await?
+            .lock()
+            .expect("zotero library mutex poisoned");
+        source.locate_citation_key(citation_key)
+    }
+
+    /// Where an annotation is, from the offline copy (see
+    /// [`Self::locate_citation_key`] for why only the copy).
+    pub async fn locate_annotation(
+        &self,
+        annotation_key: &str,
+    ) -> Result<Vec<crate::reveal::AnnotationLocation>> {
+        let source = self
+            .offline_source()
+            .await?
+            .lock()
+            .expect("zotero library mutex poisoned");
+        source.locate_annotation(annotation_key)
+    }
+
     /// The live source, unless it has already failed.
     fn live_if_trusted(&self) -> Option<&LocalApi> {
         if self.demoted.load(Ordering::Relaxed) {

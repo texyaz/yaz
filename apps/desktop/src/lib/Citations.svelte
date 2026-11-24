@@ -32,6 +32,11 @@
     onexplain: (key: string) => void;
     /** Describe this work in the Details tab. */
     onselect: (work: CitedWork) => void;
+    /**
+     * Right-click on a work: what plugins offer to do with it (ADR-0032).
+     * The tab draws no menu of its own; the shell does, at the pointer.
+     */
+    oncontext?: ((key: string, x: number, y: number) => void) | undefined;
   }
 
   let {
@@ -41,6 +46,7 @@
     onnavigate,
     onexplain,
     onselect,
+    oncontext,
   }: Props = $props();
 
   const unresolved = $derived(works.filter((work) => work.entry === null));
@@ -89,6 +95,11 @@
           <button
             type="button"
             class="work"
+            oncontextmenu={(event) => {
+              if (!oncontext) return;
+              event.preventDefault();
+              oncontext(work.key, event.clientX, event.clientY);
+            }}
             onclick={() => {
               // The Details tab follows the cursor whether or not the click
               // also goes somewhere, so it is told first and unconditionally.

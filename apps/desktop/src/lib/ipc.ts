@@ -513,6 +513,50 @@ export function zoteroLaunch(pluginId: string): Promise<void> {
   return invoke<void>("plugin_zotero_launch", { pluginId });
 }
 
+/**
+ * Select the item behind a citation key in Zotero. `false` when the library
+ * has no item with that key. The link is the Rust side's to build.
+ */
+export function zoteroReveal(
+  pluginId: string,
+  citationKey: string,
+): Promise<boolean> {
+  return invoke<boolean>("plugin_zotero_reveal", { pluginId, citationKey });
+}
+
+export function zoteroRevealAnnotation(
+  pluginId: string,
+  annotationKeys: string[],
+  citationKey: string | null,
+): Promise<boolean> {
+  return invoke<boolean>("plugin_zotero_reveal_annotation", {
+    pluginId,
+    annotationKeys,
+    citationKey,
+  });
+}
+
+/** One highlight by key: `plugin_zotero_highlight`. */
+export interface ZoteroHighlight {
+  key: string;
+  attachmentKey: string;
+  page: number | null;
+  citationKey: string | null;
+  text: string | null;
+  comment: string | null;
+  color: string | null;
+}
+
+export function zoteroHighlight(
+  pluginId: string,
+  annotationKey: string,
+): Promise<ZoteroHighlight | null> {
+  return invoke<ZoteroHighlight | null>("plugin_zotero_highlight", {
+    pluginId,
+    annotationKey,
+  });
+}
+
 /** A bundled core plugin, as the Rust side reports it. */
 export interface CorePlugin {
   id: string;
@@ -570,6 +614,23 @@ export interface McpStatus {
   token: string | null;
   /** How many tools an agent can reach right now. */
   tools: number;
+  /** Whether the author has allowed tools that change the paper (ADR-0031). */
+  writeAllowed: boolean;
+}
+
+/** Allow or forbid an agent to call tools that change the paper. */
+export function mcpSetWriteAllowed(allowed: boolean): Promise<McpStatus> {
+  return invoke<McpStatus>("mcp_set_write_allowed", { allowed });
+}
+
+/** Write the open project's `.mcp.json`; resolves to its path. */
+export function mcpWriteClientConfig(): Promise<string> {
+  return invoke<string>("mcp_write_client_config");
+}
+
+/** Remove yaz from the open project's `.mcp.json` again. */
+export function mcpForgetClientConfig(): Promise<void> {
+  return invoke<void>("mcp_forget_client_config");
 }
 
 /** Start answering MCP, on a port or on whichever one is free. */
@@ -982,4 +1043,29 @@ export function createProject(
   kind: string,
 ): Promise<ProjectInfo> {
   return invoke<ProjectInfo>("create_project", { parent, name, kind });
+}
+
+/** Append to a plugin's journal (ADR-0032). */
+export function pluginJournalAppend(
+  pluginId: string,
+  entry: Record<string, unknown>,
+): Promise<void> {
+  return invoke("plugin_journal_append", { pluginId, entry });
+}
+
+/** A plugin's last journal entries, oldest first. */
+export function pluginJournalRead(
+  pluginId: string,
+  limit?: number,
+): Promise<Record<string, unknown>[]> {
+  return invoke("plugin_journal_read", { pluginId, limit: limit ?? null });
+}
+
+/** Record a version of named project files, for a plugin with `vcs`. */
+export function pluginVcsCommit(
+  pluginId: string,
+  message: string,
+  paths: string[],
+): Promise<Commit | null> {
+  return invoke("plugin_vcs_commit", { pluginId, message, paths });
 }

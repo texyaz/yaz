@@ -91,6 +91,8 @@ pub enum Request<'a> {
     ShellOpen,
     /// Keep or spend a credential held in the operating system's keychain.
     Credential,
+    /// Record a version of files in the project's version control.
+    Vcs,
 }
 
 /// A refusal, kept so the user can see what a plugin tried to do.
@@ -214,6 +216,7 @@ impl Broker {
             Request::Notifications => self.require(&Capability::Notifications),
             Request::ShellOpen => self.require(&Capability::ShellOpen),
             Request::Credential => self.require(&Capability::Credential),
+            Request::Vcs => self.require(&Capability::Vcs),
         }
     }
 
@@ -284,6 +287,7 @@ impl Broker {
             Request::Notifications => ("notifications", String::new()),
             Request::ShellOpen => ("shell:open", String::new()),
             Request::Credential => ("credential", String::new()),
+            Request::Vcs => ("vcs", String::new()),
         };
         // Invariant 4. A poisoned lock must not lose the audit trail, so the
         // record is written through the poison rather than dropped.

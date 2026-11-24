@@ -20,6 +20,7 @@ mod mcp;
 mod mcp_commands;
 mod plugin_host;
 mod plugin_updates;
+mod plugin_writing;
 mod vcs_commands;
 
 /// True when running in development mode.
@@ -106,6 +107,9 @@ fn main() {
             mcp_commands::mcp_stop,
             mcp_commands::mcp_status,
             mcp_commands::mcp_set_project,
+            mcp_commands::mcp_set_write_allowed,
+            mcp_commands::mcp_write_client_config,
+            mcp_commands::mcp_forget_client_config,
             mcp_commands::mcp_set_plugin_tools,
             mcp_commands::mcp_drop_plugin_tools,
             mcp_commands::mcp_tool_result,
@@ -132,6 +136,12 @@ fn main() {
             plugin_host::plugin_zotero_refresh_bibliography,
             plugin_host::plugin_zotero_installed,
             plugin_host::plugin_zotero_launch,
+            plugin_host::plugin_zotero_reveal,
+            plugin_host::plugin_zotero_reveal_annotation,
+            plugin_host::plugin_zotero_highlight,
+            plugin_writing::plugin_journal_append,
+            plugin_writing::plugin_journal_read,
+            plugin_writing::plugin_vcs_commit,
             plugin_host::plugin_zotero_search,
             plugin_host::plugin_zotero_annotations,
             plugin_host::plugin_zotero_ensure_in_bibliography,
