@@ -26,13 +26,21 @@
 //! - refuses an `/api` request without the `x-yaz-web` header, which a page on
 //!   another origin cannot send without a preflight this server never answers.
 //!
-//! It does **not** authenticate anybody. Put it on an interface only you can
-//! reach — a VPN address, or loopback behind an SSH forward.
+//! By itself it does **not** authenticate anybody. Put it on an interface only
+//! you can reach — a VPN address, or loopback behind an SSH forward.
 //!
+//! Started with `--oidc-issuer` it asks an identity provider who is there and
+//! serves only the people named with `--allow` ([ADR-0033], [`sign_in`]). That
+//! decides who reaches the server; it does not divide it between them.
+//!
+//! [ADR-0033]: https://github.com/texyaz/yaz/blob/main/docs/adr/0033-the-web-server-can-ask-who-is-there.md
 //! [ADR-0030]: https://github.com/texyaz/yaz/blob/main/docs/adr/0030-a-web-server-hosts-the-same-commands.md
 
 #![deny(unsafe_code)]
 #![warn(clippy::all)]
+
+#[path = "web_sign_in.rs"]
+mod sign_in;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -68,6 +76,7 @@ struct Options {
     dist: PathBuf,
     hosts: Vec<String>,
     zotero: Option<yaz_zotero::local_api::Endpoint>,
+    sign_in: Option<sign_in::Settings>,
 }
 
 const USAGE: &str = "\
@@ -76,6 +85,8 @@ yaz-web — serve yaz to a browser
 USAGE:
     yaz-web --dist <DIR> [--listen <ADDR:PORT>] [--allow-host <NAME>]...
             [--zotero <HOST[:PORT]>]
+            [--oidc-issuer <URL> --oidc-client-id <ID> --public-url <URL>
+             --allow <WHO>...]
 
 OPTIONS:
     --dist <DIR>          The frontend built with `pnpm web:build:server`
@@ -91,8 +102,20 @@ OPTIONS:
                           on the machine Zotero runs on. Without this, Zotero
                           is looked for on the machine the server runs on.
 
-Reaching this port is equivalent to a shell as the user running it. There is
-no authentication: listen only where you alone can reach.";
+SIGN-IN (all four together; the client secret is read from the environment
+variable YAZ_WEB_OIDC_SECRET):
+    --oidc-issuer <URL>   An OpenID Connect provider, e.g. a Keycloak realm:
+                          https://sso.example.org/realms/company
+    --oidc-client-id <ID> The client this server is registered as there, with
+                          <public-url>/auth/callback as its redirect address.
+    --public-url <URL>    The https address people open this server at.
+    --allow <WHO>         Who may sign in: an e-mail address, a user name or a
+                          group the provider reports. Repeatable.
+
+Reaching this port is equivalent to a shell as the user running it. Without
+sign-in there is no authentication: listen only where you alone can reach.
+With sign-in, everybody named with --allow has that shell and shares the one
+open project.";
 
 impl Options {
     fn parse(mut arguments: impl Iterator<Item = String>) -> anyhow::Result<Self> {
@@ -100,6 +123,10 @@ impl Options {
         let mut dist = None;
         let mut hosts = Vec::new();
         let mut zotero = None;
+        let mut issuer = None;
+        let mut client_id = None;
+        let mut public_url = None;
+        let mut allow = Vec::new();
 
         while let Some(argument) = arguments.next() {
             let mut value = || {
@@ -121,6 +148,10 @@ impl Options {
                             .context("--zotero takes a host and a port, e.g. laptop:23119")?,
                     );
                 }
+                "--oidc-issuer" => issuer = Some(value()?),
+                "--oidc-client-id" => client_id = Some(value()?),
+                "--public-url" => public_url = Some(value()?),
+                "--allow" => allow.push(value()?),
                 "-h" | "--help" => {
                     println!("{USAGE}");
                     std::process::exit(0);
@@ -141,11 +172,33 @@ impl Options {
         hosts.push("localhost".to_owned());
         hosts.push("127.0.0.1".to_owned());
 
+        let sign_in = match (issuer, client_id, public_url) {
+            (Some(issuer), Some(client_id), Some(public_url)) => {
+                // The address people sign in at is one the server answers to.
+                let name = url::Url::parse(&public_url)
+                    .ok()
+                    .and_then(|address| address.host_str().map(str::to_ascii_lowercase))
+                    .context("--public-url takes an address, e.g. https://yaz.example.org")?;
+                hosts.push(name);
+                Some(sign_in::Settings {
+                    issuer,
+                    client_id,
+                    public_url,
+                    allow,
+                })
+            }
+            (None, None, None) if allow.is_empty() => None,
+            _ => bail!(
+                "sign-in needs --oidc-issuer, --oidc-client-id and --public-url together\n\n{USAGE}"
+            ),
+        };
+
         Ok(Self {
             listen,
             dist,
             hosts,
             zotero,
+            sign_in,
         })
     }
 }
@@ -155,6 +208,8 @@ struct Shared {
     /// The mock runtime's one webview: the thing a command is invoked *on*.
     webview: tauri::WebviewWindow<MockRuntime>,
     hosts: Vec<String>,
+    /// Set when the server was started with an identity provider to ask.
+    sign_in: Option<sign_in::SignIn>,
 }
 
 #[tokio::main]
@@ -179,9 +234,12 @@ async fn main() -> anyhow::Result<()> {
         .build()
         .context("could not create the handler's webview")?;
 
+    let sign_in = options.sign_in.map(sign_in::SignIn::new).transpose()?;
+    let asks = sign_in.as_ref().map(|sign_in| sign_in.issuer().to_owned());
     let shared = Arc::new(Shared {
         webview,
         hosts: options.hosts,
+        sign_in,
     });
 
     let index = options.dist.join("index.html");
@@ -193,9 +251,14 @@ async fn main() -> anyhow::Result<()> {
 
     let router = Router::new()
         .nest("/api", api)
+        .route("/auth/{step}", get(sign_in_step))
         .fallback_service(ServeDir::new(&options.dist).fallback(ServeFile::new(index)))
         .layer(middleware::from_fn(revalidate_pages))
         .layer(CompressionLayer::new())
+        .layer(middleware::from_fn_with_state(
+            Arc::clone(&shared),
+            require_session,
+        ))
         .layer(middleware::from_fn_with_state(
             Arc::clone(&shared),
             require_known_host,
@@ -206,7 +269,9 @@ async fn main() -> anyhow::Result<()> {
         .await
         .with_context(|| format!("could not listen on {}", options.listen))?;
 
-    if !options.listen.ip().is_loopback() {
+    if let Some(issuer) = &asks {
+        tracing::info!(%issuer, "asking an identity provider who is there");
+    } else if !options.listen.ip().is_loopback() {
         tracing::warn!(
             address = %options.listen,
             "listening beyond loopback with no authentication: anyone who can reach this \
@@ -272,6 +337,67 @@ async fn require_known_host(
             .into_response();
     }
     next.run(request).await
+}
+
+/// With sign-in on, serve only somebody who signed in.
+///
+/// A page that is asked for without a session leads to the provider and back;
+/// an API request is refused, and the page that sent it starts the sign-in.
+async fn require_session(
+    State(shared): State<Arc<Shared>>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let Some(sign_in) = &shared.sign_in else {
+        return next.run(request).await;
+    };
+    let path = request.uri().path();
+    if path.starts_with("/auth/") || sign_in.signed_in(&request) {
+        return next.run(request).await;
+    }
+    if path.starts_with("/api/") {
+        return (StatusCode::UNAUTHORIZED, "not signed in").into_response();
+    }
+    let wanted = request
+        .uri()
+        .path_and_query()
+        .map_or("/", |wanted| wanted.as_str());
+    let to = format!(
+        "/auth/login?{}",
+        url::form_urlencoded::Serializer::new(String::new())
+            .append_pair("next", wanted)
+            .finish()
+    );
+    (StatusCode::FOUND, [(header::LOCATION, to)]).into_response()
+}
+
+/// `/auth/login`, `/auth/callback` and `/auth/logout`.
+async fn sign_in_step(
+    State(shared): State<Arc<Shared>>,
+    Path(step): Path<String>,
+    request: Request,
+) -> Response {
+    let Some(sign_in) = &shared.sign_in else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    match step.as_str() {
+        "login" => {
+            let wanted = sign_in::wanted(&request);
+            drop(request);
+            sign_in.login(wanted).await
+        }
+        "callback" => {
+            let back = sign_in::Back::of(&request);
+            drop(request);
+            sign_in.finish(back).await
+        }
+        "logout" => {
+            let session = sign_in::session_of(&request);
+            drop(request);
+            sign_in.logout(session).await
+        }
+        _ => StatusCode::NOT_FOUND.into_response(),
+    }
 }
 
 /// `example.org:4173` → `example.org`, and `[::1]:4173` → `::1`.

@@ -103,4 +103,29 @@ tailscale serve --bg --tcp 23119 tcp://127.0.0.1:23119
 ./target/release/yaz-web --dist apps/desktop/dist-web --zotero my-laptop:23119
 ```
 
+### Serving several people
+
+By itself the server asks nobody who they are, so it belongs on an address
+only you can reach. For a project several people write, start it with your
+organisation's sign-in (any OpenID Connect provider, such as Keycloak) and
+name who may come in:
+
+```sh
+export YAZ_WEB_OIDC_SECRET=…   # the client's secret, from the provider
+./target/release/yaz-web --dist apps/desktop/dist-web \
+    --allow-host yaz.example.org \
+    --oidc-issuer https://sso.example.org/realms/company \
+    --oidc-client-id yaz --public-url https://yaz.example.org \
+    --allow ada@example.org --allow writers
+```
+
+Register the client at the provider with `https://yaz.example.org/auth/callback`
+as its redirect address. `--allow` takes e-mail addresses, user names and
+groups.
+
+Everybody you let in works in the same open project, and can do on that
+machine what the user running the server can. Sign-in decides who gets in, not
+what they see: for a project some of them must not read, run a second server
+as a user that cannot read it.
+
 Folders are on the machine yaz runs on, so "Open" asks you to type the path.

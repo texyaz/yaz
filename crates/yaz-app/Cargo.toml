@@ -40,7 +40,7 @@ typst-engine = ["yaz-compile/typst-engine"]
 
 # The web server: the same commands over HTTP, for a yaz that runs on one
 # machine and is used from a browser on another (ADR-0030).
-web = ["tauri/test", "dep:axum", "dep:tower-http"]
+web = ["tauri/test", "dep:axum", "dep:tower-http", "dep:sha2", "dep:getrandom"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -74,6 +74,10 @@ tokio = { workspace = true, features = ["net", "signal"] }
 reqwest.workspace = true
 axum = { version = "0.8", optional = true, default-features = false, features = ["http1", "json", "tokio"] }
 tower-http = { version = "0.6", optional = true, features = ["fs", "compression-gzip"] }
+# Sign-in for the web server (ADR-0033): the PKCE challenge and the random
+# names of sessions. Both pure Rust, so nothing here needs a C toolchain.
+sha2 = { workspace = true, optional = true }
+getrandom = { version = "0.3", optional = true }
 trash = { version = "5.2.6", default-features = false, features = ["coinit_apartmentthreaded"] }
 
 # yaz-app stays THIN: it wires the domain crates to Tauri commands and holds no

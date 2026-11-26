@@ -58,3 +58,4 @@ decision we later reversed is more valuable than a tidy directory.
 | [0030](0030-a-web-server-hosts-the-same-commands.md)            | A web server hosts the same commands the desktop does                 | Accepted |
 | [0031](0031-a-narrow-window-shows-one-pane.md)                  | A narrow window shows one pane at a time                              | Accepted |
 | [0032](0032-the-preview-reads-the-documents-own-definitions.md) | The preview reads the document's own definitions                      | Accepted |
+| [0033](0033-the-web-server-can-ask-who-is-there.md)             | The web server can ask an identity provider who is there              | Proposed |
