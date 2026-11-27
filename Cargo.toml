@@ -9,6 +9,7 @@ members = [
     "crates/yaz-obsidian",
     "crates/yaz-vcs",
     "crates/yaz-mcp",
+    "crates/yaz-collab",
     "crates/yaz-app",
 ]
 
@@ -33,6 +34,7 @@ yaz-zotero = { path = "crates/yaz-zotero" }
 yaz-obsidian = { path = "crates/yaz-obsidian" }
 yaz-vcs = { path = "crates/yaz-vcs" }
 yaz-mcp = { path = "crates/yaz-mcp" }
+yaz-collab = { path = "crates/yaz-collab" }
 
 # Error handling
 thiserror = "2"
@@ -72,6 +74,10 @@ url = { version = "2", features = ["serde"] }
 # installer.
 rusqlite = { version = "0.38", features = ["bundled"] }
 sha2 = "0.11"
+# The Yjs document model in Rust, for the session host (ADR-0035). Pure Rust,
+# so it builds natively on aarch64 (ADR-0014). The page speaks the same wire
+# format through `yjs`; fixtures in crates/yaz-collab/tests say they agree.
+yrs = "0.28"
 # Both root sources are compiled in, but only one is used at a time — see
 # yaz_core::net and ADR-0019. Enabling both features alone would make reqwest
 # trust the *union* of the OS store and Mozilla's list, which silently defeats

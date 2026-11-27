@@ -17,6 +17,7 @@
 #![warn(clippy::all)]
 
 mod appearance;
+mod collab_commands;
 mod commands;
 mod latex_installs;
 mod mcp;
@@ -81,6 +82,27 @@ pub fn use_remote_zotero<R: tauri::Runtime>(
         .use_remote_zotero(endpoint);
 }
 
+/// Turn on the shared sessions of ADR-0035 for every project this host opens.
+///
+/// For the web server's `--share`. Call it after [`install`] has built the app
+/// and before the first command; like [`use_remote_zotero`] it is not itself a
+/// command, so nothing running inside yaz can switch sharing on. The session
+/// host takes the app's own folder locks, so that a compile and a write of the
+/// shared text queue for the same folder. Returns the host, for a transport
+/// that attaches pages to it.
+pub fn use_sharing<R: tauri::Runtime>(
+    app: &tauri::App<R>,
+    config: yaz_collab::HostConfig,
+) -> yaz_collab::Host {
+    use tauri::Manager as _;
+    let locks = app
+        .state::<yaz_core::project::FolderLocks>()
+        .inner()
+        .clone();
+    app.state::<collab_commands::Sharing>()
+        .replace(yaz_collab::Host::new(config, locks))
+}
+
 /// Give a host the whole command surface: the state and every command.
 ///
 /// Generic over the runtime because the web server builds the same handler on
@@ -94,6 +116,11 @@ pub fn install<R: tauri::Runtime>(
 ) -> tauri::Builder<R> {
     builder
         .manage(clock)
+        // One lock per project folder, taken by a compile and by recording or
+        // restoring a version.
+        .manage(yaz_core::project::FolderLocks::default())
+        // Nothing is shared until a host asks for it ([`use_sharing`]).
+        .manage(collab_commands::Sharing::default())
         .manage(plugin_host::PluginHost::new())
         // Off until asked: the server is not started here, only made
         // available to the command that starts it (ADR-0022).
@@ -105,6 +132,9 @@ pub fn install<R: tauri::Runtime>(
             commands::write_file,
             commands::compile_project,
             commands::existing_build,
+            collab_commands::collab_status,
+            collab_commands::collab_flush,
+            collab_commands::collab_rescan,
             commands::list_engines,
             commands::get_project_settings,
             commands::set_project_engine,

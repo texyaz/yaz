@@ -194,7 +194,7 @@ impl SignIn {
         Self::with_secret(settings, secret)
     }
 
-    fn with_secret(settings: Settings, secret: String) -> anyhow::Result<Self> {
+    pub(super) fn with_secret(settings: Settings, secret: String) -> anyhow::Result<Self> {
         if settings.allow.is_empty() {
             bail!(
                 "--oidc-issuer needs at least one --allow: without it everybody the provider \
@@ -258,6 +258,14 @@ impl SignIn {
         let mut sessions = self.sessions.lock().expect("the sessions are not poisoned");
         sessions.retain(|_, session| session.until > Instant::now());
         sessions.contains_key(&id)
+    }
+
+    /// Whether a session is still good, by its id: for something that outlives
+    /// the request it came in with, such as an open WebSocket.
+    pub fn still_signed_in(&self, id: &str) -> bool {
+        let mut sessions = self.sessions.lock().expect("the sessions are not poisoned");
+        sessions.retain(|_, session| session.until > Instant::now());
+        sessions.contains_key(id)
     }
 
     /// `/auth/login`: note where the person wanted to go, and send them to the provider.
@@ -493,8 +501,17 @@ fn picture_in_id_token(token: &str) -> Option<String> {
 
 /// The value of one of the request's cookies.
 fn cookie(request: &Request, name: &str) -> Option<String> {
-    request
-        .headers()
+    cookie_in(request.headers(), name)
+}
+
+/// The session a request's headers name, if any: for a handler that is given
+/// the headers and not the request, as one that upgrades to a WebSocket is.
+pub fn session_in(headers: &axum::http::HeaderMap) -> Option<String> {
+    cookie_in(headers, SESSION)
+}
+
+fn cookie_in(headers: &axum::http::HeaderMap, name: &str) -> Option<String> {
+    headers
         .get_all(header::COOKIE)
         .iter()
         .filter_map(|value| value.to_str().ok())
@@ -764,6 +781,32 @@ mod tests {
             .await
             .expect("a body");
         (status, String::from_utf8(body.to_vec()).expect("text"))
+    }
+
+    #[test]
+    fn a_session_is_asked_about_again_by_its_id_and_ends_when_its_time_is_up() {
+        let sign_in = signed_in_with(&[
+            ("good", None, None, Duration::from_secs(3600)),
+            ("brief", None, None, Duration::from_millis(30)),
+        ]);
+        assert!(sign_in.still_signed_in("good"));
+        assert!(sign_in.still_signed_in("brief"));
+        assert!(!sign_in.still_signed_in("nobody"));
+        std::thread::sleep(Duration::from_millis(60));
+        assert!(sign_in.still_signed_in("good"));
+        assert!(!sign_in.still_signed_in("brief"));
+    }
+
+    #[test]
+    fn the_session_is_read_from_headers_as_from_a_request() {
+        let mut headers = axum::http::HeaderMap::new();
+        assert_eq!(super::session_in(&headers), None);
+        headers.insert(
+            header::COOKIE,
+            axum::http::HeaderValue::from_str(&format!("other=1; {}=abc", super::SESSION))
+                .expect("a header"),
+        );
+        assert_eq!(super::session_in(&headers), Some("abc".to_owned()));
     }
 
     #[tokio::test]

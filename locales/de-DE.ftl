@@ -645,6 +645,31 @@ joined-save-failed = { $file } konnte nicht gespeichert werden: { $error }
 joined-unexpanded = Nicht eingefügt, nicht lesbar: { $missing }
 joined-drifted = Das verbundene Dokument passt nicht mehr zu seinen Dateien, Änderungen werden nicht geschrieben. Verbundene Ansicht ausschalten, um wieder einzelne Dateien zu bearbeiten.
 
+## Gemeinsame Sitzung: mehrere Personen in einem Projekt (ADR-0035)
+
+collab-someone = Jemand
+collab-state-starting = Tritt bei …
+collab-state-ready = Geteilt
+collab-state-unsent = Geteilt, Änderungen noch nicht gesendet
+collab-state-reconnecting = Verbindung wird wiederhergestellt …
+collab-state-unavailable = Nicht geteilt
+collab-state-restarted = Der Server wurde neu gestartet
+collab-state-incompatible = Seite neu laden
+collab-read-only = { $file } ist nicht geteilt und kann hier gelesen, aber nicht bearbeitet werden.
+collab-drifted = Was auf dem Bildschirm steht, passt nicht mehr zum gemeinsamen Text, Änderungen werden nicht gesendet. Bitte die Seite neu laden.
+collab-session-failed = Die gemeinsame Sitzung konnte nicht gestartet werden, der Text kann nur gelesen werden: { $reason }
+collab-flush-failed = Der Ordner konnte nicht auf den neuesten Stand gebracht werden, daher wurde nichts übersetzt oder festgehalten: { $error }
+collab-restarted = Der Server wurde neu gestartet und hat die gemeinsame Sitzung verloren. Diese Seite hält Änderungen, die nicht gesendet wurden, und kann sie der neuen Sitzung nicht hinzufügen. Bitte kopieren, was gebraucht wird, und die Seite neu laden.
+collab-kept = { $file } wurde im Ordner geändert, während darin getippt wurde. Jetzt steht die Fassung aus dem Ordner da; die eigene Fassung bleibt als { $copy } erhalten.
+collab-imported = Im Ordner geändert und übernommen: { $files }
+collab-refused = Nicht geteilt, weil zu groß oder kein Text: { $files }
+collab-compiled = Jemand hat das Dokument übersetzt. Das neue PDF wird angezeigt.
+collab-compiled-failed = Jemand hat das Dokument übersetzt; dabei ist kein PDF entstanden.
+error-collab-not-shared = Dieser Server teilt keine Projekte. Er muss mit --share gestartet werden.
+error-collab-unavailable = Die gemeinsame Sitzung war nicht erreichbar.
+error-collab-schema = Das gemeinsame Dokument stammt von einem neueren yaz.
+error-collab-flush-timeout = Der Ordner konnte nicht rechtzeitig auf den neuesten Stand gebracht werden.
+
 ## Erzeugte Verzeichnisse, aus dem Dokument selbst
 
 listing-contents = Inhalt
