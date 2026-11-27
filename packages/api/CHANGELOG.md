@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.4.0](https://github.com/texyaz/yaz/compare/api-v0.3.0...api-v0.4.0) (2026-11-27)
+
+
+### Features
+
+* **api:** let a plugin declare quantities, symbols, theorems and drawings ([e92b18b](https://github.com/texyaz/yaz/commit/e92b18b401dd2a32c0f7f856be4af9f6ad38c19e))
+* **app:** serve yaz to a browser with yaz-web ([9dfd7e7](https://github.com/texyaz/yaz/commit/9dfd7e7d7079076c6372a1cc5d1f538d2814bab9))
+* **editor:** draw what a document defines for itself in the preview ([2f4d539](https://github.com/texyaz/yaz/commit/2f4d539b5dbfc6c2acf596174dc09aaa7d323e6c))
+* **ui:** show one pane at a time on a narrow screen ([1f6a34d](https://github.com/texyaz/yaz/commit/1f6a34de3b824d171f46a2893b23f3493eb5f8d8))
+
 ## [0.3.0](https://github.com/texyaz/yaz/compare/api-v0.2.0...api-v0.3.0) (2026-09-07)
 
 

@@ -1,5 +1,67 @@
 # Changelog
 
+## [0.4.0](https://github.com/texyaz/yaz/compare/yaz-v0.3.0...yaz-v0.4.0) (2026-11-27)
+
+
+### Features
+
+* **api:** let a plugin declare quantities, symbols, theorems and drawings ([e92b18b](https://github.com/texyaz/yaz/commit/e92b18b401dd2a32c0f7f856be4af9f6ad38c19e))
+* **app:** give the page the app's icon ([73bdb97](https://github.com/texyaz/yaz/commit/73bdb970947d683b2d98015bfce473baaa9d7529))
+* **app:** let several browsers edit one project on a web server started with --share ([efd28b7](https://github.com/texyaz/yaz/commit/efd28b7becfac0f94f889825bc5782b43dffbaf4))
+* **app:** let several browsers edit one project on a web server started with --share ([0c8991d](https://github.com/texyaz/yaz/commit/0c8991dc0eb0bc3200ed8ef6ba0482ca99d126ea))
+* **app:** let the web server ask an identity provider who is there ([b98076a](https://github.com/texyaz/yaz/commit/b98076a8e14502b0c3650a372139424c5ef37200))
+* **app:** let the web server ask an identity provider who is there ([3656240](https://github.com/texyaz/yaz/commit/36562400602c5d6e24057ec1c30e49d5b972ef3c))
+* **app:** open the project a web address names ([0351f36](https://github.com/texyaz/yaz/commit/0351f367483a4c7c44d81de7500aa320e9973a04))
+* **app:** open the project a web address names ([aaf0172](https://github.com/texyaz/yaz/commit/aaf017273da9a85b53c76d9fcc8d942ecb0bed73))
+* **app:** serve yaz to a browser with yaz-web ([9dfd7e7](https://github.com/texyaz/yaz/commit/9dfd7e7d7079076c6372a1cc5d1f538d2814bab9))
+* **app:** serve yaz to a browser with yaz-web ([092a822](https://github.com/texyaz/yaz/commit/092a8227b4c02f2153ec2ef8959477209886ed2c))
+* **app:** show who is signed in on the web page and let them sign out ([b2cd63c](https://github.com/texyaz/yaz/commit/b2cd63cd3f87ce11de4d884ad854b56506815763))
+* **collab:** a session host that keeps a replica of the shared text and writes the folder ([5eb1ad1](https://github.com/texyaz/yaz/commit/5eb1ad15b82018e0ea9608c1867e38f40f65b1ff))
+* **collab:** tell the pages of a shared project when a compile of it finishes ([b54cb60](https://github.com/texyaz/yaz/commit/b54cb60c12fc01c16fb9e7694535465854c1849d))
+* **core:** take a folder's lock without waiting for it ([acf9ba4](https://github.com/texyaz/yaz/commit/acf9ba4d82559e05e26613f645ed312830e6f8fa))
+* **editor:** bind a joined buffer to the shared texts of its files ([dc93c5f](https://github.com/texyaz/yaz/commit/dc93c5ff70df949f1f734cfcd2112f3c3f2cbb76))
+* **editor:** bind the editor to a shared session and draw the others' carets ([4398191](https://github.com/texyaz/yaz/commit/4398191f314e04a94b2381c8dde19449b783e83f))
+* **editor:** draw what a document defines for itself in the preview ([2f4d539](https://github.com/texyaz/yaz/commit/2f4d539b5dbfc6c2acf596174dc09aaa7d323e6c))
+* **editor:** draw what a document defines for itself in the preview ([2925785](https://github.com/texyaz/yaz/commit/2925785e3afff7171a24cc24a29ec3f683cd3cfa))
+* **editor:** edit a shared document of several files joined as one ([5da38bb](https://github.com/texyaz/yaz/commit/5da38bba1f1ae82fac658f984dafb18004003a08))
+* **editor:** place a change made to a file in a buffer that joins several ([c440f07](https://github.com/texyaz/yaz/commit/c440f0742c62a9b73f43138e1b8aa95024f08e2b))
+* **i18n:** say what a shared session is doing, in English and German ([2c817cd](https://github.com/texyaz/yaz/commit/2c817cd0a3ba9db9cb61b810e660fd808c642c6b))
+* **themes:** add Nord, Dracula, Solarized and Gruvbox as installable themes ([eb1fa0f](https://github.com/texyaz/yaz/commit/eb1fa0f0f91490245deeccd2495a86d0f5bed6b5))
+* **themes:** eight colours for the people in a shared session ([9dc0e1c](https://github.com/texyaz/yaz/commit/9dc0e1c71e7100112c4b9ede97d7ed5ca729ff21))
+* **ui:** open a project's shared session and show who else is in it ([dea1313](https://github.com/texyaz/yaz/commit/dea1313c62183ebc7eb940a2e4406fe37c32a3f4))
+* **ui:** open a shared document of several files joined as one ([941dcfd](https://github.com/texyaz/yaz/commit/941dcfdefa0062a0c0e250d277e90a73cd9a363d))
+* **ui:** show one pane at a time on a narrow screen ([1f6a34d](https://github.com/texyaz/yaz/commit/1f6a34de3b824d171f46a2893b23f3493eb5f8d8))
+* **ui:** show one pane at a time on a narrow screen ([666e883](https://github.com/texyaz/yaz/commit/666e883f76c700a1063c9046d641262868230e96))
+* **ui:** show who is in which file, go to their caret, and show the PDF somebody else compiled ([635b750](https://github.com/texyaz/yaz/commit/635b7508eb59e2f083bb2a118142c31b000bbfa7))
+* **ui:** show who is where in a shared project, and the PDF somebody else compiled ([6261b39](https://github.com/texyaz/yaz/commit/6261b390e90e12963546bb18a7d162cee02f8cad))
+* **zotero:** let the web server read a Zotero on another machine ([f4d55b0](https://github.com/texyaz/yaz/commit/f4d55b02234f51e692c9557151822af488a8febc))
+* **zotero:** let the web server read a Zotero on another machine ([c632ce9](https://github.com/texyaz/yaz/commit/c632ce951d36a0527c7eacff928d92ec049f1db1))
+
+
+### Bug fixes
+
+* **app:** close a collaboration link when the sign-in it was opened with has ended ([cdc95cd](https://github.com/texyaz/yaz/commit/cdc95cdf257b56958632dea11f4fcdb1ad7e2605))
+* **app:** close a collaboration link when the sign-in it was opened with has ended ([67356cc](https://github.com/texyaz/yaz/commit/67356ccab03e5cfe3dc33edec983b995e8de295c))
+* **app:** make a browser ask again for the web server's page ([75bca42](https://github.com/texyaz/yaz/commit/75bca420d91806dd15d4976fe7d310926373f14e))
+* **app:** one compile and one recorded version per project folder at a time ([be62b71](https://github.com/texyaz/yaz/commit/be62b71f2eb47fca95adf07d989ac8f2be703081))
+* **app:** one compile and one recorded version per project folder at a time ([b8380fe](https://github.com/texyaz/yaz/commit/b8380fe5ebd6228ef147f880891d69776c839ba7))
+* **app:** show a reopened project's build, and keep each web tab's own ([2ee8fd6](https://github.com/texyaz/yaz/commit/2ee8fd6e953689319ec0d552cc4ee677e7452ae9))
+* **compile:** name the document for the embedded Tectonic engine ([8da48c3](https://github.com/texyaz/yaz/commit/8da48c3dd41d94fdf1c485ffa21d4c4d154f73ad))
+* **editor:** find a nested \input from the main file's folder ([414580a](https://github.com/texyaz/yaz/commit/414580a3c6956b8bca71e50e600f14bf719b4206))
+* **editor:** give the paragraph tests a file of their own ([91a5480](https://github.com/texyaz/yaz/commit/91a54801d388a442c2f8d6228540fd18c07678cc))
+* **editor:** keep a quotation mark with its word and spaces off line starts ([e9d10e4](https://github.com/texyaz/yaz/commit/e9d10e428efd2626c3edf10d1e2d737fa8764933))
+* **editor:** keep headings dark on white paper under a dark theme ([a83f739](https://github.com/texyaz/yaz/commit/a83f73976007843ec38c09aa65dab0bc6903d467))
+* **editor:** keep the caret, the selection and paragraphs where the reader sees them ([8f0c288](https://github.com/texyaz/yaz/commit/8f0c288a88762940d069fd7038ae2a9d99a63853))
+* **editor:** keep the caret, the selection and paragraphs where the reader sees them ([3d51734](https://github.com/texyaz/yaz/commit/3d51734bf5f4491198d5f33e0e02537221fea4f2))
+* **editor:** load a joined document while the preview is on ([0d1ddf3](https://github.com/texyaz/yaz/commit/0d1ddf343118dc628033f502312d4f8034a66793))
+* **editor:** stop treating a newly loaded document as an edit ([f659706](https://github.com/texyaz/yaz/commit/f659706c249ab333683a5a6eb0dda83de9aeb7e8))
+* **plugin:** keep each browser tab's project open for plugins ([d3db28c](https://github.com/texyaz/yaz/commit/d3db28c8ec84ad0e7cdfbb06861d32da619418e9))
+* **ui:** do not report a missing keychain when a project opens ([f53fb29](https://github.com/texyaz/yaz/commit/f53fb29cdb3a780640135f5c240620f2df3242fa))
+* **ui:** keep the account control off the edge of the web window ([b71d5b3](https://github.com/texyaz/yaz/commit/b71d5b31ad65866220261a05760231a7318eb871))
+* **ui:** say that the first compile fetches the TeX files and takes a while ([1ca4b20](https://github.com/texyaz/yaz/commit/1ca4b202c5bad158138df71e239759704d07792d))
+* **ui:** say what went wrong instead of [object Object] ([cae9ec9](https://github.com/texyaz/yaz/commit/cae9ec9757e65228eeb81b7609136150497c4f55))
+* **ui:** show the build a project already has, and follow clicks in it ([4389898](https://github.com/texyaz/yaz/commit/4389898d0434708a9c3afb727d6c09b4a5be710b))
+
 ## [0.3.0](https://github.com/texyaz/yaz/compare/yaz-v0.2.0...yaz-v0.3.0) (2026-09-07)
 
 
