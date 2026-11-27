@@ -655,7 +655,6 @@ collab-state-reconnecting = Verbindung wird wiederhergestellt …
 collab-state-unavailable = Nicht geteilt
 collab-state-restarted = Der Server wurde neu gestartet
 collab-state-incompatible = Seite neu laden
-collab-joined-off = Mehrere Dateien als ein Dokument zu bearbeiten ist aus, solange das Projekt geteilt ist. Jede Datei wird einzeln bearbeitet.
 collab-read-only = { $file } ist nicht geteilt und kann hier gelesen, aber nicht bearbeitet werden.
 collab-drifted = Was auf dem Bildschirm steht, passt nicht mehr zum gemeinsamen Text, Änderungen werden nicht gesendet. Bitte die Seite neu laden.
 collab-session-failed = Die gemeinsame Sitzung konnte nicht gestartet werden, der Text kann nur gelesen werden: { $reason }

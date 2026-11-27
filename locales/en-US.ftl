@@ -658,7 +658,6 @@ collab-state-reconnecting = Reconnecting…
 collab-state-unavailable = Not shared
 collab-state-restarted = The server started again
 collab-state-incompatible = Reload this page
-collab-joined-off = Editing several files as one document is off while the project is shared. Each file is edited by itself.
 collab-read-only = { $file } is not shared, so it can be read here but not edited.
 collab-drifted = What is on screen no longer matches the shared text, so edits are not being sent. Reload the page to continue.
 collab-session-failed = The shared session could not start, so the text can be read but not edited: { $reason }

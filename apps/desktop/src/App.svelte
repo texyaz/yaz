@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { untrack } from "svelte";
+  import { tick, untrack } from "svelte";
   import { INSERTIONS, prepareAt } from "./lib/editor/insert";
   import { open } from "@tauri-apps/plugin-dialog";
   import type { Extension } from "@codemirror/state";
@@ -41,8 +41,10 @@
   import { LINE_NUMBERING } from "./lib/editor/lineNumbers";
   import {
     applyToFiles,
+    fileToBuffer,
     filesIn,
     hasIncludes,
+    locate,
     mapChanges,
     mapSegments,
     resolveInclude,
@@ -500,14 +502,17 @@
    */
   const editorDocId = $derived(
     joined && project
-      ? `joined:${project.root}:${project.entry}`
+      ? `joined:${project.root}:${project.entry}${sessionGeneration > 0 ? `#${sessionGeneration}` : ""}`
       : `${project?.root ?? ""}:${currentFile ?? ""}${sessionGeneration > 0 ? `#${sessionGeneration}` : ""}`,
   );
 
-  /** The shared file the buffer is, if it is one. */
+  /**
+   * The shared file the buffer is, if it is one. Joined it is none: the buffer
+   * is several, and the segment map says which.
+   */
   const boundFile = $derived.by(() => {
     void sessionFiles;
-    return sessionState !== null && session && currentFile && session.has(currentFile)
+    return !joined && sessionState !== null && session && currentFile && session.has(currentFile)
       ? currentFile
       : null;
   });
@@ -519,7 +524,7 @@
    */
   const editorReadOnly = $derived(
     sessionState !== null &&
-      (boundFile === null ||
+      ((!joined && boundFile === null) ||
         sessionDrifted ||
         sessionState === "starting" ||
         sessionState === "unavailable" ||
@@ -4629,14 +4634,7 @@ ${entryText}`,
       // the list of its parts. Where a document *is* one file this changes
       // nothing, which is why the condition is the document's and not a
       // setting. Amends ADR-0020, which had this off for everyone.
-      if (hasIncludes(docText)) {
-        // Not in a shared session: the joined buffer is several files with
-        // gaps in it, and the binding does not yet follow another person's
-        // edit through one. Said, because a mode that is silently off is a
-        // mode nobody trusts.
-        if (session) showNotice(t("collab-joined-off"));
-        else await join();
-      }
+      if (hasIncludes(docText)) await join();
   }
 
   /**
@@ -4684,6 +4682,11 @@ ${entryText}`,
           sessionDrifted = true;
           failure = t("collab-drifted");
         },
+        // Somebody else's edit moved the map; the editor's copy is the one
+        // that knows which file it was in.
+        segments: (map) => {
+          if (joined) liveSegments = map;
+        },
       }),
       remoteCarets(opened, () => t("collab-someone")),
     ];
@@ -4707,6 +4710,10 @@ ${entryText}`,
 
   /** The shared text of the open file replaced what is in the buffer. */
   function rebuildFromSession() {
+    if (session && joined) {
+      restitchFromSession();
+      return;
+    }
     if (!session || !currentFile) return;
     const text = session.text(currentFile);
     if (text === null) return;
@@ -4730,7 +4737,8 @@ ${entryText}`,
     if (!open) return;
     await startSession(open.root);
     sessionGeneration += 1;
-    if (currentFile) await openFile(currentFile);
+    if (joined) stitchFromSession();
+    else if (currentFile) await openFile(currentFile);
   }
 
   /** What the host did to the folder behind the pages' backs, said in a sentence. */
@@ -4797,7 +4805,16 @@ ${entryText}`,
   async function join() {
     if (!project) return;
     if (session) {
-      showNotice(t("collab-joined-off"));
+      // The shared texts are the document; there is nothing to save or read.
+      const result = stitchFromSession();
+      if (result) {
+        const count = filesIn(result.segments).length;
+        showNotice(
+          result.missing.length > 0
+            ? t("joined-missing", { count, missing: result.missing.join(", ") })
+            : t("joined-entered", { count }),
+        );
+      }
       return;
     }
     // Whatever is in the single-file buffer goes to disk first: the join reads
@@ -4824,9 +4841,49 @@ ${entryText}`,
     );
   }
 
+  /**
+   * Build the joined buffer from the session's texts (ADR-0035).
+   *
+   * Nothing is kept beside the buffer: every edit goes to the shared text of
+   * the file it is in as it is made, and the host writes the folder.
+   */
+  function stitchFromSession() {
+    const shared = session;
+    if (!project || !shared) return null;
+    const result = stitch(project.entry, (path) => shared.text(path));
+    if (result.segments.length === 0) return null;
+    joinedFiles = new Map();
+    joinedSegments = result.segments;
+    liveSegments = result.segments;
+    joinedMissing = result.missing;
+    joinedDirty = new Set();
+    docText = result.text;
+    dirty = false;
+    joined = true;
+    return result;
+  }
+
+  /**
+   * Somebody changed which files the document is made of, or a command the
+   * buffer had replaced by its file. Built again, with the caret put back in
+   * the text it was in.
+   */
+  function restitchFromSession() {
+    const at = liveSegments ? locate(liveSegments, cursor) : null;
+    const result = stitchFromSession();
+    if (!result) return;
+    sessionGeneration += 1;
+    const back = at ? fileToBuffer(result.segments, at.file, at.offset) : null;
+    if (back !== null) {
+      void tick().then(() => editorApi?.revealRange(back, back));
+    }
+  }
+
   /** Go back to editing one file at a time. */
   async function unjoin() {
-    await save();
+    // In a session the texts are already everybody's; out of one, the files
+    // are written first.
+    if (!session) await save();
     joined = false;
     joinedSegments = null;
     liveSegments = null;
@@ -5142,7 +5199,9 @@ ${entryText}`,
           docText = text;
           // In a session nothing waits for a save: the host has the text.
           dirty = session === null;
-          if (joined) recordJoinedChanges(changes);
+          // Joined in a session, each edit is already in its file's shared
+          // text, and the editor says where the map is.
+          if (joined && !session) recordJoinedChanges(changes);
         }}
         onSave={save}
         rich={showRich && previewable}
