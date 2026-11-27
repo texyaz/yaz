@@ -120,8 +120,8 @@ with a menu to sign out.
 
 Reaching this port is equivalent to a shell as the user running it. Without
 sign-in there is no authentication: listen only where you alone can reach.
-With sign-in, everybody named with --allow has that shell and shares the one
-open project.";
+With sign-in, everybody named with --allow has that shell and can open any
+folder the user running this can read.";
 
 impl Options {
     fn parse(mut arguments: impl Iterator<Item = String>) -> anyhow::Result<Self> {

@@ -114,12 +114,15 @@ pub struct Broker {
     /// Capabilities the user has granted, which is the intersection of what the
     /// manifest declared and what the user approved.
     pub granted: Vec<Capability>,
-    /// The open project root, canonicalised at construction.
+    /// The open project roots, canonicalised at construction.
     ///
-    /// `None` when no project is open, in which case [`Capability::FsProject`]
+    /// One on the desktop. A host that several windows share has one per
+    /// window, and [`Capability::FsProject`] reaches each of them.
+    ///
+    /// Empty when no project is open, in which case [`Capability::FsProject`]
     /// grants nothing — a capability scoped to a root that does not exist must
     /// not degrade into a capability scoped to everything.
-    project_root: Option<Utf8PathBuf>,
+    project_roots: Vec<Utf8PathBuf>,
     /// Refusals, most recent last.
     denials: Mutex<Vec<DenialRecord>>,
 }
@@ -136,10 +139,26 @@ impl Broker {
         granted: Vec<Capability>,
         project_root: Option<&Utf8Path>,
     ) -> Self {
+        let roots: Vec<&Utf8Path> = project_root.into_iter().collect();
+        Self::for_projects(plugin_id, granted, &roots)
+    }
+
+    /// Build a broker for a plugin that serves several open projects.
+    ///
+    /// For a host more than one person has a project open in. A root that does
+    /// not exist (any more) is left out, as it is for [`Broker::new`].
+    pub fn for_projects(
+        plugin_id: impl Into<String>,
+        granted: Vec<Capability>,
+        project_roots: &[&Utf8Path],
+    ) -> Self {
         Self {
             plugin_id: plugin_id.into(),
             granted,
-            project_root: project_root.and_then(canonicalise_existing),
+            project_roots: project_roots
+                .iter()
+                .filter_map(|root| canonicalise_existing(root))
+                .collect(),
             denials: Mutex::new(Vec::new()),
         }
     }
@@ -235,12 +254,13 @@ impl Broker {
         };
 
         // The project root first: it is the common case and the cheapest.
-        if self.granted.contains(&Capability::FsProject) {
-            if let Some(root) = &self.project_root {
-                if resolved.starts_with(root) {
-                    return Ok(());
-                }
-            }
+        if self.granted.contains(&Capability::FsProject)
+            && self
+                .project_roots
+                .iter()
+                .any(|root| resolved.starts_with(root))
+        {
+            return Ok(());
         }
 
         let mut declared_any = self.granted.contains(&Capability::FsProject);
@@ -540,6 +560,32 @@ mod tests {
             broker.authorise(&Request::FsRead(&link.join("secret.txt"))),
             Err(Denied::OutOfScope),
             "symlinks must be followed before the containment check"
+        );
+    }
+
+    #[test]
+    fn fs_project_reaches_every_open_project_and_nothing_beside_them() {
+        let first = tempfile::tempdir().unwrap();
+        let second = tempfile::tempdir().unwrap();
+        let stray = tempfile::tempdir().unwrap();
+        let (first, second, stray) = (utf8(first.path()), utf8(second.path()), utf8(stray.path()));
+
+        let broker = Broker::for_projects(
+            "com.example.test",
+            vec![Capability::FsProject],
+            &[first.as_path(), second.as_path()],
+        );
+        assert_eq!(
+            broker.authorise(&Request::FsWrite(&first.join("a.bib"))),
+            Ok(())
+        );
+        assert_eq!(
+            broker.authorise(&Request::FsWrite(&second.join("b.bib"))),
+            Ok(())
+        );
+        assert_eq!(
+            broker.authorise(&Request::FsWrite(&stray.join("c.bib"))),
+            Err(Denied::OutOfScope)
         );
     }
 

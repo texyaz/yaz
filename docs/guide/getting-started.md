@@ -158,9 +158,11 @@ loads itself) or your initials, and under it a menu with your name, your
 e-mail address and **Sign out**. A server started without sign-in shows
 neither.
 
-Everybody you let in works in the same open project, and can do on that
-machine what the user running the server can. Sign-in decides who gets in, not
-what they see: for a project some of them must not read, run a second server
+Everybody you let in can open any folder on that machine the user running the
+server can read, and do there what that user can. Each browser tab has its own
+project open, but yaz has no notion of whose project is whose, and the
+preferences and the recently opened list are shared. Sign-in decides who gets
+in, not what they see: for a project some of them must not read, run a second server
 as a user that cannot read it.
 
 Folders are on the machine yaz runs on, so "Open" asks you to type the path.
@@ -171,6 +173,6 @@ opens the folder `/work/paper` on the server (the path as the server sees it,
 URL-encoded) instead of the one the tab had. The page takes the parameter out
 of the address once it has tried, so reloading does not return to it. If the
 folder cannot be opened you see the usual message and the page starts as it
-would have without the link. Following such a link changes the open project
-for everybody who shares the server
+would have without the link. Following such a link changes the project of that
+tab only
 ([ADR-0034](../adr/0034-a-web-address-can-name-the-project)).

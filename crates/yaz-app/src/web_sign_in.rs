@@ -20,8 +20,9 @@
 //! can reach.
 //!
 //! This decides who may reach the server. It does not divide the server
-//! between them: everybody who is let in shares the one open project and has
-//! what amounts to a shell as the user the server runs as. Whoever starts it
+//! between them: everybody who is let in has what amounts to a shell as the
+//! user the server runs as, can open any folder that user can read, and shares
+//! the server's preferences and plugin host. Whoever starts it
 //! must still run it where that is acceptable.
 //!
 //! [ADR-0030]: https://github.com/texyaz/yaz/blob/main/docs/adr/0030-a-web-server-hosts-the-same-commands.md

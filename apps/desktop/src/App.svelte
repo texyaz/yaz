@@ -4332,6 +4332,7 @@ ${entryText}`,
   }
 
   function closeProject() {
+    const closing = project?.root ?? null;
     project = null;
     rememberProject(null);
     currentFile = null;
@@ -4346,7 +4347,7 @@ ${entryText}`,
     pdfData = null;
     pdfFile = null;
     build = null;
-    void ipc.pluginSetProject(null);
+    void ipc.pluginSetProject(null, closing);
   }
 
   /**
@@ -4531,12 +4532,13 @@ ${entryText}`,
       joinedDirty = new Set();
       joinedMissing = [];
 
+      const previous = project?.root ?? null;
       project = info;
       rememberProject(info.root);
       // Filesystem capabilities are scoped to the open project, so the brokers
       // have to be told. Without this a plugin keeps writing into whichever
       // project was open when it loaded.
-      await ipc.pluginSetProject(info.root);
+      await ipc.pluginSetProject(info.root, previous);
       result = null;
       pdfData = null;
       pdfFile = null;

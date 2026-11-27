@@ -675,9 +675,17 @@ export function pluginList(): Promise<CorePlugin[]> {
   return invoke<CorePlugin[]>("plugin_list");
 }
 
-/** Rescope plugin filesystem capabilities to the open project. */
-export function pluginSetProject(root: string | null): Promise<void> {
-  return invoke<void>("plugin_set_project", { root });
+/**
+ * Rescope plugin filesystem capabilities to the open project.
+ *
+ * `previous` is the project this window had open, which is the only one given
+ * up: another window on the same server may have a different one open.
+ */
+export function pluginSetProject(
+  root: string | null,
+  previous: string | null,
+): Promise<void> {
+  return invoke<void>("plugin_set_project", { root, previous });
 }
 
 /**
