@@ -227,7 +227,9 @@ async fn install_core_tools<R: tauri::Runtime>(state: &McpState, app: &tauri::Ap
             let handle = handle.clone();
             Box::pin(async move {
                 let root = open_root(&handle)?;
-                let outcome = commands::compile_project(root).map_err(describe)?;
+                let locks = handle.state::<yaz_core::project::FolderLocks>();
+                let outcome =
+                    commands::compile(&locks, root, &commands::build_engine).map_err(describe)?;
                 serde_json::to_value(outcome).map_err(|error| error.to_string())
             })
         }),

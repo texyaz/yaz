@@ -94,6 +94,9 @@ pub fn install<R: tauri::Runtime>(
 ) -> tauri::Builder<R> {
     builder
         .manage(clock)
+        // One lock per project folder, taken by a compile and by recording or
+        // restoring a version.
+        .manage(yaz_core::project::FolderLocks::default())
         .manage(plugin_host::PluginHost::new())
         // Off until asked: the server is not started here, only made
         // available to the command that starts it (ADR-0022).
