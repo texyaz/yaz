@@ -152,10 +152,23 @@ pub fn kept_copy(root: &Utf8Path, path: &SharedPath, now: SystemTime) -> Result<
 
 /// `yyyymmdd-hhmmss` in UTC.
 fn timestamp(now: SystemTime) -> String {
+    let [year, month, day, hour, minute, second] = civil(now);
+    format!("{year:04}{month:02}{day:02}-{hour:02}{minute:02}{second:02}")
+}
+
+/// The time as RFC 3339, in UTC and to the second.
+#[must_use]
+pub fn rfc3339(now: SystemTime) -> String {
+    let [year, month, day, hour, minute, second] = civil(now);
+    format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}Z")
+}
+
+/// Year, month, day, hour, minute and second of a time, in UTC.
+fn civil(now: SystemTime) -> [i64; 6] {
     let seconds = now
         .duration_since(SystemTime::UNIX_EPOCH)
         .map_or(0, |elapsed| elapsed.as_secs());
-    let (days, rest) = (seconds / 86_400, seconds % 86_400);
+    let (days, rest) = (seconds / 86_400, (seconds % 86_400) as i64);
     // Days since 1970-01-01 to a calendar date (Hinnant's civil_from_days).
     let z = days as i64 + 719_468;
     let era = z.div_euclid(146_097);
@@ -171,12 +184,7 @@ fn timestamp(now: SystemTime) -> String {
         month_index - 9
     };
     let year = year_of_era + era * 400 + i64::from(month <= 2);
-    format!(
-        "{year:04}{month:02}{day:02}-{:02}{:02}{:02}",
-        rest / 3_600,
-        rest % 3_600 / 60,
-        rest % 60
-    )
+    [year, month, day, rest / 3_600, rest % 3_600 / 60, rest % 60]
 }
 
 /// Every shared file in the folder, in a stable order. Symlinks are not
@@ -347,6 +355,12 @@ mod tests {
         std::fs::write(root.join(first.as_str()), "x").unwrap();
         let second = kept_copy(&root, &path("chapters/one.tex"), when).unwrap();
         assert_eq!(second.as_str(), "chapters/one.kept-20261127-101500-2.tex");
+    }
+
+    #[test]
+    fn a_time_is_written_as_rfc_3339() {
+        let when = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_709_251_199);
+        assert_eq!(rfc3339(when), "2024-02-29T23:59:59Z");
     }
 
     #[test]

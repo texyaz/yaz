@@ -211,6 +211,12 @@ writing the same text, and each sees the other's caret where that text is. If
 somebody edits an `\include` line that your joined view shows as the chapter it
 names, the view is put together again with your caret where it was.
 
+The file list shows a dot in each person's colour on the file they are in, and
+a click on somebody's picture in the title bar takes you to their caret. When
+somebody compiles, everybody else is told and shown the new PDF; the folder is
+one, so the PDF is too. A tab that holds typing the server has not yet received
+asks before it is closed.
+
 Another program may write into the folder meanwhile. A file it changes while
 nobody is typing in it appears in every editor within a couple of seconds. If
 somebody was typing in it, the folder's version wins and what they had is kept

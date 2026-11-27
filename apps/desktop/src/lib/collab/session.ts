@@ -82,6 +82,8 @@ export class Session {
   unsent = false;
   /** Called with what happened to the folder behind the session's back. */
   onFolder: ((report: FolderReport) => void) | null = null;
+  /** Called when somebody's compile of the project finished. */
+  onCompiled: ((succeeded: boolean) => void) | null = null;
 
   private link: Link | null = null;
   private epoch: string | null = null;
@@ -157,6 +159,28 @@ export class Session {
   /** A shared file's text, or `null` when it is not in the session. */
   text(path: string): string | null {
     return this.files.get(path)?.toString() ?? null;
+  }
+
+  /** Where somebody's caret is: the file, and the offset in its text. */
+  caretOf(clientId: number): { file: string; index: number } | null {
+    const state = this.awareness.getStates().get(clientId) as
+      { file?: unknown; cursor?: { head?: unknown } | null } | undefined;
+    const file = state?.file;
+    const head = state?.cursor?.head;
+    const text = typeof file === "string" ? this.files.get(file) : undefined;
+    if (typeof file !== "string" || !text) return null;
+    if (typeof head !== "object" || head === null) return null;
+    try {
+      const absolute = Y.createAbsolutePositionFromRelativePosition(
+        Y.createRelativePositionFromJSON(head),
+        this.doc,
+      );
+      return absolute && absolute.type === text
+        ? { file, index: absolute.index }
+        : null;
+    } catch {
+      return null;
+    }
   }
 
   /** Be told when the state, the peers or the files change. */
@@ -361,8 +385,11 @@ export class Session {
       case "folder":
         this.onFolder?.(message as unknown as FolderReport);
         break;
+      case "compiled":
+        this.onCompiled?.(message.succeeded === true);
+        break;
       default:
-        // `upstream` and `compiled` are for the interface of a later step.
+        // `upstream` is for the interface of a later step.
         break;
     }
   }

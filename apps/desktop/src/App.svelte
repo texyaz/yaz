@@ -482,6 +482,8 @@
   let sessionPeers = $state<Peer[]>([]);
   /** Bumped when the set of shared files may have changed. */
   let sessionFiles = $state(0);
+  /** When this page's own compile last finished, to tell it from another's. */
+  let ownCompileAt = 0;
   /** Set when the buffer and the shared text disagree: nothing more is sent. */
   let sessionDrifted = $state(false);
   /** Bumped to build the buffer again from the shared text. */
@@ -531,6 +533,28 @@
         sessionState === "incompatible" ||
         sessionState === "restarted"),
   );
+
+  /** Who else is in which file, as the file list draws it. */
+  const filePresence = $derived.by(() => {
+    const byFile = new Map<string, { colour: number; name: string }[]>();
+    for (const peer of sessionPeers) {
+      if (!peer.file) continue;
+      byFile.set(peer.file, [
+        ...(byFile.get(peer.file) ?? []),
+        { colour: peer.colour + 1, name: peer.user.name || t("collab-someone") },
+      ]);
+    }
+    return byFile;
+  });
+
+  // Typing the host has not been sent is in this tab and nowhere else:
+  // closing it is asked about (ADR-0035).
+  $effect(() => {
+    if (!sessionUnsent) return;
+    const ask = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener("beforeunload", ask);
+    return () => window.removeEventListener("beforeunload", ask);
+  });
 
   /** The session as the title bar draws it. */
   const collabBar = $derived<CollabBar | null>(
@@ -4675,6 +4699,7 @@ ${entryText}`,
       if (opened.state === "restarted") void sessionRestarted(opened);
     });
     opened.onFolder = (report) => void folderChanged(report);
+    opened.onCompiled = (succeeded) => void othersCompiled(succeeded);
     collabExtension = [
       collabBinding(opened, {
         restitch: rebuildFromSession,
@@ -4739,6 +4764,49 @@ ${entryText}`,
     sessionGeneration += 1;
     if (joined) stitchFromSession();
     else if (currentFile) await openFile(currentFile);
+  }
+
+  /**
+   * Somebody in the session compiled. The folder is everybody's, so the PDF
+   * they got is the one this page can show; it is shown, and said.
+   */
+  async function othersCompiled(succeeded: boolean) {
+    // One's own compile is announced too, and shows its own result.
+    if (busy || Date.now() - ownCompileAt < 3000) return;
+    const root = project?.root;
+    if (!root) return;
+    if (!succeeded) {
+      showNotice(t("collab-compiled-failed"));
+      return;
+    }
+    try {
+      const found = await ipc.existingBuild(root);
+      if (!found) return;
+      const bytes = await ipc.readArtefact(found.pdfPath);
+      if (project?.root !== root || busy) return;
+      result = null;
+      pdfData = bytes;
+      pdfFile = null;
+      build = found;
+      showNotice(t("collab-compiled"));
+    } catch {
+      // The PDF on screen stays; the next compile brings a new one.
+    }
+  }
+
+  /** Go to where somebody else's caret is. */
+  async function goToPerson(index: number) {
+    const peer = sessionPeers[index];
+    if (!session || !peer?.file) return;
+    const at = session.caretOf(peer.clientId);
+    await openFile(peer.file);
+    if (!at || at.file !== peer.file) return;
+    await tick();
+    await tick();
+    const offset = joined
+      ? fileToBuffer(liveSegments ?? [], at.file, at.index)
+      : at.index;
+    if (offset !== null) editorApi?.revealRange(offset, offset);
   }
 
   /** What the host did to the folder behind the pages' backs, said in a sentence. */
@@ -5157,6 +5225,7 @@ ${entryText}`,
       // somebody's typing the folder has not got would show text nobody sees.
       if (!(await save())) return;
       const outcome = await ipc.compile(project.root);
+      ownCompileAt = Date.now();
       result = outcome;
       // The compile says where its output is; what was there before is gone.
       build = null;
@@ -5263,6 +5332,7 @@ ${entryText}`,
         ontoggle={toggleFolder}
         onopen={openFile}
         oncontext={(node, x, y) => (fileMenu = { node, x, y })}
+        presence={filePresence}
       />
     {/if}
   {:else if tab === "pdf"}
@@ -5420,6 +5490,7 @@ ${entryText}`,
     bind:this={titleBar}
     title={windowTitle}
     collab={collabBar}
+    onperson={(index) => void goToPerson(index)}
     {dirty}
     canSave={Boolean(currentFile)}
     onsave={save}
