@@ -49,6 +49,7 @@
   import { listingTabs } from "./editor/listingLink";
   import type { ListingKind } from "./editor/generated";
   import { changesIn, setSegments, stitched } from "./editor/stitched";
+  import { boundFile as boundFileField, setBoundFile } from "./collab/binding";
   import type { Change, Segment } from "./editor/stitch";
   import { includeLinks } from "./editor/includeLinks";
   import { dropTakers, pluginDrops } from "./editor/dropped";
@@ -236,6 +237,22 @@
      */
     segments?: Segment[] | null;
     /**
+     * The binding to a collaboration session, and the others' carets: one
+     * extension that is put in when a session is on and taken out when it is
+     * not ([ADR-0035](https://generalpawz.github.io/yaz/adr/0035-whoever-owns-the-folder-hosts-the-session)).
+     * Reconfigured in place, so a session that starts or ends does not rebuild
+     * the view and lose the caret.
+     */
+    collab?: Extension | null;
+    /**
+     * Which shared file the buffer is, while a session is on. Sent with the
+     * document it describes, in one transaction, so that the swap of a
+     * document is never mistaken for typing.
+     */
+    boundFile?: string | null;
+    /** Show the text and take no edit: a file the session does not share. */
+    readOnly?: boolean;
+    /**
      * An edit was refused because it spanned a seam.
      *
      * Nothing happened to the document, so this is the only sign the keystroke
@@ -380,6 +397,9 @@
     justified = true,
     shortcuts,
     segments = null,
+    collab = null,
+    boundFile = null,
+    readOnly = false,
     resolveImage,
     listings = [],
     onOpenListing,
@@ -666,6 +686,8 @@
   const documentSwap = Annotation.define<boolean>();
 
   const vimCompartment = new Compartment();
+  const collabCompartment = new Compartment();
+  const readOnlyCompartment = new Compartment();
   const numberCompartment = new Compartment();
   const keyCompartment = new Compartment();
   const wrapCompartment = new Compartment();
@@ -742,6 +764,13 @@
     { tag: tags.invalid, color: "var(--yaz-syntax-error)" },
   ]);
 
+  /** No edit at all, from the keyboard or from a command. */
+  function readOnlyExtension(on: boolean): Extension {
+    return on
+      ? [EditorState.readOnly.of(true), EditorView.editable.of(false)]
+      : [];
+  }
+
   function baseExtensions() {
     return [
       // The line-number gutter is not here: it lives in a compartment, so that
@@ -778,6 +807,11 @@
       // StreamLanguage does not give us one (ADR-0004).
       languageCompartment.of([]),
       formatPreviewCompartment.of([]),
+      // Which shared file this is. Always present, so that the effect that
+      // names it is understood whether or not a session has been bound yet.
+      boundFileField,
+      collabCompartment.of(untrack(() => collab) ?? []),
+      readOnlyCompartment.of(readOnlyExtension(untrack(() => readOnly))),
       // Rich text is decorations over this same buffer, never a second
       // document (ADR-0004).
       richText(),
@@ -931,6 +965,7 @@
       const effects = [];
       if (rich) effects.push(setRichText.of(true));
       if (segments) effects.push(setSegments.of([...segments]));
+      if (boundFile !== null) effects.push(setBoundFile.of(boundFile));
       if (effects.length > 0) instance.dispatch({ effects });
     });
 
@@ -970,10 +1005,35 @@
             annotations: documentSwap.of(true),
           }
         : {}),
-      effects: setSegments.of(nextSegments ? [...nextSegments] : []),
+      effects: [
+        setSegments.of(nextSegments ? [...nextSegments] : []),
+        // With the document it names, in this one transaction.
+        ...(newDocument ? [setBoundFile.of(boundFile)] : []),
+      ],
     });
     loadedDocId = docId;
     loadedSegments = nextSegments;
+  });
+
+  // A session starting or ending changes the extension, not the view. The file
+  // is named again afterwards, because a binding that has just been put in
+  // looks at the name the state already holds.
+  $effect(() => {
+    const next = collab;
+    untrack(() => {
+      view?.dispatch({
+        effects: [
+          collabCompartment.reconfigure(next ?? []),
+          setBoundFile.of(boundFile),
+        ],
+      });
+    });
+  });
+
+  $effect(() => {
+    view?.dispatch({
+      effects: readOnlyCompartment.reconfigure(readOnlyExtension(readOnly)),
+    });
   });
 
   $effect(() => {

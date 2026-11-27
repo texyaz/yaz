@@ -51,7 +51,7 @@ impl SystemEngine {
         let binary = Utf8PathBuf::from(&engine);
         Self {
             engine,
-            build_dir: Utf8PathBuf::from("build"),
+            build_dir: Utf8PathBuf::from(crate::engine::BUILD_DIR),
             binary,
             latexmk_binary: Utf8PathBuf::from("latexmk"),
         }
@@ -83,7 +83,7 @@ impl SystemEngine {
 
         Self {
             engine,
-            build_dir: Utf8PathBuf::from("build"),
+            build_dir: Utf8PathBuf::from(crate::engine::BUILD_DIR),
             binary,
             latexmk_binary,
         }
