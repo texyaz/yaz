@@ -4987,6 +4987,7 @@ ${entryText}`,
       data={pdfData}
       name={pdfFile}
       stale={pdfFile === null && build?.stale === true}
+      compiling={busy}
       onclickpoint={pdfFile === null ? jumpToSource : undefined}
       onpages={(n) => (pdfPages = n)}
     />
@@ -5276,7 +5277,9 @@ ${entryText}`,
   {#if !compact}
     <StatusBar
       compileMessage={failure ??
-        (result
+        (busy
+          ? t("compile-running-note")
+          : result
           ? result.succeeded
             ? t("compile-succeeded", { seconds: (result.elapsedMs / 1000).toFixed(1) })
             : t("compile-failed")

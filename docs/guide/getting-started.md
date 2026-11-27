@@ -92,6 +92,21 @@ a public interface. A name other than the listen address has to be allowed
 explicitly: `--allow-host my-machine.example.net`.
 :::
 
+::: warning A server needs an engine to compile with
+`pnpm web:build:server` builds `yaz-web` **without** the embedded Tectonic
+engine, as `pnpm app:build` does for the desktop. On a machine with no TeX
+installation every compile then answers that this build does not include
+Tectonic. Either install a TeX distribution on the server, or build with the
+engine:
+
+```bash
+pnpm web:build:server:tectonic
+```
+
+which is the same build with `--features web,tectonic-engine`
+([choosing an engine](engines)).
+:::
+
 To cite from the Zotero on your own computer, forward its port over the same
 private network and tell the server where it is
 ([ADR-0008](../adr/0008-zotero-integration)):
@@ -102,6 +117,20 @@ tailscale serve --bg --tcp 23119 tcp://127.0.0.1:23119
 # on the server
 ./target/release/yaz-web --dist apps/desktop/dist-web --zotero my-laptop:23119
 ```
+
+### The first compile is slow
+
+The embedded engine fetches the TeX files a document needs on first use and
+builds its format from them, into `~/.cache/tectonic` of the user the server
+runs as. On a machine that has never compiled this takes a few minutes, and
+the page says so while it waits; every compile after it is quick, and so is the
+first one of another project that needs the same packages.
+
+To have that done before anybody is waiting, compile once as the user the
+server runs as, with a document that loads what yours do: open a project in
+the server and press **Compile**. The cache is plain files and can be copied to
+another machine of the same architecture. A server without network access
+cannot fetch what it does not have, so warm it where it can.
 
 ### Serving several people
 

@@ -43,6 +43,8 @@
      * to the document, so it may not show what is written now.
      */
     stale?: boolean;
+    /** A compile is running, which is what an empty pane is waiting for. */
+    compiling?: boolean;
     /**
      * A page was clicked.
      *
@@ -55,7 +57,7 @@
     onpages?: ((pages: number) => void) | undefined;
   }
 
-  let { data, name = null, stale = false, onclickpoint, onpages }: Props =
+  let { data, name = null, stale = false, compiling = false, onclickpoint, onpages }: Props =
     $props();
 
   let container: HTMLDivElement;
@@ -168,7 +170,9 @@
   {#if renderError}
     <p class="notice error">{renderError}</p>
   {:else if !data}
-    <p class="notice">{t("pdf-empty")}</p>
+    <p class="notice">
+      {#if compiling}{t("compile-running-note")}{:else}{t("pdf-empty")}{/if}
+    </p>
   {/if}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <!-- svelte-ignore a11y_click_events_have_key_events -->

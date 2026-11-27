@@ -28,6 +28,7 @@ error-fs-io = Something went wrong reading or writing { $path }.
 
 compile-run = Compile
 compile-running = Compiling…
+compile-running-note = Compiling… The first compile on a machine fetches the TeX files it needs, which can take a few minutes.
 compile-succeeded = Compiled in { $seconds }s.
 compile-failed = Compilation failed.
 compile-diagnostics-count = { $count } error(s)

@@ -29,6 +29,7 @@ error-fs-io = Beim Lesen oder Schreiben von { $path } ist etwas schiefgegangen.
 
 compile-run = Übersetzen
 compile-running = Wird übersetzt…
+compile-running-note = Wird übersetzt… Beim ersten Übersetzen auf einem Rechner werden die benötigten TeX-Dateien geladen, das kann einige Minuten dauern.
 compile-succeeded = In { $seconds } s übersetzt.
 compile-failed = Übersetzung fehlgeschlagen.
 compile-diagnostics-count = { $count } Fehler
