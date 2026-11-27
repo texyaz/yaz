@@ -176,3 +176,43 @@ folder cannot be opened you see the usual message and the page starts as it
 would have without the link. Following such a link changes the project of that
 tab only
 ([ADR-0034](../adr/0034-a-web-address-can-name-the-project)).
+
+### Writing together
+
+Several people can write in one project at once. Start the server with
+`--share`:
+
+```sh
+./target/release/yaz-web --dist apps/desktop/dist-web --share
+```
+
+Everybody who opens the same folder (`/?project=…`) is then in one session.
+Each of them sees the others' carets in the text, with a flag that carries the
+name the sign-in gave them (or "Someone" without sign-in) in a colour that is
+the same on every screen, and their avatars in the title bar. Typing at the
+same moment converges: nobody's paragraph is lost to somebody else's save.
+
+The server keeps one copy of the project's text files and writes them into the
+folder a moment after they change, so a compile, Git and an assistant all read
+what the editors show. **Save** brings the folder up to date at once, and
+records a version if version control is on; there is nothing to switch on for
+saving by itself. A compile first asks the server to do the same, and is
+refused, with a message, if that does not work.
+
+What is shared are the text files of a LaTeX project (`.tex`, `.bib`, `.cls`,
+`.sty`, `.md` and a few more) up to 1 MiB each, not those under `build/` or in
+a folder that starts with a dot. A file that is not shared opens read-only
+while the project is shared. Several files joined as one document is off in a
+shared project for now; each file is edited by itself.
+
+Another program may write into the folder meanwhile. A file it changes while
+nobody is typing in it appears in every editor within a couple of seconds. If
+somebody was typing in it, the folder's version wins and what they had is kept
+beside it as `name.kept-<time>.tex`; yaz says so, and the copy is yours to read
+and delete.
+
+Without `--share` nothing changes: each tab saves whole files, and the last
+save wins. A restart of the server ends the session. A page with nothing
+unsent joins the new one by itself; a page with unsent typing says so, keeps
+the text on screen and does not add it to the new session
+([ADR-0035](../adr/0035-whoever-owns-the-folder-hosts-the-session)).
