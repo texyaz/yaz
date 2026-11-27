@@ -52,6 +52,24 @@ serves only the people it was started for.**
   a shell as the server's user. A project some people must not see is served
   by **another server**, started as a user, or in a sandbox, that cannot read
   it.
+- **The page is told who is there, and no more than it shows.** `/auth/me` answers a request that carries a session with
+  `{ "name", "email", "picture" }` as JSON, `email` and `picture` left out
+  when the provider gave none, and is never cached. Without a session it is
+  401; **on a server started without sign-in it is 204**, so that the page can
+  tell "nobody to ask" from "signed in" without an error in the console. The
+  page draws the person in the title bar, with a menu that names them and a
+  link to `/auth/logout`. Nothing else about the person reaches the page, and
+  the server keeps nothing about them beyond the session.
+- **The picture is the provider's standard `picture` claim, kept only if it is
+  an `https://` address, and the browser loads it itself.** The address is
+  read from the userinfo answer or, when that has none, from the payload of
+  the ID token the same request returned (decoded, not verified, for the
+  reason given below). It is not fetched or relayed by the server: in the
+  deployment this is meant for it points at a host the person's browser can
+  reach and the server may not, and a proxy would be one more thing that holds
+  a picture for everybody. The page sets `referrerpolicy="no-referrer"` on the
+  image, so the host learns nothing of where yaz is served, and draws the
+  person's initials when the picture is absent or does not load.
 - Without the options nothing changes: the server authenticates nobody and
   says so.
 
@@ -72,6 +90,18 @@ serves only the people it was started for.**
 - **This invites a mistake**: reading "sign-in" as "accounts". yaz has no
   notion of whose project a project is, and this record does not add one. The
   usage text, the module's documentation and the guide each say so.
+- **No content security policy has to change for the picture.** The web
+  server sets none and the page it serves declares none, so an `<img>` from
+  another `https` origin loads. The policy in `tauri.conf.json`
+  (`img-src 'self' asset: data: blob:`) belongs to the desktop application,
+  which has no sign-in and never shows a picture. Should the web server get a
+  policy of its own, its `img-src` needs `https:`: the origin of a picture is
+  whatever the provider's `picture` claim names, differs from person to
+  person and is known only after the page has asked, so allowing exactly it
+  would mean building the header per request out of data the provider chose,
+  for no more protection than the `https`-only rule on the server already
+  gives. A reverse proxy in front that adds a policy of its own has to allow
+  it too.
 - Sessions live in memory, so two servers behind one address would not share
   them. One project, one server is the deployment this is for.
 
@@ -91,6 +121,13 @@ serves only the people it was started for.**
 - **A shared password or a token in the address.** No provider needed, but a
   secret that is passed around is known to everybody who ever had it, and
   nothing says who used it.
+- **Fetching the picture on the server and serving it from `/auth/picture`.**
+  It would work for a picture only the server can reach, and would let the
+  page use `img-src 'self'`. It lost because the server would then fetch an
+  address a provider chose, with the server's network position, on behalf of
+  whoever signs in: an SSRF to guard against, a cache to bound and a second
+  place that keeps people's pictures, to fix a case the deployment does not
+  have.
 - **Verifying the ID token locally.** Saves the request to the provider and
   costs a JOSE implementation and its key handling, for no gain here: the
   token never passes through anything that could have altered it.

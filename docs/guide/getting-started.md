@@ -123,6 +123,12 @@ Register the client at the provider with `https://yaz.example.org/auth/callback`
 as its redirect address. `--allow` takes e-mail addresses, user names and
 groups.
 
+Once signed in, the title bar shows who you are: your profile picture (the
+provider's `picture` claim, if it is an `https` address, which your browser
+loads itself) or your initials, and under it a menu with your name, your
+e-mail address and **Sign out**. A server started without sign-in shows
+neither.
+
 Everybody you let in works in the same open project, and can do on that
 machine what the user running the server can. Sign-in decides who gets in, not
 what they see: for a project some of them must not read, run a second server

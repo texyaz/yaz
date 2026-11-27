@@ -26,7 +26,17 @@ const webShims = {
   "@tauri-apps/plugin-dialog": fileURLToPath(
     new URL("./src/web/dialog.ts", import.meta.url),
   ),
+  // Who is signed in (ADR-0033). The desktop build resolves this to
+  // `src/lib/account.ts`, which has nobody, and sends no request.
+  "@yaz-host/account": fileURLToPath(
+    new URL("./src/web/account.ts", import.meta.url),
+  ),
 };
+
+/** What the desktop build and the tests resolve `@yaz-host/account` to. */
+const hostAccount = fileURLToPath(
+  new URL("./src/lib/account.ts", import.meta.url),
+);
 
 export default defineConfig(({ mode }) => ({
   plugins: [svelte()],
@@ -46,6 +56,7 @@ export default defineConfig(({ mode }) => ({
      * the list is short enough to read.
      */
     alias: {
+      "@yaz-host/account": hostAccount,
       ...(mode === "web" ? webShims : {}),
       "@yaz/api": fileURLToPath(
         new URL("../../packages/api/src/index.ts", import.meta.url),
@@ -86,7 +97,9 @@ export default defineConfig(({ mode }) => ({
     port: 5173,
     strictPort: true,
     // Only in web mode: the page's commands go to the yaz web server.
-    ...(mode === "web" ? { proxy: { "/api": webServer } } : {}),
+    ...(mode === "web"
+      ? { proxy: { "/api": webServer, "/auth": webServer } }
+      : {}),
     fs: {
       // themes/ and locales/ live at the repo root because both Rust and
       // TypeScript consume them (ADR-0017), so Vite must be allowed to read

@@ -14,12 +14,13 @@
   puts the indicator stalk on the column and the radio in the dashboard: not
   everything belongs in the same place just because it is a control.
 
-  The avatar is a stub and is drawn as one. There is no account, no
-  synchronisation and no sign-in; it holds the space where those would go so
-  that adding them later does not move everything else.
+  The avatar is the account control. Where a web server asks who is there
+  (ADR-0033) it is the person, with the way to sign out; everywhere else it is
+  a stub, drawn as one, that holds the space.
 -->
 <script lang="ts">
   import { getCurrentWindow } from "@tauri-apps/api/window";
+  import Account from "./Account.svelte";
   import { t } from "./i18n";
   import { ICONS } from "./icons";
   import type { MenuItem } from "./MenuBar.svelte";
@@ -411,14 +412,7 @@
     {/if}
   </div>
 
-  <!-- A stub, and drawn as one: there is no account behind it. It holds the
-       space so that adding one later does not move everything else. -->
-  <button type="button" class="avatar" title={t("titlebar-account")} aria-label={t("titlebar-account")}>
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <circle cx="8" cy="6" r="2.6" />
-      <path d="M3 14a5 5 0 0110 0" />
-    </svg>
-  </button>
+  <Account />
 
   <div class="controls">
     <button
@@ -737,32 +731,6 @@
     outline: none;
     inline-size: 10rem;
     padding: 2px 0;
-  }
-
-  .avatar {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    inline-size: 1.875rem;
-    block-size: 1.875rem;
-    padding: 0;
-    background: var(--yaz-bg-secondary);
-    border: 1px solid var(--yaz-border);
-    border-radius: 999px;
-    color: var(--yaz-text-muted);
-    cursor: pointer;
-  }
-
-  .avatar svg {
-    inline-size: 0.9375rem;
-    block-size: 0.9375rem;
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 1.3;
-  }
-
-  .avatar:hover {
-    color: var(--yaz-text-primary);
   }
 
   .controls {

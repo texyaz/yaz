@@ -570,6 +570,8 @@ titlebar-autosave-on = Speichert von selbst
 titlebar-autosave-off = Von selbst speichern
 titlebar-search = Suchen
 titlebar-account = Konto
+account-menu = Konto von { $name }
+account-sign-out = Abmelden
 
 ## Die Statusleiste
 

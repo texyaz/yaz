@@ -31,7 +31,9 @@
 //!
 //! Started with `--oidc-issuer` it asks an identity provider who is there and
 //! serves only the people named with `--allow` ([ADR-0033], [`sign_in`]). That
-//! decides who reaches the server; it does not divide it between them.
+//! decides who reaches the server; it does not divide it between them. The page
+//! asks `GET /auth/me` who is signed in, to say so and to offer to sign out;
+//! without sign-in that answers 204.
 //!
 //! [ADR-0033]: https://github.com/texyaz/yaz/blob/main/docs/adr/0033-the-web-server-can-ask-who-is-there.md
 //! [ADR-0030]: https://github.com/texyaz/yaz/blob/main/docs/adr/0030-a-web-server-hosts-the-same-commands.md
@@ -111,6 +113,10 @@ variable YAZ_WEB_OIDC_SECRET):
     --public-url <URL>    The https address people open this server at.
     --allow <WHO>         Who may sign in: an e-mail address, a user name or a
                           group the provider reports. Repeatable.
+
+The page shows who is signed in (name, e-mail address and, if the provider
+has an https `picture` for them, the picture, which the browser loads itself)
+with a menu to sign out.
 
 Reaching this port is equivalent to a shell as the user running it. Without
 sign-in there is no authentication: listen only where you alone can reach.
@@ -371,16 +377,30 @@ async fn require_session(
     (StatusCode::FOUND, [(header::LOCATION, to)]).into_response()
 }
 
-/// `/auth/login`, `/auth/callback` and `/auth/logout`.
+/// What `/auth/...` answers when the server was started without sign-in.
+///
+/// `/auth/me` is the one step the page asks without knowing whether there is
+/// anybody to ask, so it gets 204 — success, nobody — and not an error the
+/// browser would print to the console. Every other step is 404: there is no
+/// such page.
+fn without_sign_in(step: &str) -> Response {
+    match step {
+        "me" => StatusCode::NO_CONTENT.into_response(),
+        _ => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+/// `/auth/login`, `/auth/callback`, `/auth/logout` and `/auth/me`.
 async fn sign_in_step(
     State(shared): State<Arc<Shared>>,
     Path(step): Path<String>,
     request: Request,
 ) -> Response {
     let Some(sign_in) = &shared.sign_in else {
-        return StatusCode::NOT_FOUND.into_response();
+        return without_sign_in(&step);
     };
     match step.as_str() {
+        "me" => sign_in.me(sign_in::session_of(&request)),
         "login" => {
             let wanted = sign_in::wanted(&request);
             drop(request);
@@ -488,7 +508,9 @@ async fn invoke(
 
 #[cfg(test)]
 mod tests {
-    use super::host_without_port;
+    use axum::http::StatusCode;
+
+    use super::{host_without_port, without_sign_in};
 
     #[test]
     fn a_port_is_not_part_of_the_name() {
@@ -496,5 +518,14 @@ mod tests {
         assert_eq!(host_without_port("100.64.0.1:4173"), "100.64.0.1");
         assert_eq!(host_without_port("localhost"), "localhost");
         assert_eq!(host_without_port("[::1]:4173"), "::1");
+    }
+
+    #[test]
+    fn without_sign_in_only_me_is_answered() {
+        // The page asks who is there before it knows whether anybody could be.
+        assert_eq!(without_sign_in("me").status(), StatusCode::NO_CONTENT);
+        for step in ["login", "callback", "logout", "other"] {
+            assert_eq!(without_sign_in(step).status(), StatusCode::NOT_FOUND);
+        }
     }
 }

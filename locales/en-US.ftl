@@ -573,6 +573,8 @@ titlebar-autosave-on = Saving by itself
 titlebar-autosave-off = Save by itself
 titlebar-search = Search
 titlebar-account = Account
+account-menu = Account of { $name }
+account-sign-out = Sign out
 
 ## The status bar
 
