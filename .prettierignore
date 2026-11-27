@@ -21,3 +21,8 @@ docs/reference/generated/
 # so the two would rewrite it past each other on every install — and a
 # reformatted lockfile is a diff nobody can read for a change nobody made.
 pnpm-lock.yaml
+
+# Written by `scripts/collab-fixtures.mjs` and by a test of yaz-collab, and
+# compared byte for byte: what the two Yjs implementations encode is the point,
+# and a formatter rewriting the manifest beside them would only hide a change.
+crates/yaz-collab/tests/fixtures/

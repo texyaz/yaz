@@ -33,7 +33,11 @@ import { EditorSelection, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { beforeAll, describe, expect, it } from "vitest";
 
+import { boundFile, collabBinding, setBoundFile } from "../collab/binding";
+import { FakeHost } from "../collab/fakeHost";
+import { Session } from "../collab/session";
 import { richText, setRichText } from "./richText";
+import { stitched } from "./stitched";
 
 beforeAll(() => {
   Range.prototype.getBoundingClientRect = () => new DOMRect();
@@ -74,12 +78,25 @@ function paper(sections: number): string {
 }
 
 /** Milliseconds per character typed into the middle of `doc`. */
-function costOfTyping(doc: string): number {
+function costOfTyping(doc: string, shared?: Session): number {
   const view = new EditorView({
-    state: EditorState.create({ doc, extensions: [richText()] }),
+    state: EditorState.create({
+      doc,
+      extensions: [
+        richText(),
+        ...(shared
+          ? [
+              stitched(() => {}),
+              boundFile,
+              collabBinding(shared, { restitch() {}, drift() {} }),
+            ]
+          : []),
+      ],
+    }),
     parent: document.body,
   });
   try {
+    if (shared) view.dispatch({ effects: setBoundFile.of("main.tex") });
     view.dispatch({ effects: setRichText.of(true) });
     view.dispatch({
       selection: EditorSelection.cursor(
@@ -134,5 +151,39 @@ describe("typing with rich text on", () => {
     // Generous, and deliberately so: this measures fifty rebuilds of a
     // hundred-page manuscript, which is slow work by design. The default five
     // seconds is a bound on a unit test, and this is not one.
+  }, 60_000);
+});
+
+describe("typing in a shared session", () => {
+  /** A session whose one file is `doc`, joined to a host that does nothing else. */
+  async function sharing(doc: string): Promise<Session> {
+    const host = new FakeHost();
+    host.seed("main.tex", doc);
+    const session = new Session("/work/paper", null, {
+      openLink: host.openLink,
+      storage: { getItem: () => null, setItem: () => {} },
+    });
+    await session.whenReady(5000);
+    return session;
+  }
+
+  it("costs no more per keystroke as the document grows than it does without one", async () => {
+    // What the binding adds is a Yjs insert and a relative position per
+    // keystroke. Both are meant to be independent of the size of the text; if
+    // one grew with it, the ratio would follow, as it would for the decoration
+    // pass this is measured on top of.
+    const small = paper(40);
+    const large = paper(250);
+    const sizeRatio = large.length / small.length;
+
+    const cheap = costOfTyping(small, await sharing(small));
+    const dear = costOfTyping(large, await sharing(large));
+    const costRatio = dear / cheap;
+
+    console.log(
+      `shared: ${cheap.toFixed(2)} ms and ${dear.toFixed(2)} ms — ` +
+        `${costRatio.toFixed(1)}× the cost for ${sizeRatio.toFixed(1)}× the document`,
+    );
+    expect(costRatio).toBeLessThan(sizeRatio * 2.5);
   }, 60_000);
 });

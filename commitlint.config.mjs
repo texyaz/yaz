@@ -15,6 +15,7 @@ export default {
         "zotero",
         "obsidian",
         "vcs",
+        "collab",
         "app",
         // Frontend and packages
         "ui",

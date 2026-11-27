@@ -20,8 +20,9 @@
 //! can reach.
 //!
 //! This decides who may reach the server. It does not divide the server
-//! between them: everybody who is let in shares the one open project and has
-//! what amounts to a shell as the user the server runs as. Whoever starts it
+//! between them: everybody who is let in has what amounts to a shell as the
+//! user the server runs as, can open any folder that user can read, and shares
+//! the server's preferences and plugin host. Whoever starts it
 //! must still run it where that is acceptable.
 //!
 //! [ADR-0030]: https://github.com/texyaz/yaz/blob/main/docs/adr/0030-a-web-server-hosts-the-same-commands.md
@@ -193,7 +194,7 @@ impl SignIn {
         Self::with_secret(settings, secret)
     }
 
-    fn with_secret(settings: Settings, secret: String) -> anyhow::Result<Self> {
+    pub(super) fn with_secret(settings: Settings, secret: String) -> anyhow::Result<Self> {
         if settings.allow.is_empty() {
             bail!(
                 "--oidc-issuer needs at least one --allow: without it everybody the provider \
@@ -257,6 +258,14 @@ impl SignIn {
         let mut sessions = self.sessions.lock().expect("the sessions are not poisoned");
         sessions.retain(|_, session| session.until > Instant::now());
         sessions.contains_key(&id)
+    }
+
+    /// Whether a session is still good, by its id: for something that outlives
+    /// the request it came in with, such as an open WebSocket.
+    pub fn still_signed_in(&self, id: &str) -> bool {
+        let mut sessions = self.sessions.lock().expect("the sessions are not poisoned");
+        sessions.retain(|_, session| session.until > Instant::now());
+        sessions.contains_key(id)
     }
 
     /// `/auth/login`: note where the person wanted to go, and send them to the provider.
@@ -492,8 +501,17 @@ fn picture_in_id_token(token: &str) -> Option<String> {
 
 /// The value of one of the request's cookies.
 fn cookie(request: &Request, name: &str) -> Option<String> {
-    request
-        .headers()
+    cookie_in(request.headers(), name)
+}
+
+/// The session a request's headers name, if any: for a handler that is given
+/// the headers and not the request, as one that upgrades to a WebSocket is.
+pub fn session_in(headers: &axum::http::HeaderMap) -> Option<String> {
+    cookie_in(headers, SESSION)
+}
+
+fn cookie_in(headers: &axum::http::HeaderMap, name: &str) -> Option<String> {
+    headers
         .get_all(header::COOKIE)
         .iter()
         .filter_map(|value| value.to_str().ok())
@@ -603,7 +621,7 @@ mod tests {
 
     use super::{
         Session, Settings, SignIn, UserInfo, allowed, base64_url, base64_url_decode, https_picture,
-        picture_in_id_token,
+        picture_in_id_token, redirect,
     };
 
     fn person(email: &str, user: &str, groups: &[&str]) -> UserInfo {
@@ -765,6 +783,32 @@ mod tests {
         (status, String::from_utf8(body.to_vec()).expect("text"))
     }
 
+    #[test]
+    fn a_session_is_asked_about_again_by_its_id_and_ends_when_its_time_is_up() {
+        let sign_in = signed_in_with(&[
+            ("good", None, None, Duration::from_secs(3600)),
+            ("brief", None, None, Duration::from_millis(30)),
+        ]);
+        assert!(sign_in.still_signed_in("good"));
+        assert!(sign_in.still_signed_in("brief"));
+        assert!(!sign_in.still_signed_in("nobody"));
+        std::thread::sleep(Duration::from_millis(60));
+        assert!(sign_in.still_signed_in("good"));
+        assert!(!sign_in.still_signed_in("brief"));
+    }
+
+    #[test]
+    fn the_session_is_read_from_headers_as_from_a_request() {
+        let mut headers = axum::http::HeaderMap::new();
+        assert_eq!(super::session_in(&headers), None);
+        headers.insert(
+            header::COOKIE,
+            axum::http::HeaderValue::from_str(&format!("other=1; {}=abc", super::SESSION))
+                .expect("a header"),
+        );
+        assert_eq!(super::session_in(&headers), Some("abc".to_owned()));
+    }
+
     #[tokio::test]
     async fn me_says_who_is_signed_in() {
         let hour = Duration::from_secs(3600);
@@ -806,5 +850,16 @@ mod tests {
             let (status, _) = answer(sign_in.me(session)).await;
             assert_eq!(status, StatusCode::UNAUTHORIZED);
         }
+    }
+
+    #[test]
+    fn coming_back_goes_to_the_link_with_its_query() {
+        // `finish` redirects to what `login` was told, query and all.
+        let response = redirect("/?project=%2Fwork%2Fpaper", &[]);
+        assert_eq!(response.status(), StatusCode::FOUND);
+        assert_eq!(
+            response.headers()[header::LOCATION],
+            "/?project=%2Fwork%2Fpaper"
+        );
     }
 }

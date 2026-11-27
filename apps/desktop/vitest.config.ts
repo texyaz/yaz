@@ -21,6 +21,12 @@ export default defineConfig({
       // imports `src/web/account.ts` by its path.
       "@yaz-host/account": new URL("./src/lib/account.ts", import.meta.url)
         .pathname,
+      "@yaz-host/start": new URL("./src/lib/start.ts", import.meta.url)
+        .pathname,
+      "@yaz-host/collab-link": new URL(
+        "./src/lib/collab/noLink.ts",
+        import.meta.url,
+      ).pathname,
       // The same loan the application makes at build time, for the same
       // reason: a bundled plugin's own directory has no `node_modules`, and a
       // test that exercises the plugin's source has to resolve what the
@@ -48,7 +54,12 @@ export default defineConfig({
     // every `instanceof` check inside CodeMirror starts failing — an extension
     // built against one copy is not an extension as far as the other is
     // concerned. `vite.config.ts` dedupes the same three for the same reason.
-    dedupe: ["@codemirror/state", "@codemirror/view", "@codemirror/language"],
+    dedupe: [
+      "@codemirror/state",
+      "@codemirror/view",
+      "@codemirror/language",
+      "yjs",
+    ],
   },
   test: {
     environment: "jsdom",

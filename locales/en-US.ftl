@@ -28,6 +28,7 @@ error-fs-io = Something went wrong reading or writing { $path }.
 
 compile-run = Compile
 compile-running = Compiling…
+compile-running-note = Compiling… The first compile on a machine fetches the TeX files it needs, which can take a few minutes.
 compile-succeeded = Compiled in { $seconds }s.
 compile-failed = Compilation failed.
 compile-diagnostics-count = { $count } error(s)
@@ -134,6 +135,7 @@ editor-loading = Opening…
 
 pdf-empty = Compile to see your document here.
 pdf-showing = Showing { $file } — not the compiled output
+pdf-stale = Built before your latest changes — compile to bring it up to date.
 
 ## Settings
 
@@ -645,6 +647,31 @@ joined-left = { $file } is not part of the document, so the joined view is off.
 joined-save-failed = { $file } could not be saved: { $error }
 joined-unexpanded = Not shown, could not be read: { $missing }
 joined-drifted = The joined document no longer matches its files, so edits are not being written. Switch the joined view off to go back to one file.
+
+## Shared session: several people in one project (ADR-0035)
+
+collab-someone = Someone
+collab-state-starting = Joining…
+collab-state-ready = Shared
+collab-state-unsent = Shared, changes not sent yet
+collab-state-reconnecting = Reconnecting…
+collab-state-unavailable = Not shared
+collab-state-restarted = The server started again
+collab-state-incompatible = Reload this page
+collab-read-only = { $file } is not shared, so it can be read here but not edited.
+collab-drifted = What is on screen no longer matches the shared text, so edits are not being sent. Reload the page to continue.
+collab-session-failed = The shared session could not start, so the text can be read but not edited: { $reason }
+collab-flush-failed = The folder could not be brought up to date, so nothing was compiled or recorded: { $error }
+collab-restarted = The server started again and lost the shared session. This page holds changes that were not sent, and cannot add them to the new session. Copy what you need and reload the page.
+collab-kept = { $file } was changed in the folder while you were typing in it. The folder's version is now shown; what you had is kept as { $copy }.
+collab-imported = Changed in the folder and taken in: { $files }
+collab-refused = Not shared because it is too large or is not text: { $files }
+collab-compiled = Somebody compiled the document. The new PDF is shown.
+collab-compiled-failed = Somebody compiled the document, and it did not produce a PDF.
+error-collab-not-shared = This server does not share projects. It has to be started with --share.
+error-collab-unavailable = The shared session could not be reached.
+error-collab-schema = The shared document was written by a newer yaz.
+error-collab-flush-timeout = The folder could not be brought up to date in time.
 
 ## Generated lists, drawn from what the document says about itself
 

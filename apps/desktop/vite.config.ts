@@ -31,12 +31,28 @@ const webShims = {
   "@yaz-host/account": fileURLToPath(
     new URL("./src/web/account.ts", import.meta.url),
   ),
+  // The project the address asks for (ADR-0030).
+  "@yaz-host/start": fileURLToPath(
+    new URL("./src/web/start.ts", import.meta.url),
+  ),
+  // The link to the session host (ADR-0035): a WebSocket to this server.
+  "@yaz-host/collab-link": fileURLToPath(
+    new URL("./src/web/collabLink.ts", import.meta.url),
+  ),
 };
 
-/** What the desktop build and the tests resolve `@yaz-host/account` to. */
-const hostAccount = fileURLToPath(
-  new URL("./src/lib/account.ts", import.meta.url),
-);
+/** What the desktop build resolves the `@yaz-host/…` modules to. */
+const hostModules = {
+  "@yaz-host/account": fileURLToPath(
+    new URL("./src/lib/account.ts", import.meta.url),
+  ),
+  "@yaz-host/start": fileURLToPath(
+    new URL("./src/lib/start.ts", import.meta.url),
+  ),
+  "@yaz-host/collab-link": fileURLToPath(
+    new URL("./src/lib/collab/noLink.ts", import.meta.url),
+  ),
+};
 
 export default defineConfig(({ mode }) => ({
   plugins: [svelte()],
@@ -56,7 +72,7 @@ export default defineConfig(({ mode }) => ({
      * the list is short enough to read.
      */
     alias: {
-      "@yaz-host/account": hostAccount,
+      ...hostModules,
       ...(mode === "web" ? webShims : {}),
       "@yaz/api": fileURLToPath(
         new URL("../../packages/api/src/index.ts", import.meta.url),
@@ -87,7 +103,14 @@ export default defineConfig(({ mode }) => ({
     },
     // One copy of the editor's state and view, or a plugin's language and the
     // editor's would be talking to different instances of CodeMirror.
-    dedupe: ["@codemirror/state", "@codemirror/view", "@codemirror/language"],
+    // `yjs` too: two copies of it cannot read each other's types, and the
+    // check for a `Y.Text` is an `instanceof`.
+    dedupe: [
+      "@codemirror/state",
+      "@codemirror/view",
+      "@codemirror/language",
+      "yjs",
+    ],
   },
 
   // Tauri drives this dev server; the port is fixed because tauri.conf.json
@@ -98,7 +121,13 @@ export default defineConfig(({ mode }) => ({
     strictPort: true,
     // Only in web mode: the page's commands go to the yaz web server.
     ...(mode === "web"
-      ? { proxy: { "/api": webServer, "/auth": webServer } }
+      ? {
+          // `ws` for the link to the session host (ADR-0035).
+          proxy: {
+            "/api": { target: webServer, ws: true },
+            "/auth": webServer,
+          },
+        }
       : {}),
     fs: {
       // themes/ and locales/ live at the repo root because both Rust and

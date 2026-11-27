@@ -49,8 +49,11 @@ same handler the desktop application registers.**
   cannot send without a preflight (cross-site requests). Reaching the port is
   equivalent to a shell as the user who started it; it belongs on an address
   only that user can reach, such as a VPN interface or loopback behind SSH.
-- It serves **one user**. The plugin host and the open project are process
-  state, as they are on the desktop; two people on one server share them.
+- It serves **one user**. The plugin host, the preferences and the recent-
+  projects list are process state, as they are on the desktop, and two people
+  on one server share them. **The open project is not**: each command takes
+  the root it works on, and the page holds which one it has open, so two
+  browser tabs keep two projects ([ADR-0034](0034-a-web-address-can-name-the-project)).
 
 ## Consequences
 

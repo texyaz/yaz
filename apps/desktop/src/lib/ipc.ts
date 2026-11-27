@@ -88,6 +88,23 @@ export function compile(root: string): Promise<CompileResult> {
   return invoke<CompileResult>("compile_project", { root });
 }
 
+/** What an earlier compile left in the project for its entry document. */
+export interface ExistingBuild {
+  /** Absolute path to the PDF, as a compile names it. */
+  pdfPath: string;
+  /** The same file as the file list names it. */
+  pdfRelativePath: string;
+  /** Absolute path to the SyncTeX database beside it, when there is one. */
+  synctexPath: string | null;
+  /** Whether a source file has changed since the PDF was written. */
+  stale: boolean;
+}
+
+/** The build output a previous compile left, without compiling. */
+export function existingBuild(root: string): Promise<ExistingBuild | null> {
+  return invoke<ExistingBuild | null>("existing_build", { root });
+}
+
 /** An engine the user could pick, and whether they actually can. */
 export interface EngineInfo {
   /** Stable identifier, e.g. `tectonic` or `system:xelatex`. */
@@ -658,9 +675,17 @@ export function pluginList(): Promise<CorePlugin[]> {
   return invoke<CorePlugin[]>("plugin_list");
 }
 
-/** Rescope plugin filesystem capabilities to the open project. */
-export function pluginSetProject(root: string | null): Promise<void> {
-  return invoke<void>("plugin_set_project", { root });
+/**
+ * Rescope plugin filesystem capabilities to the open project.
+ *
+ * `previous` is the project this window had open, which is the only one given
+ * up: another window on the same server may have a different one open.
+ */
+export function pluginSetProject(
+  root: string | null,
+  previous: string | null,
+): Promise<void> {
+  return invoke<void>("plugin_set_project", { root, previous });
 }
 
 /**
@@ -982,4 +1007,50 @@ export function createProject(
   kind: string,
 ): Promise<ProjectInfo> {
   return invoke<ProjectInfo>("create_project", { parent, name, kind });
+}
+
+/** Whether a project is shared as a session, and why not if it is not. */
+export interface CollabStatus {
+  shared: boolean;
+  /** The message key saying why not. */
+  reason: string | null;
+  /** The collaboration server link: `none` for a host that is the whole session. */
+  upstream: string;
+}
+
+export function collabStatus(root: string): Promise<CollabStatus> {
+  return invoke<CollabStatus>("collab_status", { root });
+}
+
+/** What a flush wrote, and what else happened to the folder. */
+export interface FlushReport {
+  written: string[];
+  folder: FolderReport;
+}
+
+/** What happened to the folder behind a session's back. */
+export interface FolderReport {
+  imported: string[];
+  kept: { path: string; copy: string }[];
+  removed: string[];
+  refused: string[];
+}
+
+/**
+ * Bring the folder up to date with everything this page has seen: the host
+ * waits until its replica holds the state vector, then writes the files.
+ */
+export function collabFlush(
+  root: string,
+  stateVector: Uint8Array,
+): Promise<FlushReport> {
+  return invoke<FlushReport>("collab_flush", {
+    root,
+    stateVector: Array.from(stateVector),
+  });
+}
+
+/** Look at the folder now, for files written by something other than yaz. */
+export function collabRescan(root: string): Promise<void> {
+  return invoke<void>("collab_rescan", { root });
 }

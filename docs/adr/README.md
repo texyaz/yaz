@@ -59,3 +59,5 @@ decision we later reversed is more valuable than a tidy directory.
 | [0031](0031-a-narrow-window-shows-one-pane.md)                  | A narrow window shows one pane at a time                              | Accepted |
 | [0032](0032-the-preview-reads-the-documents-own-definitions.md) | The preview reads the document's own definitions                      | Accepted |
 | [0033](0033-the-web-server-can-ask-who-is-there.md)             | The web server can ask an identity provider who is there              | Proposed |
+| [0034](0034-a-web-address-can-name-the-project.md)              | A web address can name the project to open                            | Proposed |
+| [0035](0035-whoever-owns-the-folder-hosts-the-session.md)       | Whoever owns the folder hosts the session                             | Proposed |
