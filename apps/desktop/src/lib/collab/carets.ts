@@ -6,7 +6,8 @@
  * where it really is, which is correct inside ranges the rich text view has
  * replaced. `drawSelection()`, already part of the editor, works the same way.
  *
- * A caret in a file that is not in this buffer is not drawn.
+ * A caret in a file that is not in this buffer is not drawn. In a buffer that
+ * is several files, a caret is drawn where its file's text is.
  */
 import {
   EditorSelection,
@@ -21,7 +22,8 @@ import {
   type LayerMarker,
 } from "@codemirror/view";
 import * as Y from "yjs";
-import { boundFile } from "./binding";
+import { fileToBuffer } from "../editor/stitch";
+import { mapOf } from "./binding";
 import { presenceVariable } from "./colours";
 import type { Session } from "./session";
 
@@ -134,9 +136,8 @@ export function remoteCarets(
           transaction.effects.some((effect) => effect.is(presenceChanged)),
         ),
       markers(view) {
-        const file = view.state.field(boundFile);
-        const text = file === null ? null : session.files.get(file);
-        if (file === null || !text) return [];
+        const map = mapOf(view.state);
+        if (map.length === 0) return [];
         const length = view.state.doc.length;
         const scroller = view.scrollDOM.getBoundingClientRect();
         const base = {
@@ -145,13 +146,19 @@ export function remoteCarets(
         };
         const markers: LayerMarker[] = [];
         for (const peer of session.peers) {
-          if (peer.file !== file) continue;
+          const text = peer.file === null ? null : session.files.get(peer.file);
+          if (peer.file === null || !text) continue;
           const state = session.awareness.getStates().get(peer.clientId) as
             | { cursor?: { anchor?: unknown; head?: unknown } | null }
             | undefined;
-          const anchor = indexIn(session, text, state?.cursor?.anchor);
-          const head = indexIn(session, text, state?.cursor?.head);
-          if (anchor === null || head === null) continue;
+          const at = (json: unknown): number | null => {
+            const index = indexIn(session, text, json);
+            return index === null ? null : fileToBuffer(map, peer.file!, index);
+          };
+          const head = at(state?.cursor?.head);
+          // Not in this buffer, or inside a command it shows as the file named.
+          if (head === null) continue;
+          const anchor = at(state?.cursor?.anchor) ?? head;
           const range = EditorSelection.range(
             Math.min(anchor, length),
             Math.min(head, length),
