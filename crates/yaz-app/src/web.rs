@@ -194,6 +194,7 @@ async fn main() -> anyhow::Result<()> {
     let router = Router::new()
         .nest("/api", api)
         .fallback_service(ServeDir::new(&options.dist).fallback(ServeFile::new(index)))
+        .layer(middleware::from_fn(revalidate_pages))
         .layer(CompressionLayer::new())
         .layer(middleware::from_fn_with_state(
             Arc::clone(&shared),
@@ -225,6 +226,28 @@ async fn main() -> anyhow::Result<()> {
     // were reading.
     drop(app);
     Ok(())
+}
+
+/// Make a browser ask again for the page, while keeping what the page loads.
+///
+/// The files a build produces carry a hash of their contents in their names,
+/// so they may be kept forever; the page that names them has the same name
+/// after every build. Sent without this, a browser guessed how long to keep it
+/// and went on showing the previous build after a new one was in place.
+async fn revalidate_pages(request: Request, next: Next) -> Response {
+    let mut response = next.run(request).await;
+    let is_page = response
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|kind| kind.starts_with("text/html"));
+    if is_page {
+        response.headers_mut().insert(
+            header::CACHE_CONTROL,
+            header::HeaderValue::from_static("no-cache"),
+        );
+    }
+    response
 }
 
 /// Refuse a request addressed to a name this server was not started for.

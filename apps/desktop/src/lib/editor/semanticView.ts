@@ -23,7 +23,7 @@ import { t } from "../i18n";
 import { glossaryEntries } from "./generated";
 import { definitions, expand, statements } from "./definitions";
 import { drawDefined, drawings, printed, quantities } from "./ownView";
-import { drawable, replace, touched } from "./pass";
+import { drawable, framed, replace, touched } from "./pass";
 import { showLineBreaks, showMachinery } from "./viewModes";
 import type { Pass } from "./pass";
 import {
@@ -498,6 +498,50 @@ class GlossaryWidget extends WidgetType {
 }
 
 /** A fixed piece of text standing in for markup — a quotation mark, a space. */
+/** The longest word a quotation mark is tied to. */
+const LONGEST_KEPT_WORD = 40;
+
+// Inclusive, so that it opens before the widget standing at its first
+// position and closes after the one at its last: otherwise the mark wraps the
+// word and leaves the quotation mark outside.
+const kept = Decoration.mark({
+  class: "cm-yaz-keep",
+  inclusiveStart: true,
+  inclusiveEnd: true,
+});
+
+/**
+ * Tie each quotation mark to the word beside it.
+ *
+ * A mark drawn in place of `\\enquote{` is an element of its own, and a line
+ * may be broken either side of an element — so an opening mark was left at
+ * the end of a line with its quotation starting the next. No typesetter does
+ * that. The mark and the first word are wrapped together and may not be
+ * broken; likewise the last word and the closing mark.
+ */
+function keepWithWord(
+  pass: Pass,
+  quotation: { from: number; argFrom: number; argTo: number; to: number },
+): void {
+  const text = pass.text;
+  let end = quotation.argFrom;
+  while (end < quotation.argTo && !/\s/.test(text[end]!)) end++;
+  if (end - quotation.argFrom <= LONGEST_KEPT_WORD) {
+    pass.ranges.push(kept.range(quotation.from, end));
+  }
+
+  let start = quotation.argTo;
+  while (start > quotation.argFrom && !/\s/.test(text[start - 1]!)) start--;
+  // One word: the first range already holds both marks to it.
+  if (start <= end) {
+    if (quotation.to > end) pass.ranges.push(kept.range(end, quotation.to));
+    return;
+  }
+  if (quotation.argTo - start <= LONGEST_KEPT_WORD) {
+    pass.ranges.push(kept.range(start, quotation.to));
+  }
+}
+
 class TextWidget extends WidgetType {
   constructor(
     readonly content: string,
@@ -668,7 +712,7 @@ class FigureWidget extends WidgetType {
       box.append(caption);
     }
 
-    return box;
+    return framed(box);
   }
 
   override ignoreEvent(): boolean {
@@ -984,6 +1028,7 @@ export function semanticMarkup(pass: Pass): Meaning {
       quotation.argFrom,
       new TextWidget(marks.open, "cm-yaz-quote-mark"),
     );
+    keepWithWord(pass, quotation);
 
     /*
      * The attribution, where the quotation carries one.
@@ -1375,6 +1420,7 @@ export const semanticTheme = EditorView.baseTheme({
   },
   ".cm-yaz-linebreak": { display: "inline" },
   ".cm-yaz-quote-mark": { color: "var(--yaz-text-secondary)" },
+  ".cm-yaz-keep": { whiteSpace: "nowrap" },
   // A declaration's size is inline style rather than a class: there are ten of
   // them and the scale is the value, not a name.
   ".cm-yaz-sized": { lineHeight: "1.2" },
