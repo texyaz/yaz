@@ -1,0 +1,28 @@
+[package]
+name = "yaz-collab"
+description = "The collaboration session host of yaz: a replica of the shared project text that writes the folder."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+yaz-core.workspace = true
+yrs.workspace = true
+sha2.workspace = true
+walkdir.workspace = true
+camino.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tokio = { workspace = true, features = ["sync"] }
+
+[dev-dependencies]
+tempfile.workspace = true
+pretty_assertions.workspace = true
+tokio = { workspace = true, features = ["rt", "macros", "time", "sync"] }

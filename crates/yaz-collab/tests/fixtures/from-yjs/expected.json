@@ -1,0 +1,57 @@
+{
+  "document": {
+    "files": {
+      "main.tex": "Grüße 😀 aus Weimar\nZweite Zeile\n",
+      "chapters/one.tex": "\\chapter{Eins}\n"
+    },
+    "meta": {
+      "schema": 1,
+      "epoch": "0123456789abcdef0123456789abcdef"
+    }
+  },
+  "edit": {
+    "files": {
+      "main.tex": "Grüße 😀 Ünï Weimar\nZweite Zeile\n"
+    }
+  },
+  "awareness": {
+    "client": 1001,
+    "clock": 1,
+    "state": {
+      "user": {
+        "id": "0f1e2d3c4b5a6978",
+        "name": "Äsa 😀",
+        "picture": "https://example.org/a.png"
+      },
+      "file": "main.tex",
+      "cursor": {
+        "anchor": {
+          "type": {
+            "client": 1001,
+            "clock": 0
+          },
+          "item": {
+            "client": 1001,
+            "clock": 4
+          },
+          "assoc": 0
+        },
+        "head": {
+          "type": {
+            "client": 1001,
+            "clock": 0
+          },
+          "item": {
+            "client": 1001,
+            "clock": 9
+          },
+          "assoc": 0
+        }
+      }
+    }
+  },
+  "awareness-removed": {
+    "client": 1001,
+    "clock": 2
+  }
+}

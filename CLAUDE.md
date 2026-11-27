@@ -56,12 +56,24 @@ The load-bearing ones:
   the wrong row. A rename takes a _name_, never a path.
 - **0030** — `yaz-web` serves **the same command handler** as the desktop, on
   Tauri's mock runtime. Add a command to `yaz_app::install` and nowhere else;
-  **never write a second dispatcher.** The server authenticates nobody: it
+  **never write a second dispatcher.** By itself the server authenticates nobody: it
   belongs on loopback or a VPN address, and must keep refusing unknown `Host`s.
 - **0031** — Below 720 px the workspace is **three panes, one on screen**
   (`Compact.svelte`), swiped with the browser's own scroll-snap. **Nothing
   about it is persisted**, and no component asks whether it is on a phone or on
   the web — it is a width. A command that opens a tab also calls `showTab`.
+
+- **0033** — `yaz-web` may be started with an OpenID Connect provider and a
+  list of people (`--allow`). **That decides who reaches the server, never
+  what they may do there**: everybody let in shares the one project and has a
+  shell as the server's user. Do not build per-user permissions on top of it;
+  a project some people must not see gets its own server.
+
+- **0035** — Whoever owns a project's folder **hosts its collaboration
+  session**: a replica of the shared text, the only writer of it into the
+  folder, a relay for its own pages. A page never writes a shared file and
+  never holds a token. **An outside change to the folder wins**; the session's
+  competing text is kept beside it as a `.kept-` file, never dropped.
 
 - **0032** — The preview **reads the document's own definitions** from the
   buffer: a `\newcommand` is drawn as its text, an environment set apart under

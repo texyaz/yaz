@@ -39,6 +39,13 @@
      */
     name?: string | null;
     /**
+     * The PDF is older than a source file: it was built before the last change
+     * to the document, so it may not show what is written now.
+     */
+    stale?: boolean;
+    /** A compile is running, which is what an empty pane is waiting for. */
+    compiling?: boolean;
+    /**
      * A page was clicked.
      *
      * `x` and `y` are PDF points from the top left of that page — the
@@ -50,7 +57,8 @@
     onpages?: ((pages: number) => void) | undefined;
   }
 
-  let { data, name = null, onclickpoint, onpages }: Props = $props();
+  let { data, name = null, stale = false, compiling = false, onclickpoint, onpages }: Props =
+    $props();
 
   let container: HTMLDivElement;
   let renderError = $state<string | null>(null);
@@ -156,10 +164,15 @@
   {#if name}
     <p class="opened">{t("pdf-showing", { file: name })}</p>
   {/if}
+  {#if stale && !name}
+    <p class="opened">{t("pdf-stale")}</p>
+  {/if}
   {#if renderError}
     <p class="notice error">{renderError}</p>
   {:else if !data}
-    <p class="notice">{t("pdf-empty")}</p>
+    <p class="notice">
+      {#if compiling}{t("compile-running-note")}{:else}{t("pdf-empty")}{/if}
+    </p>
   {/if}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <!-- svelte-ignore a11y_click_events_have_key_events -->

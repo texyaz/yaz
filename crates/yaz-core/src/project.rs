@@ -1,7 +1,12 @@
 //! What a project is: a root directory, an entry document, and build settings.
 
-use camino::Utf8PathBuf;
+use std::collections::HashMap;
+use std::sync::{Arc, Condvar, Mutex, PoisonError};
+
+use camino::{Utf8Path, Utf8PathBuf};
 use serde::{Deserialize, Serialize};
+
+use crate::error::Error as CoreError;
 
 /// A yaz project — a directory on disk plus the metadata in `yaz.toml`.
 ///
@@ -48,6 +53,140 @@ pub struct Project {
 /// to think about.
 pub fn default_images() -> Utf8PathBuf {
     Utf8PathBuf::from("images")
+}
+
+/// Canonicalise, keeping the result UTF-8 and free of Windows `\\?\` prefixes.
+pub fn canonical_root(path: &Utf8Path) -> crate::Result<Utf8PathBuf> {
+    let canonical = std::fs::canonicalize(path).map_err(|source| {
+        if source.kind() == std::io::ErrorKind::NotFound {
+            CoreError::NotFound {
+                path: path.to_owned(),
+            }
+        } else {
+            CoreError::Io {
+                path: path.to_owned(),
+                source,
+            }
+        }
+    })?;
+    // Windows canonicalisation yields a `\\?\C:\…` extended-length path, which
+    // compares badly against ordinary paths and looks alarming in the UI.
+    let text = canonical.to_string_lossy();
+    let trimmed = text.strip_prefix(r"\\?\").unwrap_or(&text);
+    Ok(Utf8PathBuf::from(trimmed))
+}
+
+/// Resolve a project-relative path and refuse anything outside the root.
+///
+/// Canonicalisation happens *before* the comparison, so `..` traversal and
+/// symlink escapes are refused rather than followed. This is the invariant the
+/// capability broker will inherit, and it is why the check cannot be a simple
+/// `starts_with` on the untouched input.
+pub fn resolve_in_root(root: &Utf8Path, relative: &str) -> crate::Result<Utf8PathBuf> {
+    let root_canonical = canonical_root(root)?;
+    let joined = root.join(relative);
+
+    // A file being written may not exist yet, so canonicalise the parent and
+    // re-attach the final component.
+    let candidate = if joined.exists() {
+        canonical_root(&joined)?
+    } else {
+        let outside = || CoreError::OutsideRoot {
+            path: joined.clone(),
+            root: root_canonical.clone(),
+        };
+        let parent = joined.parent().ok_or_else(outside)?;
+        let file_name = joined.file_name().ok_or_else(outside)?;
+        canonical_root(parent)?.join(file_name)
+    };
+
+    if !candidate.starts_with(&root_canonical) {
+        return Err(CoreError::OutsideRoot {
+            path: candidate,
+            root: root_canonical,
+        });
+    }
+
+    Ok(candidate)
+}
+
+/// One lock per project folder, shared by everything that reads the whole
+/// folder or writes it in bulk: a compile, a recorded version, a restore.
+///
+/// Two compiles of one root otherwise run into the same `build/` at once, and a
+/// commit taken while a compile is writing records half a build. The lock is
+/// per *canonical* root, so two spellings of one folder share it, and a clone
+/// shares the same locks.
+#[derive(Debug, Clone, Default)]
+pub struct FolderLocks {
+    held: Arc<Mutex<HashMap<Utf8PathBuf, Arc<Held>>>>,
+}
+
+/// Whether a folder is taken, and the way to wait for it to be let go.
+#[derive(Debug, Default)]
+struct Held {
+    taken: Mutex<bool>,
+    released: Condvar,
+}
+
+impl FolderLocks {
+    /// Wait for the folder's lock and take it.
+    ///
+    /// Blocks the calling thread, which is what the synchronous commands
+    /// already do for the compile itself. The folder must exist: the key is
+    /// its canonical path.
+    pub fn lock(&self, root: &Utf8Path) -> crate::Result<FolderGuard> {
+        let held = self.held_for(root)?;
+        let mut taken = held.taken.lock().unwrap_or_else(PoisonError::into_inner);
+        while *taken {
+            taken = held
+                .released
+                .wait(taken)
+                .unwrap_or_else(PoisonError::into_inner);
+        }
+        *taken = true;
+        drop(taken);
+        Ok(FolderGuard { held })
+    }
+
+    /// Take the folder's lock if nobody holds it, without waiting.
+    ///
+    /// For a thread that has other work to do while a compile runs, such as
+    /// the session host, which must keep passing edits between pages.
+    pub fn try_lock(&self, root: &Utf8Path) -> crate::Result<Option<FolderGuard>> {
+        let held = self.held_for(root)?;
+        let mut taken = held.taken.lock().unwrap_or_else(PoisonError::into_inner);
+        if *taken {
+            return Ok(None);
+        }
+        *taken = true;
+        drop(taken);
+        Ok(Some(FolderGuard { held }))
+    }
+
+    fn held_for(&self, root: &Utf8Path) -> crate::Result<Arc<Held>> {
+        let key = canonical_root(root)?;
+        let mut map = self.held.lock().unwrap_or_else(PoisonError::into_inner);
+        Ok(Arc::clone(map.entry(key).or_default()))
+    }
+}
+
+/// The lock on one folder, released when it is dropped.
+#[derive(Debug)]
+#[must_use = "the folder is unlocked as soon as the guard is dropped"]
+pub struct FolderGuard {
+    held: Arc<Held>,
+}
+
+impl Drop for FolderGuard {
+    fn drop(&mut self) {
+        *self
+            .held
+            .taken
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = false;
+        self.held.released.notify_one();
+    }
 }
 
 /// Which LaTeX engine a project compiles with.
@@ -336,5 +475,132 @@ mod tests {
         std::fs::write(root.join(ProjectSettings::FILE_NAME), "engine = \"nope\"\n")
             .expect("write");
         assert!(ProjectSettings::load(root).is_err());
+    }
+
+    #[test]
+    fn a_path_inside_the_root_resolves_even_before_the_file_exists() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let root = Utf8Path::from_path(dir.path()).expect("utf8 path");
+        let resolved = resolve_in_root(root, "new.tex").expect("resolves");
+        assert_eq!(resolved, canonical_root(root).unwrap().join("new.tex"));
+    }
+
+    #[test]
+    fn traversal_out_of_the_root_is_refused() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let root = Utf8Path::from_path(dir.path()).expect("utf8 path");
+        std::fs::create_dir(root.join("project")).unwrap();
+        std::fs::create_dir(root.join("project/a")).unwrap();
+        let project = root.join("project");
+        for attempt in ["../escape", "..", "a/../../escape"] {
+            let error = resolve_in_root(&project, attempt).unwrap_err();
+            assert_eq!(error.message_key(), "error-fs-outside-root", "{attempt}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlink_out_of_the_root_is_refused_not_followed() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let base = Utf8Path::from_path(dir.path()).expect("utf8 path");
+        std::fs::create_dir(base.join("project")).unwrap();
+        std::fs::create_dir(base.join("elsewhere")).unwrap();
+        std::fs::write(base.join("elsewhere/secret.tex"), "x").unwrap();
+        std::os::unix::fs::symlink(base.join("elsewhere"), base.join("project/link")).unwrap();
+        let error = resolve_in_root(&base.join("project"), "link/secret.tex").unwrap_err();
+        assert_eq!(error.message_key(), "error-fs-outside-root");
+    }
+
+    #[test]
+    fn a_missing_folder_is_not_found() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let root = Utf8Path::from_path(dir.path()).expect("utf8 path");
+        let error = canonical_root(&root.join("nothing")).unwrap_err();
+        assert_eq!(error.message_key(), "error-fs-not-found");
+    }
+
+    #[test]
+    fn two_threads_never_hold_one_folder_at_once() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let dir = tempfile::tempdir().expect("temp dir");
+        let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).expect("utf8 path");
+        let locks = FolderLocks::default();
+        let inside = Arc::new(AtomicUsize::new(0));
+        let overlapped = Arc::new(AtomicUsize::new(0));
+        let entries = Arc::new(AtomicUsize::new(0));
+
+        let workers: Vec<_> = (0..4)
+            .map(|index| {
+                let (locks, inside, overlapped, entries) = (
+                    locks.clone(),
+                    inside.clone(),
+                    overlapped.clone(),
+                    entries.clone(),
+                );
+                // Half of them reach the folder by a different spelling.
+                let root = if index % 2 == 0 {
+                    root.clone()
+                } else {
+                    root.join(".")
+                };
+                std::thread::spawn(move || {
+                    for _ in 0..5 {
+                        let _guard = locks.lock(&root).expect("lock");
+                        if inside.fetch_add(1, Ordering::SeqCst) != 0 {
+                            overlapped.fetch_add(1, Ordering::SeqCst);
+                        }
+                        entries.fetch_add(1, Ordering::SeqCst);
+                        std::thread::sleep(std::time::Duration::from_millis(2));
+                        inside.fetch_sub(1, Ordering::SeqCst);
+                    }
+                })
+            })
+            .collect();
+        for worker in workers {
+            worker.join().expect("worker");
+        }
+        assert_eq!(overlapped.load(Ordering::SeqCst), 0, "two held the folder");
+        assert_eq!(entries.load(Ordering::SeqCst), 20);
+    }
+
+    #[test]
+    fn a_folder_that_is_taken_is_not_waited_for_by_try_lock() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let root = Utf8Path::from_path(dir.path()).expect("utf8 path");
+        let locks = FolderLocks::default();
+        let held = locks.lock(root).unwrap();
+        assert!(locks.try_lock(root).unwrap().is_none());
+        drop(held);
+        assert!(locks.try_lock(root).unwrap().is_some());
+    }
+
+    #[test]
+    fn different_folders_do_not_wait_for_each_other() {
+        let first = tempfile::tempdir().expect("temp dir");
+        let second = tempfile::tempdir().expect("temp dir");
+        let locks = FolderLocks::default();
+        let _one = locks
+            .lock(Utf8Path::from_path(first.path()).unwrap())
+            .unwrap();
+        // Would block forever if the two folders shared a lock.
+        let _two = locks
+            .lock(Utf8Path::from_path(second.path()).unwrap())
+            .unwrap();
+    }
+
+    #[test]
+    fn a_guard_dropped_during_a_panic_still_releases_the_folder() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).expect("utf8 path");
+        let locks = FolderLocks::default();
+        let again = locks.clone();
+        let there = root.clone();
+        let result = std::thread::spawn(move || {
+            let _guard = again.lock(&there).expect("lock");
+            panic!("a compile that panics");
+        })
+        .join();
+        assert!(result.is_err());
+        let _guard = locks.lock(&root).expect("the folder is free again");
     }
 }

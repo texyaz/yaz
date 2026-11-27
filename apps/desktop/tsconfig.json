@@ -23,6 +23,11 @@
     // nothing, and so does any bundled core plugin it imports.
     "paths": {
       "@yaz/api": ["../../packages/api/src/index.ts"],
+      // The web build swaps it for `src/web/account.ts`, which has the same
+      // shape (ADR-0033).
+      "@yaz-host/account": ["./src/lib/account.ts"],
+      "@yaz-host/start": ["./src/lib/start.ts"],
+      "@yaz-host/collab-link": ["./src/lib/collab/noLink.ts"],
       // Lent to bundled plugins, whose own `node_modules` is in their own
       // repository. Only what is listed here: a plugin reaching for anything
       // else fails to compile, which is the same answer an installed copy of

@@ -21,6 +21,14 @@ export async function invoke<T>(
     body: JSON.stringify(args),
   });
 
+  if (response.status === 401) {
+    // A server that asks who is there (ADR-0033), and a session that ended:
+    // sign in again and come back to this page.
+    location.assign(
+      `/auth/login?next=${encodeURIComponent(location.pathname + location.search)}`,
+    );
+    throw "401 not signed in";
+  }
   if (response.status === 422) {
     // The command's own error, exactly as Tauri would have rejected with it.
     throw await response.json();

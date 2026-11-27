@@ -14,7 +14,7 @@
 use camino::{Utf8Path, Utf8PathBuf};
 use serde::Serialize;
 
-use yaz_core::project::ProjectSettings;
+use yaz_core::project::{FolderLocks, ProjectSettings};
 use yaz_vcs::{BackendKind, ChangeSummary, Commit, Descriptive, message};
 
 use crate::commands::CommandError;
@@ -153,8 +153,19 @@ pub fn vcs_disable(root: String) -> Result<VcsStatus> {
 /// precedence lives in [`yaz_vcs::message::resolve`] so nothing can quietly
 /// overrule a person.
 #[tauri::command]
-pub fn vcs_commit(root: String, message: Option<String>) -> Result<Option<Commit>> {
+pub fn vcs_commit(
+    locks: tauri::State<'_, FolderLocks>,
+    root: String,
+    message: Option<String>,
+) -> Result<Option<Commit>> {
+    commit(&locks, root, message)
+}
+
+/// [`vcs_commit`] without the Tauri state.
+fn commit(locks: &FolderLocks, root: String, message: Option<String>) -> Result<Option<Commit>> {
     let root = canonical(&root)?;
+    // Not while a compile is writing `build/` or a restore is rewriting files.
+    let _folder = locks.lock(&root)?;
     let Some(kind) = configured(&root)? else {
         // Saving a project that is not being recorded is not an error; it is
         // simply a save.
@@ -183,8 +194,13 @@ pub fn vcs_history(root: String) -> Result<Vec<Commit>> {
 
 /// Put the project back to a recorded version.
 #[tauri::command]
-pub fn vcs_restore(root: String, commit: String) -> Result<()> {
+pub fn vcs_restore(
+    locks: tauri::State<'_, FolderLocks>,
+    root: String,
+    commit: String,
+) -> Result<()> {
     let root = canonical(&root)?;
+    let _folder = locks.lock(&root)?;
     let kind = configured(&root)?
         .ok_or_else(|| CommandError::new("vcs-error-not-initialised", "version control is off"))?;
     yaz_vcs::backend(kind)
@@ -239,9 +255,13 @@ mod tests {
         std::fs::write(root_path.join("main.tex").as_std_path(), "x\n").unwrap();
 
         vcs_enable(root.clone(), "git".to_owned()).unwrap();
-        vcs_commit(root.clone(), Some("First".to_owned()))
-            .unwrap()
-            .unwrap();
+        commit(
+            &FolderLocks::default(),
+            root.clone(),
+            Some("First".to_owned()),
+        )
+        .unwrap()
+        .unwrap();
 
         let after = vcs_disable(root.clone()).unwrap();
         assert!(!after.enabled);
@@ -261,7 +281,11 @@ mod tests {
         // Ctrl+S in a project that is not being recorded is just a save.
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().to_string_lossy().into_owned();
-        assert!(vcs_commit(root.clone(), None).unwrap().is_none());
+        assert!(
+            commit(&FolderLocks::default(), root.clone(), None)
+                .unwrap()
+                .is_none()
+        );
         assert!(vcs_history(root).unwrap().is_empty());
     }
 }
