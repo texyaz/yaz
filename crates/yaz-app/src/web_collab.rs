@@ -13,6 +13,7 @@
 //! somebody who is signed in.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::extract::State;
 use axum::extract::ws::rejection::WebSocketUpgradeRejection;
@@ -34,7 +35,14 @@ mod close {
     pub const UNSUPPORTED: u16 = 1003;
     /// The host ended the link; the page attaches again.
     pub const ENDED: u16 = 1011;
+    /// The sign-in the link was opened with is over.
+    pub const SIGNED_OUT: u16 = 4401;
 }
+
+/// How often an open link asks whether its sign-in is still good. A request
+/// is checked when it arrives; a link stays open for hours, and would
+/// otherwise outlive the session that let it in (ADR-0033, ADR-0035).
+const RECHECK: Duration = Duration::from_secs(300);
 
 /// Whether the request's `Origin` is the host it was sent to.
 ///
@@ -77,10 +85,23 @@ pub async fn link(
         Err(rejection) => return rejection.into_response(),
     };
     let host = shared.collab.clone();
+    // With sign-in, the request got here because its session was good. Which
+    // one it was is kept, to ask again while the link is open.
+    let session = shared
+        .sign_in
+        .as_ref()
+        .and_then(|_| super::sign_in::session_in(&headers));
     upgrade
         .max_message_size(MAX_MESSAGE)
         .max_frame_size(MAX_MESSAGE)
-        .on_upgrade(move |socket| relay(socket, host, root))
+        .on_upgrade(move |socket| {
+            let still = move || match (&shared.sign_in, &session) {
+                (Some(sign_in), Some(id)) => sign_in.still_signed_in(id),
+                (Some(_), None) => false,
+                (None, _) => true,
+            };
+            relay(socket, host, root, RECHECK, still)
+        })
 }
 
 /// Say that the session cannot be had, in the one place a page looks.
@@ -106,13 +127,29 @@ async fn end(mut socket: WebSocket, code: u16, reason: &'static str) {
 }
 
 /// Pass frames between the page's socket and the host until either ends.
-async fn relay(mut socket: WebSocket, host: Host, root: Utf8PathBuf) {
+///
+/// `still` is asked every `recheck` whether the person may still be here; a
+/// link whose sign-in has ended is closed and nothing more is relayed on it.
+async fn relay(
+    mut socket: WebSocket,
+    host: Host,
+    root: Utf8PathBuf,
+    recheck: Duration,
+    still: impl Fn() -> bool,
+) {
     let mut link = match host.attach(&root).await {
         Ok(link) => link,
         Err(error) => return refuse(socket, &error).await,
     };
+    let mut asked = tokio::time::interval_at(tokio::time::Instant::now() + recheck, recheck);
     loop {
         tokio::select! {
+            _ = asked.tick() => {
+                if !still() {
+                    tracing::info!("closed a collaboration link whose sign-in ended");
+                    return end(socket, close::SIGNED_OUT, "the sign-in ended").await;
+                }
+            }
             frame = socket.recv() => match frame {
                 Some(Ok(Message::Binary(bytes))) => {
                     if link.to_session.send(bytes.to_vec()).await.is_err() {
