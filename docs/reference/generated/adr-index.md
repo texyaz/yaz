@@ -50,3 +50,4 @@ useful than a tidy directory.
 | [0032 — The preview reads the document's own definitions](/adr/0032-the-preview-reads-the-documents-own-definitions) | Accepted |
 | [0033 — The web server can ask who is there](/adr/0033-the-web-server-can-ask-who-is-there) | Proposed |
 | [0034 — A web address can name the project to open](/adr/0034-a-web-address-can-name-the-project) | Proposed |
+| [0035 — Whoever owns the folder hosts the session](/adr/0035-whoever-owns-the-folder-hosts-the-session) | Proposed |
