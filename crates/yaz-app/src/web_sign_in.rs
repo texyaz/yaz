@@ -194,7 +194,7 @@ impl SignIn {
         Self::with_secret(settings, secret)
     }
 
-    fn with_secret(settings: Settings, secret: String) -> anyhow::Result<Self> {
+    pub(super) fn with_secret(settings: Settings, secret: String) -> anyhow::Result<Self> {
         if settings.allow.is_empty() {
             bail!(
                 "--oidc-issuer needs at least one --allow: without it everybody the provider \
