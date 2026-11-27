@@ -63,6 +63,17 @@ pub enum HostEvent {
     },
 }
 
+impl HostEvent {
+    /// A compile that finished just now.
+    #[must_use]
+    pub fn compiled(succeeded: bool) -> Self {
+        Self::Compiled {
+            succeeded,
+            at: crate::disk::rfc3339(std::time::SystemTime::now()),
+        }
+    }
+}
+
 /// Whether and how a project is shared, as a page asks.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]

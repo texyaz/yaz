@@ -25,7 +25,7 @@ impl Default for Sharing {
 }
 
 impl Sharing {
-    fn host(&self) -> Host {
+    pub(crate) fn host(&self) -> Host {
         self.0
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
