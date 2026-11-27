@@ -74,11 +74,11 @@ walkdir.workspace = true
 tokio = { workspace = true, features = ["net", "signal"] }
 reqwest.workspace = true
 axum = { version = "0.8", optional = true, default-features = false, features = ["http1", "json", "tokio", "ws"] }
-tower-http = { version = "0.6", optional = true, features = ["fs", "compression-gzip"] }
+tower-http = { version = "0.7", optional = true, features = ["fs", "compression-gzip"] }
 # Sign-in for the web server (ADR-0033): the PKCE challenge and the random
 # names of sessions. Both pure Rust, so nothing here needs a C toolchain.
 sha2 = { workspace = true, optional = true }
-getrandom = { version = "0.3", optional = true }
+getrandom = { version = "0.4", optional = true }
 trash = { version = "5.2.6", default-features = false, features = ["coinit_apartmentthreaded"] }
 
 # yaz-app stays THIN: it wires the domain crates to Tauri commands and holds no
@@ -88,7 +88,7 @@ trash = { version = "5.2.6", default-features = false, features = ["coinit_apart
 [dev-dependencies]
 tempfile.workspace = true
 # Two pages talking to the web server's link route, as browsers do (feature `web`).
-tokio-tungstenite = "0.28"
+tokio-tungstenite = "0.29"
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 yrs.workspace = true
 # Builds a Zotero fixture library, so the citation path is exercised end to end
