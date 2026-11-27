@@ -14,20 +14,30 @@
   puts the indicator stalk on the column and the radio in the dashboard: not
   everything belongs in the same place just because it is a control.
 
-  The avatar is a stub and is drawn as one. There is no account, no
-  synchronisation and no sign-in; it holds the space where those would go so
-  that adding them later does not move everything else.
+  The avatar is the account control. Where a web server asks who is there
+  (ADR-0033) it is the person, with the way to sign out; everywhere else it is
+  a stub, drawn as one, that holds the space.
 -->
 <script lang="ts">
   import { getCurrentWindow } from "@tauri-apps/api/window";
+  import Account from "./Account.svelte";
   import { t } from "./i18n";
   import { ICONS } from "./icons";
   import type { MenuItem } from "./MenuBar.svelte";
   import type { SearchOptions } from "./editor/search";
+  import type { CollabBar } from "./collab/presence";
 
   interface Props {
     /** Shown in the middle, where a title bar puts it. */
     title: string;
+    /**
+     * The session, when the project is shared. Where the dirty mark and the
+     * autosave toggle were: in a session the host writes the folder, so there
+     * is nothing to toggle and nothing that waits for a save.
+     */
+    collab?: CollabBar | null;
+    /** Go to where one of the others is, by their place in `collab.people`. */
+    onperson?: ((index: number) => void) | undefined;
     /** Whether there is anything to save. */
     dirty: boolean;
     canSave: boolean;
@@ -66,6 +76,8 @@
 
   let {
     title,
+    collab = null,
+    onperson,
     dirty,
     canSave,
     onsave,
@@ -95,6 +107,25 @@
    * markup gained a wrapper.
    */
   let field = $state<HTMLInputElement>();
+
+  /** What the session's state is called, in the page's language. */
+  function stateLabel(bar: CollabBar): string {
+    if (bar.state === "ready" && bar.unsent) return t("collab-state-unsent");
+    switch (bar.state) {
+      case "starting":
+        return t("collab-state-starting");
+      case "ready":
+        return t("collab-state-ready");
+      case "reconnecting":
+        return t("collab-state-reconnecting");
+      case "unavailable":
+        return t("collab-state-unavailable");
+      case "restarted":
+        return t("collab-state-restarted");
+      case "incompatible":
+        return t("collab-state-incompatible");
+    }
+  }
 
   export function focusSearch(): void {
     field?.focus();
@@ -256,27 +287,62 @@
   </div>
 
   <div class="tools">
-    <!-- Saving by itself is a mode, so it is a toggle that shows which state
-         it is in rather than what it would do. -->
-    <button
-      type="button"
-      class="tool"
-      class:on={autosave}
-      title={t(autosave ? "titlebar-autosave-on" : "titlebar-autosave-off")}
-      aria-label={t(autosave ? "titlebar-autosave-on" : "titlebar-autosave-off")}
-      aria-pressed={autosave}
-      onclick={() => onautosave(!autosave)}
-    >
-      <svg viewBox="0 0 16 16" aria-hidden="true">
-        <path d="M8 2.5a5.5 5.5 0 103.9 1.6" />
-        <path d="M12 1v3.2H8.8" />
-      </svg>
-    </button>
+    {#if collab}
+      <!-- In a session the host writes the folder, so there is no mode to
+           choose and nothing waiting to be saved: the bar says how the session
+           stands and who else is in it. -->
+      <span
+        class="session"
+        class:trouble={collab.state !== "ready" && collab.state !== "starting"}
+        role="status"
+        title={stateLabel(collab)}
+        aria-label={stateLabel(collab)}
+        data-collab-state={collab.state}
+      >
+        <span class="session-dot" aria-hidden="true"></span>
+        <span class="session-text">{stateLabel(collab)}</span>
+      </span>
+      {#each collab.people as person, index (index)}
+        <!-- A button: where somebody is, is somewhere to go. -->
+        <button
+          type="button"
+          class="person"
+          style:background={`var(--yaz-presence-${person.colour})`}
+          title={person.file ? `${person.name} — ${person.file}` : person.name}
+          aria-label={person.file ? `${person.name} — ${person.file}` : person.name}
+          disabled={!person.file}
+          onclick={() => onperson?.(index)}
+        >
+          {#if person.picture}
+            <img src={person.picture} alt="" referrerpolicy="no-referrer" />
+          {:else}
+            {person.initials}
+          {/if}
+        </button>
+      {/each}
+    {:else}
+      <!-- Saving by itself is a mode, so it is a toggle that shows which state
+           it is in rather than what it would do. -->
+      <button
+        type="button"
+        class="tool"
+        class:on={autosave}
+        title={t(autosave ? "titlebar-autosave-on" : "titlebar-autosave-off")}
+        aria-label={t(autosave ? "titlebar-autosave-on" : "titlebar-autosave-off")}
+        aria-pressed={autosave}
+        onclick={() => onautosave(!autosave)}
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M8 2.5a5.5 5.5 0 103.9 1.6" />
+          <path d="M12 1v3.2H8.8" />
+        </svg>
+      </button>
+    {/if}
 
     <button
       type="button"
       class="tool"
-      class:dirty
+      class:dirty={dirty && !collab}
       disabled={!canSave}
       title={t("menu-file-save")}
       aria-label={t("menu-file-save")}
@@ -411,14 +477,7 @@
     {/if}
   </div>
 
-  <!-- A stub, and drawn as one: there is no account behind it. It holds the
-       space so that adding one later does not move everything else. -->
-  <button type="button" class="avatar" title={t("titlebar-account")} aria-label={t("titlebar-account")}>
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <circle cx="8" cy="6" r="2.6" />
-      <path d="M3 14a5 5 0 0110 0" />
-    </svg>
-  </button>
+  <Account />
 
   <div class="controls">
     <button
@@ -457,6 +516,20 @@
 </header>
 
 <style>
+  /* A yaz served to a browser (ADR-0030): the tab is the browser's to
+     minimise and close, so the buttons that would do it are not drawn. */
+  :global(:root[data-host="web"]) .controls {
+    display: none;
+  }
+
+  /* With them gone the account control is the last thing in the bar and sat
+     against the window's edge. It gets the inset the bar has on its other
+     side, at every width: this is more specific than the narrow rule below,
+     which keeps its smaller inset for the desktop. */
+  :global(:root[data-host="web"]) .bar {
+    padding-inline-end: var(--yaz-space-3);
+  }
+
   .bar {
     display: flex;
     align-items: center;
@@ -596,6 +669,63 @@
     color: var(--yaz-accent);
   }
 
+  /* How a shared session stands, where the save toggle would be. */
+  .session {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding-inline: 0.5rem;
+    font-size: var(--yaz-font-size-sm);
+    color: var(--yaz-text-muted);
+  }
+
+  .session-dot {
+    inline-size: 0.5rem;
+    block-size: 0.5rem;
+    border-radius: 50%;
+    background: var(--yaz-success);
+  }
+
+  .session.trouble {
+    color: var(--yaz-warning);
+  }
+
+  .session.trouble .session-dot {
+    background: var(--yaz-warning);
+  }
+
+  .person {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 1.5rem;
+    block-size: 1.5rem;
+    margin-block: auto;
+    border-radius: 50%;
+    overflow: hidden;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: var(--yaz-text-on-accent);
+    padding: 0;
+    border: 0;
+    cursor: pointer;
+  }
+
+  .person:disabled {
+    cursor: default;
+  }
+
+  .person:focus-visible {
+    outline: 2px solid var(--yaz-accent);
+    outline-offset: 2px;
+  }
+
+  .person img {
+    inline-size: 100%;
+    block-size: 100%;
+    object-fit: cover;
+  }
+
   /* Unsaved work is worth one dot, not a dialogue. */
   .tool.dirty {
     color: var(--yaz-warning);
@@ -733,32 +863,6 @@
     padding: 2px 0;
   }
 
-  .avatar {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    inline-size: 1.875rem;
-    block-size: 1.875rem;
-    padding: 0;
-    background: var(--yaz-bg-secondary);
-    border: 1px solid var(--yaz-border);
-    border-radius: 999px;
-    color: var(--yaz-text-muted);
-    cursor: pointer;
-  }
-
-  .avatar svg {
-    inline-size: 0.9375rem;
-    block-size: 0.9375rem;
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 1.3;
-  }
-
-  .avatar:hover {
-    color: var(--yaz-text-primary);
-  }
-
   .controls {
     display: flex;
     margin-inline-start: var(--yaz-space-2);
@@ -802,5 +906,42 @@
     overflow: hidden;
     clip-path: inset(50%);
     white-space: nowrap;
+  }
+
+  /*
+    A narrow window (the same width `App.svelte` switches layouts at).
+
+    The bar keeps what is reached for constantly — the project menu, save, and
+    find — and gives up what a phone has no room or no use for: the title that
+    only filled the space between them, and undo and redo, which a touch
+    keyboard already has. The search field takes the room that frees.
+  */
+  @media (max-width: 720px) {
+    .bar {
+      padding-inline-end: var(--yaz-space-2);
+    }
+
+    .drag {
+      display: none;
+    }
+
+    /* Undo and redo: the third and fourth of the four tools. */
+    .tools .tool:nth-child(n + 3) {
+      display: none;
+    }
+
+    .finder {
+      flex: 1;
+      min-inline-size: 0;
+    }
+
+    .search {
+      min-inline-size: 0;
+    }
+
+    .search :global(input) {
+      min-inline-size: 0;
+      inline-size: 100%;
+    }
   }
 </style>

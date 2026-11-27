@@ -4,7 +4,57 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 
-export default defineConfig({
+/** Where `pnpm web:serve` runs the yaz web server while developing. */
+const webServer = process.env.YAZ_WEB_SERVER ?? "http://127.0.0.1:4173";
+
+/**
+ * The Tauri modules, replaced for a yaz served to a browser (ADR-0030).
+ *
+ * An alias rather than a runtime check: the desktop build never contains a
+ * line of this, and no component has to ask which one it is running in.
+ */
+const webShims = {
+  "@tauri-apps/api/core": fileURLToPath(
+    new URL("./src/web/core.ts", import.meta.url),
+  ),
+  "@tauri-apps/api/event": fileURLToPath(
+    new URL("./src/web/event.ts", import.meta.url),
+  ),
+  "@tauri-apps/api/window": fileURLToPath(
+    new URL("./src/web/window.ts", import.meta.url),
+  ),
+  "@tauri-apps/plugin-dialog": fileURLToPath(
+    new URL("./src/web/dialog.ts", import.meta.url),
+  ),
+  // Who is signed in (ADR-0033). The desktop build resolves this to
+  // `src/lib/account.ts`, which has nobody, and sends no request.
+  "@yaz-host/account": fileURLToPath(
+    new URL("./src/web/account.ts", import.meta.url),
+  ),
+  // The project the address asks for (ADR-0030).
+  "@yaz-host/start": fileURLToPath(
+    new URL("./src/web/start.ts", import.meta.url),
+  ),
+  // The link to the session host (ADR-0035): a WebSocket to this server.
+  "@yaz-host/collab-link": fileURLToPath(
+    new URL("./src/web/collabLink.ts", import.meta.url),
+  ),
+};
+
+/** What the desktop build resolves the `@yaz-host/…` modules to. */
+const hostModules = {
+  "@yaz-host/account": fileURLToPath(
+    new URL("./src/lib/account.ts", import.meta.url),
+  ),
+  "@yaz-host/start": fileURLToPath(
+    new URL("./src/lib/start.ts", import.meta.url),
+  ),
+  "@yaz-host/collab-link": fileURLToPath(
+    new URL("./src/lib/collab/noLink.ts", import.meta.url),
+  ),
+};
+
+export default defineConfig(({ mode }) => ({
   plugins: [svelte()],
 
   resolve: {
@@ -22,6 +72,8 @@ export default defineConfig({
      * the list is short enough to read.
      */
     alias: {
+      ...hostModules,
+      ...(mode === "web" ? webShims : {}),
       "@yaz/api": fileURLToPath(
         new URL("../../packages/api/src/index.ts", import.meta.url),
       ),
@@ -51,7 +103,14 @@ export default defineConfig({
     },
     // One copy of the editor's state and view, or a plugin's language and the
     // editor's would be talking to different instances of CodeMirror.
-    dedupe: ["@codemirror/state", "@codemirror/view", "@codemirror/language"],
+    // `yjs` too: two copies of it cannot read each other's types, and the
+    // check for a `Y.Text` is an `instanceof`.
+    dedupe: [
+      "@codemirror/state",
+      "@codemirror/view",
+      "@codemirror/language",
+      "yjs",
+    ],
   },
 
   // Tauri drives this dev server; the port is fixed because tauri.conf.json
@@ -60,6 +119,16 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    // Only in web mode: the page's commands go to the yaz web server.
+    ...(mode === "web"
+      ? {
+          // `ws` for the link to the session host (ADR-0035).
+          proxy: {
+            "/api": { target: webServer, ws: true },
+            "/auth": webServer,
+          },
+        }
+      : {}),
     fs: {
       // themes/ and locales/ live at the repo root because both Rust and
       // TypeScript consume them (ADR-0017), so Vite must be allowed to read
@@ -69,7 +138,8 @@ export default defineConfig({
   },
 
   build: {
-    outDir: "dist",
+    // A separate directory, so a web build can never be what Tauri embeds.
+    outDir: mode === "web" ? "dist-web" : "dist",
     emptyOutDir: true,
     // The webview is always current, so there is no legacy browser to serve.
     target: "esnext",
@@ -91,4 +161,4 @@ export default defineConfig({
   envPrefix: ["VITE_", "TAURI_"],
 
   clearScreen: false,
-});
+}));

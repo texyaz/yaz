@@ -320,54 +320,36 @@ pub struct CompileResult {
 
 /// Resolve a project-relative path and refuse anything outside the root.
 ///
-/// Canonicalisation happens *before* the comparison, so `..` traversal and
-/// symlink escapes are refused rather than followed. This is the invariant the
-/// capability broker will inherit, and it is why the check cannot be a simple
-/// `starts_with` on the untouched input.
+/// The check itself is [`yaz_core::project::resolve_in_root`], which is also
+/// what the session host writes through; this only maps its error.
 fn resolve_in_root(root: &Utf8Path, relative: &str) -> Result<Utf8PathBuf> {
-    let root_canonical = canonical_root(root)?;
-    let joined = root.join(relative);
-
-    // A file being written may not exist yet, so canonicalise the parent and
-    // re-attach the final component.
-    let candidate = if joined.exists() {
-        canonical_root(&joined)?
-    } else {
-        let parent = joined
-            .parent()
-            .ok_or_else(|| CommandError::new("error-fs-outside-root", "path has no parent"))?;
-        let file_name = joined.file_name().ok_or_else(|| {
-            CommandError::new("error-fs-outside-root", "path has no final component")
-        })?;
-        canonical_root(parent)?.join(file_name)
-    };
-
-    if !candidate.starts_with(&root_canonical) {
-        return Err(CommandError::new(
-            "error-fs-outside-root",
-            format!("{candidate} is outside {root_canonical}"),
-        ));
-    }
-
-    Ok(candidate)
+    Ok(yaz_core::project::resolve_in_root(root, relative)?)
 }
 
 /// Canonicalise, keeping the result UTF-8 and free of Windows `\\?\` prefixes.
 pub(crate) fn canonical_root(path: &Utf8Path) -> Result<Utf8PathBuf> {
-    let canonical = std::fs::canonicalize(path)
-        .map_err(|error| CommandError::new("error-fs-not-found", format!("{path}: {error}")))?;
-    // Windows canonicalisation yields a `\\?\C:\…` extended-length path, which
-    // compares badly against ordinary paths and looks alarming in the UI.
-    let text = canonical.to_string_lossy();
-    let trimmed = text.strip_prefix(r"\\?\").unwrap_or(&text);
-    Ok(Utf8PathBuf::from(trimmed))
+    Ok(yaz_core::project::canonical_root(path)?)
 }
 
 /// Open a directory as a project and list its LaTeX sources.
 #[tauri::command]
 pub fn open_project(root: String) -> Result<ProjectInfo> {
     let root = canonical_root(Utf8Path::new(&root))?;
+    let info = scan_project(&root);
 
+    // Recorded here rather than in the frontend: this is the one place
+    // that knows the open succeeded and knows the canonical root.
+    remember_project(&root);
+
+    Ok(info)
+}
+
+/// List what is in a project folder, and pick its entry document.
+///
+/// Apart from [`open_project`] because opening a project also records it as
+/// the most recent one, and a question about the folder — where did the last
+/// build go — is not an opening.
+fn scan_project(root: &Utf8Path) -> ProjectInfo {
     // Everything, not only the sources.
     //
     // A real project has images the author wants to see, a `.bib` they open,
@@ -406,7 +388,7 @@ pub fn open_project(root: String) -> Result<ProjectInfo> {
         let Ok(path) = Utf8PathBuf::from_path_buf(entry.into_path()) else {
             continue;
         };
-        let Ok(relative) = path.strip_prefix(&root) else {
+        let Ok(relative) = path.strip_prefix(root) else {
             continue;
         };
         // The root itself is the project, not a folder inside it.
@@ -434,11 +416,7 @@ pub fn open_project(root: String) -> Result<ProjectInfo> {
         .cloned()
         .unwrap_or_default();
 
-    // Recorded here rather than in the frontend: this is the one place
-    // that knows the open succeeded and knows the canonical root.
-    remember_project(&root);
-
-    Ok(ProjectInfo {
+    ProjectInfo {
         root: root.to_string(),
         entry: entry.clone(),
         directories,
@@ -450,7 +428,7 @@ pub fn open_project(root: String) -> Result<ProjectInfo> {
                 relative_path,
             })
             .collect(),
-    })
+    }
 }
 
 /// Create a project directory, its folders, and a document that compiles.
@@ -713,8 +691,34 @@ pub fn write_file(root: String, relative_path: String, contents: String) -> Resu
 
 /// Compile the project's entry document.
 #[tauri::command]
-pub fn compile_project(root: String) -> Result<CompileResult> {
+pub fn compile_project(
+    locks: tauri::State<'_, yaz_core::project::FolderLocks>,
+    sharing: tauri::State<'_, crate::collab_commands::Sharing>,
+    root: String,
+) -> Result<CompileResult> {
+    let result = compile(&locks, root.clone(), &build_engine)?;
+    // The others in a shared session have the same folder and so the same
+    // PDF; they are told there is a new one (ADR-0035). Nobody is told when
+    // the project is not shared.
+    sharing.host().announce(
+        Utf8Path::new(&root),
+        yaz_collab::HostEvent::compiled(result.pdf_path.is_some()),
+    );
+    Ok(result)
+}
+
+/// [`compile_project`] without the Tauri state, for the assistant's `compile`
+/// tool and for a test that brings its own engine.
+///
+/// One compile of a folder at a time: two into the same `build/` write over
+/// each other, and a version recorded meanwhile sees half of it.
+pub(crate) fn compile(
+    locks: &yaz_core::project::FolderLocks,
+    root: String,
+    engine_for: &dyn Fn(&EngineChoice) -> Result<Box<dyn CompileEngine>>,
+) -> Result<CompileResult> {
     let root = canonical_root(Utf8Path::new(&root))?;
+    let _folder = locks.lock(&root)?;
     let info = open_project(root.to_string())?;
 
     if info.entry.is_empty() {
@@ -735,7 +739,7 @@ pub fn compile_project(root: String) -> Result<CompileResult> {
         })?,
     };
 
-    let engine = build_engine(&choice)?;
+    let engine = engine_for(&choice)?;
 
     let project = Project {
         root: root.clone(),
@@ -759,6 +763,75 @@ pub fn compile_project(root: String) -> Result<CompileResult> {
         engine_id: engine.id().to_owned(),
         elapsed_ms,
     })
+}
+
+/// What an earlier compile left in the project, for the entry document.
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ExistingBuild {
+    /// Absolute path to the PDF, as [`CompileResult::pdf_path`] names it.
+    pdf_path: String,
+    /// The same file as the file list names it, so that the page can tell
+    /// whether a file it was asked to open is this one.
+    pdf_relative_path: String,
+    /// Absolute path to the SyncTeX database beside it, when there is one.
+    synctex_path: Option<String>,
+    /// Whether a source file has been changed since the PDF was written, so
+    /// that the page can say it may not show what is in the sources now.
+    stale: bool,
+}
+
+/// The build output of the project's entry document, if a compile left one.
+///
+/// Opening a project must not compile it, and it must not look as though
+/// nothing had ever been built: the PDF and its SyncTeX file are in `build/`
+/// from the last time. The same names a compile returns, found without one.
+#[tauri::command]
+pub fn existing_build(root: String) -> Result<Option<ExistingBuild>> {
+    let root = canonical_root(Utf8Path::new(&root))?;
+    let info = scan_project(&root);
+    if info.entry.is_empty() {
+        return Ok(None);
+    }
+    let Some(found) = yaz_compile::engine::previous_output(&root, Utf8Path::new(&info.entry))
+    else {
+        return Ok(None);
+    };
+    let Ok(relative) = found.pdf.strip_prefix(&root) else {
+        return Ok(None);
+    };
+
+    Ok(Some(ExistingBuild {
+        pdf_relative_path: relative.as_str().replace('\\', "/"),
+        stale: sources_changed_since(&root, &info.files, &found.pdf),
+        pdf_path: found.pdf.to_string(),
+        synctex_path: found.synctex.map(|path| path.to_string()),
+    }))
+}
+
+/// Whether any source file is newer than `artefact`.
+///
+/// Sources are what an author edits and a compile reads: documents,
+/// bibliographies and styles outside the build folder. A file whose time
+/// cannot be read is not counted, so that a folder the server cannot stat
+/// does not make every build look old.
+fn sources_changed_since(root: &Utf8Path, files: &[ProjectFile], artefact: &Utf8Path) -> bool {
+    let Ok(built) = std::fs::metadata(artefact).and_then(|meta| meta.modified()) else {
+        return false;
+    };
+    let build_prefix = format!("{}/", yaz_compile::engine::BUILD_DIR);
+    files
+        .iter()
+        .filter(|file| {
+            matches!(file.kind, FileKind::Tex | FileKind::Bib | FileKind::Style)
+                && !file.relative_path.starts_with(&build_prefix)
+        })
+        .filter_map(|file| {
+            std::fs::metadata(root.join(&file.relative_path))
+                .and_then(|meta| meta.modified())
+                .ok()
+        })
+        .any(|modified| modified > built)
 }
 
 /// The engine to use when a project has expressed no preference.
@@ -799,7 +872,7 @@ fn registered_latex_installs() -> Vec<yaz_core::settings::LatexInstall> {
 /// journal template needs it must not quietly compile with something else — a
 /// silently different engine produces a subtly different PDF, which is far worse
 /// than an error saying the engine is missing.
-fn build_engine(choice: &EngineChoice) -> Result<Box<dyn CompileEngine>> {
+pub(crate) fn build_engine(choice: &EngineChoice) -> Result<Box<dyn CompileEngine>> {
     match choice {
         EngineChoice::Tectonic => {
             #[cfg(feature = "tectonic-engine")]
@@ -1039,6 +1112,86 @@ mod tests {
         std::fs::write(root.join("main.tex"), "\\documentclass{article}").expect("write");
         let canonical = canonical_root(&root).expect("canonical").to_string();
         (dir, canonical)
+    }
+
+    /// An engine that does nothing but say when it ran, and for how long.
+    struct Recording {
+        inside: std::sync::atomic::AtomicUsize,
+        overlapped: std::sync::atomic::AtomicUsize,
+        runs: std::sync::atomic::AtomicUsize,
+    }
+
+    impl CompileEngine for Recording {
+        fn id(&self) -> &str {
+            "recording"
+        }
+        fn is_available(&self) -> bool {
+            true
+        }
+        fn compile(&self, _: &Project) -> yaz_core::Result<yaz_compile::CompileOutput> {
+            use std::sync::atomic::Ordering::SeqCst;
+            if self.inside.fetch_add(1, SeqCst) != 0 {
+                self.overlapped.fetch_add(1, SeqCst);
+            }
+            self.runs.fetch_add(1, SeqCst);
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            self.inside.fetch_sub(1, SeqCst);
+            Ok(yaz_compile::CompileOutput {
+                pdf: None,
+                synctex: None,
+                diagnostics: Vec::new(),
+                succeeded: true,
+            })
+        }
+    }
+
+    /// Delegates to one shared [`Recording`], so that every compile is seen.
+    struct Shared(std::sync::Arc<Recording>);
+
+    impl CompileEngine for Shared {
+        fn id(&self) -> &str {
+            self.0.id()
+        }
+        fn is_available(&self) -> bool {
+            true
+        }
+        fn compile(&self, project: &Project) -> yaz_core::Result<yaz_compile::CompileOutput> {
+            self.0.compile(project)
+        }
+    }
+
+    #[test]
+    fn two_compiles_of_one_folder_never_overlap() {
+        use std::sync::atomic::Ordering::SeqCst;
+        let (_dir, root) = a_project();
+        std::fs::write(
+            Utf8Path::new(&root).join("yaz.toml"),
+            "engine = \"tectonic\"\n",
+        )
+        .expect("settings");
+        let locks = yaz_core::project::FolderLocks::default();
+        let engine = std::sync::Arc::new(Recording {
+            inside: Default::default(),
+            overlapped: Default::default(),
+            runs: Default::default(),
+        });
+
+        let workers: Vec<_> = (0..3)
+            .map(|_| {
+                let (locks, root, engine) = (locks.clone(), root.clone(), engine.clone());
+                std::thread::spawn(move || {
+                    let engine_for = |_: &EngineChoice| -> Result<Box<dyn CompileEngine>> {
+                        Ok(Box::new(Shared(engine.clone())))
+                    };
+                    compile(&locks, root, &engine_for).expect("compiles")
+                })
+            })
+            .collect();
+        for worker in workers {
+            assert!(worker.join().expect("worker").succeeded);
+        }
+        assert_eq!(engine.runs.load(SeqCst), 3);
+        assert_eq!(engine.overlapped.load(SeqCst), 0, "two compiles overlapped");
     }
 
     #[test]
@@ -1297,6 +1450,16 @@ pub struct StartupClock {
     pub started: std::time::Instant,
 }
 
+impl StartupClock {
+    /// Start counting from now. Called first thing in `main`.
+    #[must_use]
+    pub fn now() -> Self {
+        Self {
+            started: std::time::Instant::now(),
+        }
+    }
+}
+
 /// Read a produced artefact as bytes, for handing the PDF to pdf.js.
 #[tauri::command]
 pub fn read_artefact(path: String) -> Result<Vec<u8>> {
@@ -1426,5 +1589,100 @@ mod file_kind_tests {
         // Windows hands these back however they were typed.
         assert_eq!(FileKind::of("Figure.PNG"), FileKind::Image);
         assert_eq!(FileKind::of("MAIN.TEX"), FileKind::Tex);
+    }
+}
+
+#[cfg(test)]
+mod existing_build_tests {
+    use super::*;
+    use std::time::{Duration, SystemTime};
+
+    fn touch(path: &Utf8Path, contents: &str, modified: SystemTime) {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, contents).unwrap();
+        std::fs::File::options()
+            .write(true)
+            .open(path)
+            .unwrap()
+            .set_modified(modified)
+            .unwrap();
+    }
+
+    fn project(dir: &tempfile::TempDir) -> Utf8PathBuf {
+        Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap()
+    }
+
+    #[test]
+    fn a_project_never_compiled_has_no_build() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = project(&dir);
+        std::fs::write(root.join("main.tex"), "x").unwrap();
+
+        assert_eq!(existing_build(root.to_string()).unwrap(), None);
+    }
+
+    #[test]
+    fn a_project_without_a_document_has_no_build() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = project(&dir);
+        touch(&root.join("build/main.pdf"), "%PDF", SystemTime::now());
+
+        assert_eq!(existing_build(root.to_string()).unwrap(), None);
+    }
+
+    #[test]
+    fn finds_the_last_build_and_names_it_as_the_file_list_does() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = project(&dir);
+        let now = SystemTime::now();
+        touch(&root.join("main.tex"), "x", now - Duration::from_secs(60));
+        touch(&root.join("build/main.pdf"), "%PDF", now);
+        touch(&root.join("build/main.synctex.gz"), "s", now);
+
+        let found = existing_build(root.to_string()).unwrap().unwrap();
+        let canonical = canonical_root(&root).unwrap();
+        assert_eq!(found.pdf_relative_path, "build/main.pdf");
+        // Joined a part at a time: the separator is the platform's.
+        let build = canonical.join("build");
+        assert_eq!(found.pdf_path, build.join("main.pdf").to_string());
+        assert_eq!(
+            found.synctex_path,
+            Some(build.join("main.synctex.gz").to_string())
+        );
+        assert!(!found.stale);
+    }
+
+    #[test]
+    fn a_source_changed_after_the_build_makes_it_stale() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = project(&dir);
+        let now = SystemTime::now();
+        touch(
+            &root.join("build/main.pdf"),
+            "%PDF",
+            now - Duration::from_secs(60),
+        );
+        touch(&root.join("main.tex"), "x", now - Duration::from_secs(120));
+        touch(&root.join("chapters/one.tex"), "y", now);
+
+        assert!(existing_build(root.to_string()).unwrap().unwrap().stale);
+    }
+
+    #[test]
+    fn what_a_compile_leaves_beside_the_pdf_is_not_a_source() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = project(&dir);
+        let now = SystemTime::now();
+        touch(&root.join("main.tex"), "x", now - Duration::from_secs(60));
+        touch(
+            &root.join("build/main.pdf"),
+            "%PDF",
+            now - Duration::from_secs(30),
+        );
+        // Written after the PDF, as the log and the format files are.
+        touch(&root.join("build/main.aux"), "a", now);
+        touch(&root.join("build/generated.tex"), "t", now);
+
+        assert!(!existing_build(root.to_string()).unwrap().unwrap().stale);
     }
 }

@@ -1,0 +1,60 @@
+{
+  "awareness": {
+    "client": 2002,
+    "clock": 1,
+    "state": {
+      "cursor": {
+        "anchor": {
+          "assoc": 0,
+          "item": {
+            "client": 2002,
+            "clock": 4
+          },
+          "tname": null,
+          "type": null
+        },
+        "head": null
+      },
+      "file": "main.tex",
+      "user": {
+        "id": "0f1e2d3c4b5a6978",
+        "name": "Äsa 😀"
+      }
+    }
+  },
+  "document": {
+    "files": {
+      "chapters/one.tex": "\\chapter{Eins}\n",
+      "main.tex": "Grüße 😀 aus Weimar\nZweite Zeile\n"
+    },
+    "meta": {
+      "epoch": "0123456789abcdef0123456789abcdef",
+      "schema": 1
+    }
+  },
+  "edit": {
+    "files": {
+      "main.tex": "Grüße 😀 Ünï Weimar\nZweite Zeile\n"
+    }
+  },
+  "host-folder": {
+    "imported": [
+      "Ünï.tex"
+    ],
+    "kept": [
+      {
+        "copy": "main.kept-20261127-101500.tex",
+        "path": "main.tex"
+      }
+    ],
+    "refused": [],
+    "removed": [],
+    "t": "folder"
+  },
+  "host-hello": {
+    "epoch": "0123456789abcdef0123456789abcdef",
+    "protocol": 1,
+    "state": "ready",
+    "t": "hello"
+  }
+}

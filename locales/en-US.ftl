@@ -28,6 +28,7 @@ error-fs-io = Something went wrong reading or writing { $path }.
 
 compile-run = Compile
 compile-running = Compiling…
+compile-running-note = Compiling… The first compile on a machine fetches the TeX files it needs, which can take a few minutes.
 compile-succeeded = Compiled in { $seconds }s.
 compile-failed = Compilation failed.
 compile-diagnostics-count = { $count } error(s)
@@ -134,6 +135,7 @@ editor-loading = Opening…
 
 pdf-empty = Compile to see your document here.
 pdf-showing = Showing { $file } — not the compiled output
+pdf-stale = Built before your latest changes — compile to bring it up to date.
 
 ## Settings
 
@@ -267,6 +269,8 @@ window-minimise = Minimise
 window-maximise = Maximise
 window-restore = Restore
 window-close = Close
+# Shown by a yaz served to a browser, where the folder is on another machine.
+web-choose-directory = Folder on the machine yaz is running on:
 
 ## Settings
 
@@ -296,6 +300,11 @@ tab-editor-source = Show source
 tab-editor-wrap = Wrap long lines
 workspace-tab-editor = Editor
 workspace-tab-pdf = PDF
+# The one-pane-at-a-time layout a narrow screen gets.
+compact-bar = Panes and document
+compact-pane-side = Outline
+compact-view-preview = Preview
+compact-view-source = Source
 menu-view-tabs = Tabs
 menu-view-reset-layout = Reset layout
 
@@ -566,6 +575,8 @@ titlebar-autosave-on = Saving by itself
 titlebar-autosave-off = Save by itself
 titlebar-search = Search
 titlebar-account = Account
+account-menu = Account of { $name }
+account-sign-out = Sign out
 
 ## The status bar
 
@@ -637,6 +648,31 @@ joined-save-failed = { $file } could not be saved: { $error }
 joined-unexpanded = Not shown, could not be read: { $missing }
 joined-drifted = The joined document no longer matches its files, so edits are not being written. Switch the joined view off to go back to one file.
 
+## Shared session: several people in one project (ADR-0035)
+
+collab-someone = Someone
+collab-state-starting = Joining…
+collab-state-ready = Shared
+collab-state-unsent = Shared, changes not sent yet
+collab-state-reconnecting = Reconnecting…
+collab-state-unavailable = Not shared
+collab-state-restarted = The server started again
+collab-state-incompatible = Reload this page
+collab-read-only = { $file } is not shared, so it can be read here but not edited.
+collab-drifted = What is on screen no longer matches the shared text, so edits are not being sent. Reload the page to continue.
+collab-session-failed = The shared session could not start, so the text can be read but not edited: { $reason }
+collab-flush-failed = The folder could not be brought up to date, so nothing was compiled or recorded: { $error }
+collab-restarted = The server started again and lost the shared session. This page holds changes that were not sent, and cannot add them to the new session. Copy what you need and reload the page.
+collab-kept = { $file } was changed in the folder while you were typing in it. The folder's version is now shown; what you had is kept as { $copy }.
+collab-imported = Changed in the folder and taken in: { $files }
+collab-refused = Not shared because it is too large or is not text: { $files }
+collab-compiled = Somebody compiled the document. The new PDF is shown.
+collab-compiled-failed = Somebody compiled the document, and it did not produce a PDF.
+error-collab-not-shared = This server does not share projects. It has to be started with --share.
+error-collab-unavailable = The shared session could not be reached.
+error-collab-schema = The shared document was written by a newer yaz.
+error-collab-flush-timeout = The folder could not be brought up to date in time.
+
 ## Generated lists, drawn from what the document says about itself
 
 listing-contents = Contents
@@ -645,6 +681,7 @@ listing-tables = Tables
 listing-glossary = Glossary
 listing-bibliography = Bibliography
 listing-index = Index
+listing-theorems = Theorems
 listing-compiled = Produced when the document is compiled.
 listing-open-contents = Show the contents in the outline
 listing-open-figures = Show the figures
@@ -652,6 +689,8 @@ listing-open-tables = Show the tables
 listing-open-glossary = Show the glossary
 listing-open-bibliography = Show the bibliography
 listing-open-index = Show the index
+listing-open-theorems = Show the theorems
+drawing-title = Drawing
 pagebreak-clearpage = Page break
 pagebreak-cleardoublepage = Page break, to a right-hand page
 pagebreak-newpage = Page break

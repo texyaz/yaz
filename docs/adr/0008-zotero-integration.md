@@ -134,6 +134,37 @@ quotation marks, so the marks follow the document's language: German wants
 „low-high“ and French wants « guillemets », and hardcoding `''` yields a
 document that is wrong in a way its author may not notice.
 
+### Amendment: a Zotero on another machine
+
+The sources above all assume Zotero and yaz share a machine. A yaz served to a
+browser ([0030](0030-a-web-server-hosts-the-same-commands.md)) does not: yaz
+runs on a server and Zotero on the writer's own computer. The page cannot ask
+Zotero itself. Zotero drops any request that looks like a browser's and sends
+no CORS headers, on purpose, so that a website cannot read a library.
+
+**The server may be told at start-up where the writer's Zotero is forwarded
+to: `yaz-web --zotero <host[:port]>`.** The writer forwards Zotero's port over
+the private network they already reach the server by, e.g.
+`tailscale serve --tcp 23119 tcp://127.0.0.1:23119`.
+
+- **It is a start-up option, not a setting and not a command.** The module
+  kept the host a constant because a host a plugin could name is an
+  exfiltration target. That still holds: only whoever starts the server can
+  say it, and nothing running inside yaz can.
+- **Every request names `127.0.0.1:23119` as its `Host`**, whatever address it
+  is sent to. Zotero answers `400 Invalid Host header` to anything else, as its
+  defence against DNS rebinding.
+- **The server's own Zotero data is not read** when a remote one is named. A
+  database found there belongs to whoever runs the server, and offering it as
+  the writer's library is the silent wrong answer this ADR forbids.
+- **The local API is therefore the query path here**, with the cost the first
+  amendment measured: one request per library. Slower than the copy, and the
+  only source there is.
+- Starting Zotero is not offered: it cannot be started from another machine.
+- The forward exposes a read-only library to the private network it is
+  forwarded on. Whether that is acceptable is the writer's call, made by
+  running the forward.
+
 ## Consequences
 
 - Users with the common Zotero + BBT setup get live search, correct keys, and

@@ -165,10 +165,26 @@ export function stitch(root: string, read: ReadFile): Stitched {
     let cursor = 0;
 
     for (const include of includesIn(source)) {
-      const path = resolveInclude(include.argument, file);
-      const expandable =
-        depth < MAX_DEPTH && !open.has(path) && !expanded.has(path);
-      const content = expandable ? read(path) : null;
+      // From the main file's directory, which is where TeX looks: a chapter
+      // in `parts/` that writes `\input{generated/chart}` means the project's
+      // `generated/`, not one beside the chapter. Beside the chapter is tried
+      // second, because that is what `subfiles` and `import` make it mean.
+      let path = resolveInclude(include.argument, root);
+      let content: string | null = null;
+      let expandable = false;
+      for (const candidate of new Set([
+        path,
+        resolveInclude(include.argument, file),
+      ])) {
+        const possible =
+          depth < MAX_DEPTH && !open.has(candidate) && !expanded.has(candidate);
+        if (candidate === path) expandable = possible;
+        const found = possible ? read(candidate) : null;
+        if (found === null) continue;
+        path = candidate;
+        content = found;
+        break;
+      }
 
       if (content === null) {
         // Left in place, command and all. Also the cycle case: a file that
@@ -401,6 +417,20 @@ export function mapSegments(
     owned.set(index, (owned.get(index) ?? 0) + delta);
   }
 
+  return moveSegments(segments, owned);
+}
+
+/**
+ * The map after each segment grew or shrank by a known amount.
+ *
+ * `owned` says, by position in the map, how much longer each segment became.
+ * {@link mapSegments} works that out from where a change is in the buffer;
+ * {@link fileChangesToBuffer} is told the file, and so the segment, outright.
+ */
+export function moveSegments(
+  segments: readonly Segment[],
+  owned: ReadonlyMap<number, number>,
+): Segment[] {
   const moved: Segment[] = [];
   let shift = 0;
   const inFile = new Map<string, number>();
@@ -424,6 +454,97 @@ export function mapSegments(
   // leave the file it belonged to with nowhere in the buffer to type back into,
   // and the map has to stay total either way.
   return moved;
+}
+
+/** Where a segment ends in its own file. */
+function fileEnd(segment: Segment): number {
+  return segment.fileFrom + (segment.to - segment.from);
+}
+
+/**
+ * Where an offset in a file is in the buffer, or `null` when it is not there.
+ *
+ * It is not there when it lies inside an `\include` command the buffer has
+ * replaced by the file it names, or in a file the buffer does not hold.
+ */
+export function fileToBuffer(
+  segments: readonly Segment[],
+  file: string,
+  offset: number,
+): number | null {
+  for (const segment of segments) {
+    if (segment.file !== file) continue;
+    if (offset < segment.fileFrom || offset > fileEnd(segment)) continue;
+    return segment.from + (offset - segment.fileFrom);
+  }
+  return null;
+}
+
+/** Changes to files, as changes to the buffer and the map they leave. */
+export interface BufferChanges {
+  /** In the buffer's coordinates before any of them, in order. */
+  changes: Change[];
+  /** The map once they are applied. */
+  segments: Segment[];
+}
+
+/**
+ * Map changes made to the files onto the buffer: the other direction of
+ * {@link mapChanges}, for an edit that arrives from somebody else.
+ *
+ * Each file's changes are in that file's coordinates before any of them. The
+ * file is known, so which segment a change at a seam belongs to is not the
+ * guess {@link locate} has to make: text put at the end of the root file's
+ * stretch stays the root file's, though a chapter begins at the same offset.
+ * That is also why the new map is returned and not left to
+ * {@link mapSegments}, which would give that text to the chapter.
+ *
+ * Returns `null` when a change touches text the buffer does not show, which is
+ * an `\include` command that was expanded. The buffer cannot follow that; it
+ * has to be stitched again.
+ */
+export function fileChangesToBuffer(
+  segments: readonly Segment[],
+  byFile: ReadonlyMap<string, readonly Change[]>,
+): BufferChanges | null {
+  const owned = new Map<number, number>();
+  const placed: { index: number; change: Change }[] = [];
+
+  for (const [file, changes] of byFile) {
+    for (const change of changes) {
+      const index = segments.findIndex(
+        (segment) =>
+          segment.file === file &&
+          change.from >= segment.fileFrom &&
+          change.to <= fileEnd(segment),
+      );
+      if (index === -1) return null;
+      const segment = segments[index]!;
+      const shift = segment.from - segment.fileFrom;
+      placed.push({
+        index,
+        change: {
+          from: change.from + shift,
+          to: change.to + shift,
+          insert: change.insert,
+        },
+      });
+      owned.set(
+        index,
+        (owned.get(index) ?? 0) +
+          change.insert.length -
+          (change.to - change.from),
+      );
+    }
+  }
+
+  // Two files can meet at one offset. The earlier segment's text goes first,
+  // which is the order the buffer holds them in.
+  placed.sort((a, b) => a.change.from - b.change.from || a.index - b.index);
+  return {
+    changes: placed.map((entry) => entry.change),
+    segments: moveSegments(segments, owned),
+  };
 }
 
 /** Whether a change lies inside the document at all, seams notwithstanding. */

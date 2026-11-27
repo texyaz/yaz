@@ -46,6 +46,7 @@ import { listen } from "@tauri-apps/api/event";
 
 import { locale, t } from "../i18n";
 import * as ipc from "../ipc";
+import { readText, writeText } from "../collab/store";
 import type { Row } from "../Picker.svelte";
 
 /** A picker the runtime is waiting on, rendered by the application shell. */
@@ -582,12 +583,12 @@ export class PluginRuntime {
         async readText(path: string) {
           const open = context.project();
           if (!open) throw new Error("no project is open");
-          return ipc.readFile(open.root, path);
+          return readText(open.root, path);
         },
         async writeText(path: string, contents: string) {
           const open = context.project();
           if (!open) throw new Error("no project is open");
-          return ipc.writeFile(open.root, path, contents);
+          return writeText(open.root, path, contents);
         },
         async writeBytes(path: string, contents: Uint8Array) {
           const open = context.project();

@@ -41,7 +41,7 @@ impl TectonicEngine {
     /// Create an engine writing artefacts into `build/` inside the project.
     pub fn new() -> Self {
         Self {
-            build_dir: Utf8PathBuf::from("build"),
+            build_dir: Utf8PathBuf::from(crate::engine::BUILD_DIR),
         }
     }
 }
@@ -93,6 +93,9 @@ impl CompileEngine for TectonicEngine {
         builder
             .bundle(bundle)
             .primary_input_path(entry.as_std_path())
+            // Not derived from the path above: the driver names the PDF, the
+            // log and the .aux after this, and panics on `create` without it.
+            .tex_input_name(entry.file_name().unwrap_or("document.tex"))
             .filesystem_root(project.root.as_std_path())
             .format_name("latex")
             .format_cache_path(format_cache)

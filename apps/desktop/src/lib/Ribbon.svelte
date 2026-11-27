@@ -882,4 +882,51 @@
     padding: 2px var(--yaz-space-2);
     min-inline-size: 9rem;
   }
+
+  /*
+    A narrow window (the same width `App.svelte` switches layouts at).
+
+    Seven tabs do not fit across a phone, so the strip scrolls sideways under a
+    finger — and the strip's own buttons stay pinned at its end, because
+    Compile scrolled out of sight is Compile nobody finds. The body scrolls the
+    same way rather than wrapping: a ribbon three rows tall on a screen this
+    short would leave no document to write in.
+  */
+  @media (max-width: 720px) {
+    .ribbon.horizontal .tabs {
+      overflow-x: auto;
+      scrollbar-width: none;
+      padding-inline-end: 0;
+    }
+
+    .ribbon.horizontal .tab {
+      padding: var(--yaz-space-3) var(--yaz-space-3);
+    }
+
+    .ribbon.horizontal .action-host {
+      position: sticky;
+      inset-inline-end: 0;
+      background: var(--yaz-bg-secondary);
+    }
+
+    /* Two pinned buttons pinned to the same edge would sit on top of each
+       other, so the one before last stands a button's width in. */
+    .ribbon.horizontal .action-host:nth-last-child(2) {
+      inset-inline-end: calc(2.5rem + 2px);
+    }
+
+    .ribbon.horizontal .strip-action {
+      inline-size: 2.5rem;
+      block-size: 2.5rem;
+    }
+
+    .ribbon.horizontal .body {
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+
+    .ribbon.horizontal .group {
+      flex: none;
+    }
+  }
 </style>
