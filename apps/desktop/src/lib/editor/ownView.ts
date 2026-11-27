@@ -11,7 +11,7 @@ import { Decoration, WidgetType } from "@codemirror/view";
 
 import { definesAnything, expand, lookedUp } from "./definitions";
 import type { Definitions, Statement } from "./definitions";
-import { drawable, lineHide, replace, touched } from "./pass";
+import { drawable, framed, lineHide, replace, touched } from "./pass";
 import type { Pass } from "./pass";
 import {
   braceCommands,
@@ -62,7 +62,7 @@ class DrawingCard extends WidgetType {
     note.className = "cm-yaz-listing-note";
     note.textContent = t("listing-compiled");
     box.append(title, note);
-    return box;
+    return framed(box);
   }
 
   override ignoreEvent(): boolean {

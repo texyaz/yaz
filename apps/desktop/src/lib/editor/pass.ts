@@ -116,10 +116,17 @@ export interface Pass {
   layout: Layout;
 }
 
-/** Whether the selection touches a range, in which case its markup is shown. */
+/**
+ * Whether the caret is in a range, in which case its markup is shown.
+ *
+ * A caret, not a selection. Dragging across a page used to turn every
+ * construct the selection reached back into source as it reached it, so the
+ * text moved under the pointer while it was being selected and the highlight
+ * ended up over something else. Selecting is reading; only a caret is editing.
+ */
 export function touched(state: EditorState, from: number, to: number): boolean {
   return state.selection.ranges.some(
-    (range) => range.from <= to && range.to >= from,
+    (range) => range.empty && range.from <= to && range.to >= from,
   );
 }
 
@@ -153,6 +160,24 @@ export function drawable(pass: Pass, from: number, to: number): boolean {
 }
 
 /** Where a construct is the whole line, the range that hides the line with it. */
+/**
+ * Wrap a widget that has space around it, so the editor can see the space.
+ *
+ * CodeMirror measures a widget by its box, and a margin is outside the box.
+ * A card with `margin: 12px 0` therefore sat 12px lower than the editor
+ * believed, and so did everything after it: each one moved every later click
+ * and the drawn selection another step away from the text under the pointer.
+ * A flow root contains its child's margins, which makes them part of the
+ * height that is measured.
+ */
+export function framed(inner: HTMLElement): HTMLElement {
+  const frame = document.createElement("div");
+  frame.className = "cm-yaz-frame";
+  frame.style.display = "flow-root";
+  frame.append(inner);
+  return frame;
+}
+
 export function lineHide(
   state: EditorState,
   from: number,

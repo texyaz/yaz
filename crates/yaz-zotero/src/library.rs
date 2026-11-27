@@ -65,7 +65,7 @@ use tokio::sync::OnceCell;
 use crate::ActiveSource;
 use crate::datadir::{self, DataDir};
 use crate::error::{Error, Result};
-use crate::local_api::{Availability, LocalApi};
+use crate::local_api::{Availability, Endpoint, LocalApi};
 use crate::model::{Annotation, Item};
 use crate::sqlite::SqliteSource;
 
@@ -76,6 +76,12 @@ pub struct Config {
     pub data_dir: Option<Utf8PathBuf>,
     /// Directory for the read-only database copy.
     pub scratch: Utf8PathBuf,
+    /// A Zotero on another machine, forwarded to this address.
+    ///
+    /// When set, this machine's own Zotero data is **not** read: a database
+    /// found here belongs to whoever runs the server, and offering it as the
+    /// writer's library would be the silent wrong answer ADR-0008 forbids.
+    pub remote: Option<Endpoint>,
 }
 
 /// A connected Zotero library.
@@ -128,7 +134,10 @@ impl Library {
     /// anyway — a user without Zotero installed is not an error condition — so
     /// it is represented as [`ActiveSource::None`] rather than an `Err`.
     pub async fn connect(config: &Config, http: reqwest::Client) -> Self {
-        let mut api = LocalApi::new(http);
+        let mut api = match &config.remote {
+            Some(endpoint) => LocalApi::at(http, endpoint.clone()),
+            None => LocalApi::new(http),
+        };
         let live_status = api.availability().await;
         if matches!(live_status, Availability::Available) {
             // Only for reporting. Knowing there are twelve libraries is what
@@ -140,13 +149,18 @@ impl Library {
 
         // Resolved, but not opened. Resolution reads two small text files and
         // stats one path; opening copies the whole database.
-        let data_dir = datadir::resolve(config.data_dir.as_deref());
+        let data_dir = match config.remote {
+            Some(_) => None,
+            None => datadir::resolve(config.data_dir.as_deref()),
+        };
         let offline_config = data_dir
             .as_ref()
             .filter(|dir| dir.has_database())
             .map(|dir| (dir.database(), config.scratch.clone()));
 
-        let failure = if offline_config.is_none() {
+        let failure = if let Some(endpoint) = &config.remote {
+            Some(format!("Zotero did not answer at {endpoint}"))
+        } else if offline_config.is_none() {
             Some("no Zotero library was found on this machine".to_owned())
         } else {
             None

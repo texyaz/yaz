@@ -124,6 +124,11 @@ pub struct PluginHost {
     /// to say which. It is also what makes this testable against a fixture
     /// rather than against whoever's library happens to be on the build machine.
     zotero_data_dir: RwLock<Option<Utf8PathBuf>>,
+    /// Where a Zotero on another machine is forwarded to, when it is.
+    ///
+    /// Set once, by the program's own start-up options, and by nothing a
+    /// plugin or the interface can call: see `yaz_zotero::local_api`.
+    zotero_remote: std::sync::OnceLock<yaz_zotero::local_api::Endpoint>,
 }
 
 impl Default for PluginHost {
@@ -140,9 +145,24 @@ impl PluginHost {
             zotero: RwLock::new(None),
             project_root: RwLock::new(None),
             zotero_data_dir: RwLock::new(None),
+            zotero_remote: std::sync::OnceLock::new(),
             declared_tools: RwLock::new(HashMap::new()),
             updates: RwLock::new(HashMap::new()),
         }
+    }
+
+    /// Read Zotero from another machine, forwarded to `endpoint`.
+    ///
+    /// For a yaz served to a browser, where the writer's Zotero is not on the
+    /// machine yaz runs on. Deliberately not a command: only the program's own
+    /// start-up reaches this, and only the first call counts.
+    pub fn use_remote_zotero(&self, endpoint: yaz_zotero::local_api::Endpoint) {
+        let _ = self.zotero_remote.set(endpoint);
+    }
+
+    /// Whether Zotero lives on another machine.
+    fn zotero_is_remote(&self) -> bool {
+        self.zotero_remote.get().is_some()
     }
 
     /// Point the Zotero bridge at a specific data directory.
@@ -221,6 +241,7 @@ impl PluginHost {
             data_dir: self.zotero_data_dir.read().await.clone(),
             scratch: Utf8PathBuf::from_path_buf(std::env::temp_dir())
                 .unwrap_or_else(|_| Utf8PathBuf::from(".")),
+            remote: self.zotero_remote.get().cloned(),
         };
         let library = Arc::new(Library::connect(&config, http).await);
         *slot = Some(library.clone());
@@ -777,7 +798,9 @@ pub async fn plugin_zotero_installed(
     host: tauri::State<'_, PluginHost>,
 ) -> Result<bool> {
     host.authorise(&plugin_id, &Request::Zotero).await?;
-    Ok(yaz_zotero::launch::installed().is_some())
+    // A Zotero on another machine cannot be started from here, so offering to
+    // would be a button that starts the wrong program, or none.
+    Ok(!host.zotero_is_remote() && yaz_zotero::launch::installed().is_some())
 }
 
 /// Start Zotero.
@@ -792,6 +815,9 @@ pub async fn plugin_zotero_launch(
     host: tauri::State<'_, PluginHost>,
 ) -> Result<()> {
     host.authorise(&plugin_id, &Request::Zotero).await?;
+    if host.zotero_is_remote() {
+        return Err(zotero_error(yaz_zotero::Error::NotRunning));
+    }
     yaz_zotero::launch::launch().map_err(zotero_error)?;
     Ok(())
 }

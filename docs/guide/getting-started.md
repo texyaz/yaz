@@ -92,4 +92,15 @@ a public interface. A name other than the listen address has to be allowed
 explicitly: `--allow-host my-machine.example.net`.
 :::
 
+To cite from the Zotero on your own computer, forward its port over the same
+private network and tell the server where it is
+([ADR-0008](../adr/0008-zotero-integration)):
+
+```bash
+# on the computer Zotero runs on, with its local API switched on
+tailscale serve --bg --tcp 23119 tcp://127.0.0.1:23119
+# on the server
+./target/release/yaz-web --dist apps/desktop/dist-web --zotero my-laptop:23119
+```
+
 Folders are on the machine yaz runs on, so "Open" asks you to type the path.
