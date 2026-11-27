@@ -25,10 +25,17 @@
   import { ICONS } from "./icons";
   import type { MenuItem } from "./MenuBar.svelte";
   import type { SearchOptions } from "./editor/search";
+  import type { CollabBar } from "./collab/presence";
 
   interface Props {
     /** Shown in the middle, where a title bar puts it. */
     title: string;
+    /**
+     * The session, when the project is shared. Where the dirty mark and the
+     * autosave toggle were: in a session the host writes the folder, so there
+     * is nothing to toggle and nothing that waits for a save.
+     */
+    collab?: CollabBar | null;
     /** Whether there is anything to save. */
     dirty: boolean;
     canSave: boolean;
@@ -67,6 +74,7 @@
 
   let {
     title,
+    collab = null,
     dirty,
     canSave,
     onsave,
@@ -96,6 +104,25 @@
    * markup gained a wrapper.
    */
   let field = $state<HTMLInputElement>();
+
+  /** What the session's state is called, in the page's language. */
+  function stateLabel(bar: CollabBar): string {
+    if (bar.state === "ready" && bar.unsent) return t("collab-state-unsent");
+    switch (bar.state) {
+      case "starting":
+        return t("collab-state-starting");
+      case "ready":
+        return t("collab-state-ready");
+      case "reconnecting":
+        return t("collab-state-reconnecting");
+      case "unavailable":
+        return t("collab-state-unavailable");
+      case "restarted":
+        return t("collab-state-restarted");
+      case "incompatible":
+        return t("collab-state-incompatible");
+    }
+  }
 
   export function focusSearch(): void {
     field?.focus();
@@ -257,27 +284,58 @@
   </div>
 
   <div class="tools">
-    <!-- Saving by itself is a mode, so it is a toggle that shows which state
-         it is in rather than what it would do. -->
-    <button
-      type="button"
-      class="tool"
-      class:on={autosave}
-      title={t(autosave ? "titlebar-autosave-on" : "titlebar-autosave-off")}
-      aria-label={t(autosave ? "titlebar-autosave-on" : "titlebar-autosave-off")}
-      aria-pressed={autosave}
-      onclick={() => onautosave(!autosave)}
-    >
-      <svg viewBox="0 0 16 16" aria-hidden="true">
-        <path d="M8 2.5a5.5 5.5 0 103.9 1.6" />
-        <path d="M12 1v3.2H8.8" />
-      </svg>
-    </button>
+    {#if collab}
+      <!-- In a session the host writes the folder, so there is no mode to
+           choose and nothing waiting to be saved: the bar says how the session
+           stands and who else is in it. -->
+      <span
+        class="session"
+        class:trouble={collab.state !== "ready" && collab.state !== "starting"}
+        role="status"
+        title={stateLabel(collab)}
+        aria-label={stateLabel(collab)}
+        data-collab-state={collab.state}
+      >
+        <span class="session-dot" aria-hidden="true"></span>
+        <span class="session-text">{stateLabel(collab)}</span>
+      </span>
+      {#each collab.people as person, index (index)}
+        <span
+          class="person"
+          style:background={`var(--yaz-presence-${person.colour})`}
+          title={person.file ? `${person.name} — ${person.file}` : person.name}
+          aria-label={person.file ? `${person.name} — ${person.file}` : person.name}
+        >
+          {#if person.picture}
+            <img src={person.picture} alt="" referrerpolicy="no-referrer" />
+          {:else}
+            {person.initials}
+          {/if}
+        </span>
+      {/each}
+    {:else}
+      <!-- Saving by itself is a mode, so it is a toggle that shows which state
+           it is in rather than what it would do. -->
+      <button
+        type="button"
+        class="tool"
+        class:on={autosave}
+        title={t(autosave ? "titlebar-autosave-on" : "titlebar-autosave-off")}
+        aria-label={t(autosave ? "titlebar-autosave-on" : "titlebar-autosave-off")}
+        aria-pressed={autosave}
+        onclick={() => onautosave(!autosave)}
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M8 2.5a5.5 5.5 0 103.9 1.6" />
+          <path d="M12 1v3.2H8.8" />
+        </svg>
+      </button>
+    {/if}
 
     <button
       type="button"
       class="tool"
-      class:dirty
+      class:dirty={dirty && !collab}
       disabled={!canSave}
       title={t("menu-file-save")}
       aria-label={t("menu-file-save")}
@@ -602,6 +660,51 @@
 
   .tool.on {
     color: var(--yaz-accent);
+  }
+
+  /* How a shared session stands, where the save toggle would be. */
+  .session {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding-inline: 0.5rem;
+    font-size: var(--yaz-font-size-sm);
+    color: var(--yaz-text-muted);
+  }
+
+  .session-dot {
+    inline-size: 0.5rem;
+    block-size: 0.5rem;
+    border-radius: 50%;
+    background: var(--yaz-success);
+  }
+
+  .session.trouble {
+    color: var(--yaz-warning);
+  }
+
+  .session.trouble .session-dot {
+    background: var(--yaz-warning);
+  }
+
+  .person {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 1.5rem;
+    block-size: 1.5rem;
+    margin-block: auto;
+    border-radius: 50%;
+    overflow: hidden;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: var(--yaz-text-on-accent);
+  }
+
+  .person img {
+    inline-size: 100%;
+    block-size: 100%;
+    object-fit: cover;
   }
 
   /* Unsaved work is worth one dot, not a dialogue. */

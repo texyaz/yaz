@@ -107,6 +107,11 @@
   import PdfView from "./lib/PdfView.svelte";
   import Picker from "./lib/Picker.svelte";
   import * as ipc from "./lib/ipc";
+  import { readText, useSession, writeText } from "./lib/collab/store";
+  import type { Session } from "./lib/collab/session";
+  import type { CollabBar, Peer } from "./lib/collab/presence";
+  import { initials } from "./lib/person";
+  import { signedInPerson } from "@yaz-host/account";
   import { describeError } from "./lib/errors";
   import { ownBuild, synctexFor } from "./lib/build";
   import { rememberProject, rememberedProject } from "./lib/session";
@@ -462,6 +467,26 @@
   /** Included files that could not be read, left in the buffer as commands. */
   let joinedMissing = $state<string[]>([]);
 
+  /*
+   * The shared session of the open project, when it is shared (ADR-0035).
+   *
+   * Not reactive itself: it is a class holding a Yjs document. What the
+   * interface reads is mirrored into the state below whenever it changes, so
+   * that a remote caret moving redraws the title bar and nothing else.
+   */
+  let session: Session | null = null;
+  let sessionState = $state<CollabBar["state"] | null>(null);
+  let sessionUnsent = $state(false);
+  let sessionPeers = $state<Peer[]>([]);
+  /** Bumped when the set of shared files may have changed. */
+  let sessionFiles = $state(0);
+  /** Set when the buffer and the shared text disagree: nothing more is sent. */
+  let sessionDrifted = $state(false);
+  /** Bumped to build the buffer again from the shared text. */
+  let sessionGeneration = $state(0);
+  /** The binding and the others' carets, handed to the editor. */
+  let collabExtension = $state.raw<Extension | null>(null);
+
   /**
    * What the editor treats as "a different document".
    *
@@ -476,7 +501,47 @@
   const editorDocId = $derived(
     joined && project
       ? `joined:${project.root}:${project.entry}`
-      : `${project?.root ?? ""}:${currentFile ?? ""}`,
+      : `${project?.root ?? ""}:${currentFile ?? ""}${sessionGeneration > 0 ? `#${sessionGeneration}` : ""}`,
+  );
+
+  /** The shared file the buffer is, if it is one. */
+  const boundFile = $derived.by(() => {
+    void sessionFiles;
+    return sessionState !== null && session && currentFile && session.has(currentFile)
+      ? currentFile
+      : null;
+  });
+
+  /**
+   * Whether the buffer takes no edit: a file the session does not share, a
+   * session that has not started or has ended, or one that has gone wrong.
+   * A page that is only reconnecting keeps typing.
+   */
+  const editorReadOnly = $derived(
+    sessionState !== null &&
+      (boundFile === null ||
+        sessionDrifted ||
+        sessionState === "starting" ||
+        sessionState === "unavailable" ||
+        sessionState === "incompatible" ||
+        sessionState === "restarted"),
+  );
+
+  /** The session as the title bar draws it. */
+  const collabBar = $derived<CollabBar | null>(
+    sessionState === null
+      ? null
+      : {
+          state: sessionState,
+          unsent: sessionUnsent,
+          people: sessionPeers.map((peer) => ({
+            name: peer.user.name || t("collab-someone"),
+            initials: initials(peer.user.name || t("collab-someone")),
+            colour: peer.colour + 1,
+            file: peer.file,
+            picture: peer.user.picture,
+          })),
+        },
   );
 
   /**
@@ -1109,12 +1174,12 @@
     if (!project) return;
     const open = project;
     try {
-      const entry = await ipc.readFile(open.root, open.entry);
+      const entry = await readText(open.root, open.entry);
       const edit = requirePackage(entry, name);
       if (!edit) return;
       const next =
         entry.slice(0, edit.from) + edit.insert + entry.slice(edit.to);
-      await ipc.writeFile(open.root, open.entry, next);
+      await writeText(open.root, open.entry, next);
       entryText = next;
       showNotice(t("format-package-added", { package: name, file: open.entry }));
     } catch (error) {
@@ -1130,7 +1195,8 @@
    * the history unreadable and the disk busy for no benefit.
    */
   $effect(() => {
-    if (!autosave || !dirty || !currentFile) return;
+    // In a session the host writes the folder, and nothing here waits to be saved.
+    if (!autosave || !dirty || !currentFile || sessionState !== null) return;
     const timer = setTimeout(() => void save(), 1200);
     return () => clearTimeout(timer);
   });
@@ -1568,7 +1634,7 @@
 
       let text: string;
       try {
-        text = await ipc.readFile(open.root, file.relativePath);
+        text = await readText(open.root, file.relativePath);
       } catch {
         // A file that cannot be read is one result missing, not a failed
         // search. Reporting each would be a wall of notices for a `.gitignore`.
@@ -2396,7 +2462,7 @@
 
     for (const name of declaredBibs) {
       try {
-        const text = await ipc.readFile(open.root, name);
+        const text = await readText(open.root, name);
         // First declaration wins for a key defined twice, which is what
         // biblatex does with two resources.
         for (const [key, entry] of readBib(text)) {
@@ -2494,9 +2560,9 @@ ${entryText}`,
         const next = withBibliography(buffer, name);
         editorApi.replaceRange(0, buffer.length, next);
       } else {
-        const entry = await ipc.readFile(open.root, open.entry);
+        const entry = await readText(open.root, open.entry);
         const next = withBibliography(entry, name);
-        await ipc.writeFile(open.root, open.entry, next);
+        await writeText(open.root, open.entry, next);
         entryText = next;
         showNotice(t("bib-fix-declared-in", { file: open.entry }));
       }
@@ -2519,7 +2585,7 @@ ${entryText}`,
         (file) => file.relativePath.toLowerCase() === name.toLowerCase(),
       );
       if (!present) {
-        await ipc.writeFile(project.root, name, "");
+        await writeText(project.root, name, "");
         project = await ipc.openProject(project.root);
       }
       if (!declaredBibs.includes(name)) {
@@ -4552,6 +4618,7 @@ ${entryText}`,
       void loadRecent();
       void refreshVcs();
       void showExistingBuild(info.root);
+      await startSession(info.root);
       await openFile(info.entry);
 
       // A document that is several files opens as several files joined.
@@ -4562,7 +4629,129 @@ ${entryText}`,
       // the list of its parts. Where a document *is* one file this changes
       // nothing, which is why the condition is the document's and not a
       // setting. Amends ADR-0020, which had this off for everyone.
-      if (hasIncludes(docText)) await join();
+      if (hasIncludes(docText)) {
+        // Not in a shared session: the joined buffer is several files with
+        // gaps in it, and the binding does not yet follow another person's
+        // edit through one. Said, because a mode that is silently off is a
+        // mode nobody trusts.
+        if (session) showNotice(t("collab-joined-off"));
+        else await join();
+      }
+  }
+
+  /**
+   * Join the project's shared session, if the server shares it (ADR-0035).
+   *
+   * The session is asked for before the first file is opened, so that the
+   * buffer is the shared text from the start and the page never holds a copy
+   * of a shared file that the session does not. A server that does not know
+   * the command, or does not share, leaves everything as it was.
+   */
+  async function startSession(root: string) {
+    endSession();
+    let status: ipc.CollabStatus;
+    try {
+      status = await ipc.collabStatus(root);
+    } catch {
+      return;
+    }
+    if (!status.shared) return;
+
+    // Loaded when a session starts: Yjs is not part of the page's start.
+    const [{ openSession }, { collabBinding }, { remoteCarets }] = await Promise.all([
+      import("./lib/collab/session"),
+      import("./lib/collab/binding"),
+      import("./lib/collab/carets"),
+    ]);
+    const opened = openSession(root, await signedInPerson());
+    session = opened;
+    useSession(opened);
+    sessionState = opened.state;
+    sessionUnsent = opened.unsent;
+    sessionPeers = opened.peers;
+    opened.subscribe(() => {
+      sessionState = opened.state;
+      sessionUnsent = opened.unsent;
+      sessionPeers = opened.peers;
+      sessionFiles += 1;
+      if (opened.state === "restarted") void sessionRestarted(opened);
+    });
+    opened.onFolder = (report) => void folderChanged(report);
+    collabExtension = [
+      collabBinding(opened, {
+        restitch: rebuildFromSession,
+        drift: () => {
+          sessionDrifted = true;
+          failure = t("collab-drifted");
+        },
+      }),
+      remoteCarets(opened, () => t("collab-someone")),
+    ];
+    if (!(await opened.whenReady(5000))) {
+      failure = t("collab-session-failed", {
+        reason: opened.reason ? t(opened.reason) : t("error-collab-unavailable"),
+      });
+    }
+  }
+
+  function endSession() {
+    session?.destroy();
+    session = null;
+    useSession(null);
+    sessionState = null;
+    sessionUnsent = false;
+    sessionPeers = [];
+    sessionDrifted = false;
+    collabExtension = null;
+  }
+
+  /** The shared text of the open file replaced what is in the buffer. */
+  function rebuildFromSession() {
+    if (!session || !currentFile) return;
+    const text = session.text(currentFile);
+    if (text === null) return;
+    docText = text;
+    sessionGeneration += 1;
+  }
+
+  /**
+   * The host started afresh. A page with nothing unsent opens the new session
+   * and goes on; one with unsent typing does not merge it into the new one
+   * (that would put the text there twice) and stays read-only, with the text
+   * on screen to copy.
+   */
+  async function sessionRestarted(lost: Session) {
+    if (session !== lost) return;
+    if (lost.unsent) {
+      failure = t("collab-restarted");
+      return;
+    }
+    const open = project;
+    if (!open) return;
+    await startSession(open.root);
+    sessionGeneration += 1;
+    if (currentFile) await openFile(currentFile);
+  }
+
+  /** What the host did to the folder behind the pages' backs, said in a sentence. */
+  async function folderChanged(report: ipc.FolderReport) {
+    for (const kept of report.kept) {
+      showNotice(t("collab-kept", { file: kept.path, copy: kept.copy }));
+    }
+    if (report.kept.length === 0 && report.imported.length > 0) {
+      showNotice(t("collab-imported", { files: report.imported.join(", ") }));
+    }
+    if (report.refused.length > 0) {
+      showNotice(t("collab-refused", { files: report.refused.join(", ") }));
+    }
+    // New files, files that are gone, and the copies that were kept.
+    if (project) {
+      try {
+        project = await ipc.openProject(project.root);
+      } catch {
+        // The list stays as it was; the next open scans again.
+      }
+    }
   }
 
   async function ensureEditorLoaded() {
@@ -4594,7 +4783,7 @@ ${entryText}`,
       try {
         texts.set(
           file.relativePath,
-          await ipc.readFile(project.root, file.relativePath),
+          await readText(project.root, file.relativePath),
         );
       } catch {
         // Left out, so the include stays visible as a command. A file that
@@ -4607,6 +4796,10 @@ ${entryText}`,
   /** Join the document's files into one buffer. */
   async function join() {
     if (!project) return;
+    if (session) {
+      showNotice(t("collab-joined-off"));
+      return;
+    }
     // Whatever is in the single-file buffer goes to disk first: the join reads
     // from disk, and an unsaved paragraph would simply vanish from the text.
     await save();
@@ -4836,16 +5029,38 @@ ${entryText}`,
     }
 
     try {
-      docText = await ipc.readFile(project.root, relativePath);
+      if (session && !session.has(relativePath)) {
+        // A file made a moment ago is the host's to find and take in.
+        await ipc.collabRescan(project.root).catch(() => {});
+        await session.whenShared(relativePath, 400);
+      }
+      docText = await readText(project.root, relativePath);
       currentFile = relativePath;
       dirty = false;
+      if (session && !session.has(relativePath)) {
+        showNotice(t("collab-read-only", { file: relativePath }));
+      }
     } catch (error) {
       failure = describeError(error);
     }
   }
 
-  async function save() {
-    if (!project) return;
+  /** Bring the file, or the folder, up to date. False when that was not done. */
+  async function save(): Promise<boolean> {
+    if (!project) return true;
+
+    if (session) {
+      // The host writes the folder from its replica. Saving is asking it to
+      // do so now, with what this page has seen, and then recording a version.
+      try {
+        await session.flush();
+      } catch (error) {
+        failure = t("collab-flush-failed", { error: describeError(error) });
+        return false;
+      }
+      if (vcs?.enabled) await recordVersion();
+      return true;
+    }
 
     if (joined) {
       // Per file, and reported per file: a save that half-succeeds leaves the
@@ -4855,24 +5070,25 @@ ${entryText}`,
         const text = joinedFiles.get(file);
         if (text === undefined) continue;
         try {
-          await ipc.writeFile(project.root, file, text);
+          await writeText(project.root, file, text);
         } catch (error) {
           failure = t("joined-save-failed", { file, error: describeError(error) });
-          return;
+          return false;
         }
       }
       joinedDirty = new Set();
       dirty = false;
       if (vcs?.enabled) await recordVersion();
-      return;
+      return true;
     }
 
-    if (!currentFile || !dirty) return;
-    await ipc.writeFile(project.root, currentFile, docText);
+    if (!currentFile || !dirty) return true;
+    await writeText(project.root, currentFile, docText);
     dirty = false;
     // Recording is part of saving when it is switched on. A save with no edits
     // records nothing, so this does not fill the history with empty versions.
     if (vcs?.enabled) await recordVersion();
+    return true;
   }
 
   async function compile() {
@@ -4880,7 +5096,9 @@ ${entryText}`,
     busy = true;
     failure = null;
     try {
-      await save();
+      // Not against a folder that was not brought up to date: a compile of
+      // somebody's typing the folder has not got would show text nobody sees.
+      if (!(await save())) return;
       const outcome = await ipc.compile(project.root);
       result = outcome;
       // The compile says where its output is; what was there before is gone.
@@ -4915,11 +5133,15 @@ ${entryText}`,
         docId={editorDocId}
         {vimMode}
         segments={joinedSegments}
+        collab={collabExtension}
+        {boundFile}
+        readOnly={editorReadOnly}
         onRefused={() => showNotice(t("joined-refused"))}
         onOpenInclude={(argument) => void openInclude(argument)}
         onChange={(text, changes) => {
           docText = text;
-          dirty = true;
+          // In a session nothing waits for a save: the host has the text.
+          dirty = session === null;
           if (joined) recordJoinedChanges(changes);
         }}
         onSave={save}
@@ -5138,6 +5360,7 @@ ${entryText}`,
   <TitleBar
     bind:this={titleBar}
     title={windowTitle}
+    collab={collabBar}
     {dirty}
     canSave={Boolean(currentFile)}
     onsave={save}
