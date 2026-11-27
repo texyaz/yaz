@@ -368,13 +368,23 @@ async fn require_session(
         .uri()
         .path_and_query()
         .map_or("/", |wanted| wanted.as_str());
-    let to = format!(
+    (
+        StatusCode::FOUND,
+        [(header::LOCATION, login_address(wanted))],
+    )
+        .into_response()
+}
+
+/// `/auth/login` for a person who wanted `wanted`, path and query both: a
+/// link such as `/?project=%2Fwork%2Fpaper` must come back to itself after the
+/// provider.
+fn login_address(wanted: &str) -> String {
+    format!(
         "/auth/login?{}",
         url::form_urlencoded::Serializer::new(String::new())
             .append_pair("next", wanted)
             .finish()
-    );
-    (StatusCode::FOUND, [(header::LOCATION, to)]).into_response()
+    )
 }
 
 /// What `/auth/...` answers when the server was started without sign-in.
@@ -510,7 +520,7 @@ async fn invoke(
 mod tests {
     use axum::http::StatusCode;
 
-    use super::{host_without_port, without_sign_in};
+    use super::{host_without_port, login_address, sign_in, without_sign_in};
 
     #[test]
     fn a_port_is_not_part_of_the_name() {
@@ -526,6 +536,24 @@ mod tests {
         assert_eq!(without_sign_in("me").status(), StatusCode::NO_CONTENT);
         for step in ["login", "callback", "logout", "other"] {
             assert_eq!(without_sign_in(step).status(), StatusCode::NOT_FOUND);
+        }
+    }
+
+    #[test]
+    fn the_query_of_a_link_survives_the_trip_to_the_provider() {
+        for wanted in [
+            "/?project=%2Fwork%2Fpaper",
+            "/?a=1&project=%2Fwork%2Fmy%20paper%26more&b=%25",
+            "/",
+        ] {
+            let login = login_address(wanted);
+            let request = axum::http::Request::builder()
+                .uri(&login)
+                .body(axum::body::Body::empty())
+                .expect("a request");
+            // What `/auth/login` is handed, and what it sends the person on to
+            // once they are back.
+            assert_eq!(sign_in::wanted(&request).as_deref(), Some(wanted));
         }
     }
 }

@@ -21,6 +21,8 @@ export default defineConfig({
       // imports `src/web/account.ts` by its path.
       "@yaz-host/account": new URL("./src/lib/account.ts", import.meta.url)
         .pathname,
+      "@yaz-host/start": new URL("./src/lib/start.ts", import.meta.url)
+        .pathname,
       // The same loan the application makes at build time, for the same
       // reason: a bundled plugin's own directory has no `node_modules`, and a
       // test that exercises the plugin's source has to resolve what the

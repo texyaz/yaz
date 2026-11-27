@@ -31,12 +31,21 @@ const webShims = {
   "@yaz-host/account": fileURLToPath(
     new URL("./src/web/account.ts", import.meta.url),
   ),
+  // The project the address asks for (ADR-0030).
+  "@yaz-host/start": fileURLToPath(
+    new URL("./src/web/start.ts", import.meta.url),
+  ),
 };
 
-/** What the desktop build and the tests resolve `@yaz-host/account` to. */
-const hostAccount = fileURLToPath(
-  new URL("./src/lib/account.ts", import.meta.url),
-);
+/** What the desktop build resolves the `@yaz-host/…` modules to. */
+const hostModules = {
+  "@yaz-host/account": fileURLToPath(
+    new URL("./src/lib/account.ts", import.meta.url),
+  ),
+  "@yaz-host/start": fileURLToPath(
+    new URL("./src/lib/start.ts", import.meta.url),
+  ),
+};
 
 export default defineConfig(({ mode }) => ({
   plugins: [svelte()],
@@ -56,7 +65,7 @@ export default defineConfig(({ mode }) => ({
      * the list is short enough to read.
      */
     alias: {
-      "@yaz-host/account": hostAccount,
+      ...hostModules,
       ...(mode === "web" ? webShims : {}),
       "@yaz/api": fileURLToPath(
         new URL("../../packages/api/src/index.ts", import.meta.url),

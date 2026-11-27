@@ -135,3 +135,13 @@ what they see: for a project some of them must not read, run a second server
 as a user that cannot read it.
 
 Folders are on the machine yaz runs on, so "Open" asks you to type the path.
+
+An address can name the project to open, which is how another application can
+link straight to a document: `https://yaz.example.org/?project=%2Fwork%2Fpaper`
+opens the folder `/work/paper` on the server (the path as the server sees it,
+URL-encoded) instead of the one the tab had. The page takes the parameter out
+of the address once it has tried, so reloading does not return to it. If the
+folder cannot be opened you see the usual message and the page starts as it
+would have without the link. Following such a link changes the open project
+for everybody who shares the server
+([ADR-0034](../adr/0034-a-web-address-can-name-the-project)).

@@ -109,6 +109,7 @@
   import * as ipc from "./lib/ipc";
   import { describeError } from "./lib/errors";
   import { rememberProject, rememberedProject } from "./lib/session";
+  import { clearRequestedProject, requestedProject } from "@yaz-host/start";
   import {
     PluginRuntime,
     type PickerRequest,
@@ -961,6 +962,19 @@
       }
       await applyAppearance();
 
+      // A web address that names a project (ADR-0030) outranks the one the
+      // tab had. Taken out of the address afterwards, so that a reload or a
+      // project opened later is not overridden by it.
+      let refused: string | null = null;
+      const asked = requestedProject();
+      if (asked && !project) {
+        await openProjectAt(asked);
+        clearRequestedProject();
+        // Not a folder the server can open: say so, and start as if the
+        // address had not asked.
+        if (!project) refused = failure;
+      }
+
       // A reloaded tab comes back to the project it had (see `session.ts`).
       // After the preferences, so the document is drawn once, the right way.
       const last = rememberedProject();
@@ -969,6 +983,9 @@
         // Moved or deleted since: say so once, not on every reload after.
         if (!project) rememberProject(null);
       }
+      // Opening the last project cleared the message; the refused address is
+      // the one worth reading.
+      if (refused) failure = refused;
     })();
 
     return theming.watchSystemMode(() => {

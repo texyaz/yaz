@@ -48,3 +48,5 @@ useful than a tidy directory.
 | [0030 — A web server hosts the same commands](/adr/0030-a-web-server-hosts-the-same-commands) | Accepted |
 | [0031 — A narrow window shows one pane](/adr/0031-a-narrow-window-shows-one-pane) | Accepted |
 | [0032 — The preview reads the document's own definitions](/adr/0032-the-preview-reads-the-documents-own-definitions) | Accepted |
+| [0033 — The web server can ask who is there](/adr/0033-the-web-server-can-ask-who-is-there) | Proposed |
+| [0034 — A web address can name the project to open](/adr/0034-a-web-address-can-name-the-project) | Proposed |

@@ -603,7 +603,7 @@ mod tests {
 
     use super::{
         Session, Settings, SignIn, UserInfo, allowed, base64_url, base64_url_decode, https_picture,
-        picture_in_id_token,
+        picture_in_id_token, redirect,
     };
 
     fn person(email: &str, user: &str, groups: &[&str]) -> UserInfo {
@@ -806,5 +806,16 @@ mod tests {
             let (status, _) = answer(sign_in.me(session)).await;
             assert_eq!(status, StatusCode::UNAUTHORIZED);
         }
+    }
+
+    #[test]
+    fn coming_back_goes_to_the_link_with_its_query() {
+        // `finish` redirects to what `login` was told, query and all.
+        let response = redirect("/?project=%2Fwork%2Fpaper", &[]);
+        assert_eq!(response.status(), StatusCode::FOUND);
+        assert_eq!(
+            response.headers()[header::LOCATION],
+            "/?project=%2Fwork%2Fpaper"
+        );
     }
 }
