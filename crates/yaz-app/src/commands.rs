@@ -693,9 +693,18 @@ pub fn write_file(root: String, relative_path: String, contents: String) -> Resu
 #[tauri::command]
 pub fn compile_project(
     locks: tauri::State<'_, yaz_core::project::FolderLocks>,
+    sharing: tauri::State<'_, crate::collab_commands::Sharing>,
     root: String,
 ) -> Result<CompileResult> {
-    compile(&locks, root, &build_engine)
+    let result = compile(&locks, root.clone(), &build_engine)?;
+    // The others in a shared session have the same folder and so the same
+    // PDF; they are told there is a new one (ADR-0035). Nobody is told when
+    // the project is not shared.
+    sharing.host().announce(
+        Utf8Path::new(&root),
+        yaz_collab::HostEvent::compiled(result.pdf_path.is_some()),
+    );
+    Ok(result)
 }
 
 /// [`compile_project`] without the Tauri state, for the assistant's `compile`

@@ -36,6 +36,8 @@
      * is nothing to toggle and nothing that waits for a save.
      */
     collab?: CollabBar | null;
+    /** Go to where one of the others is, by their place in `collab.people`. */
+    onperson?: ((index: number) => void) | undefined;
     /** Whether there is anything to save. */
     dirty: boolean;
     canSave: boolean;
@@ -75,6 +77,7 @@
   let {
     title,
     collab = null,
+    onperson,
     dirty,
     canSave,
     onsave,
@@ -300,18 +303,22 @@
         <span class="session-text">{stateLabel(collab)}</span>
       </span>
       {#each collab.people as person, index (index)}
-        <span
+        <!-- A button: where somebody is, is somewhere to go. -->
+        <button
+          type="button"
           class="person"
           style:background={`var(--yaz-presence-${person.colour})`}
           title={person.file ? `${person.name} — ${person.file}` : person.name}
           aria-label={person.file ? `${person.name} — ${person.file}` : person.name}
+          disabled={!person.file}
+          onclick={() => onperson?.(index)}
         >
           {#if person.picture}
             <img src={person.picture} alt="" referrerpolicy="no-referrer" />
           {:else}
             {person.initials}
           {/if}
-        </span>
+        </button>
       {/each}
     {:else}
       <!-- Saving by itself is a mode, so it is a toggle that shows which state
@@ -699,6 +706,18 @@
     font-size: 0.6875rem;
     font-weight: 600;
     color: var(--yaz-text-on-accent);
+    padding: 0;
+    border: 0;
+    cursor: pointer;
+  }
+
+  .person:disabled {
+    cursor: default;
+  }
+
+  .person:focus-visible {
+    outline: 2px solid var(--yaz-accent);
+    outline-offset: 2px;
   }
 
   .person img {

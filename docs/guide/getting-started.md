@@ -202,8 +202,20 @@ refused, with a message, if that does not work.
 What is shared are the text files of a LaTeX project (`.tex`, `.bib`, `.cls`,
 `.sty`, `.md` and a few more) up to 1 MiB each, not those under `build/` or in
 a folder that starts with a dot. A file that is not shared opens read-only
-while the project is shared. Several files joined as one document is off in a
-shared project for now; each file is edited by itself.
+while the project is shared.
+
+A document that is several files opens joined as one, shared or not. What you
+type goes to the file it is in, and so does what the others type: somebody who
+has a chapter open by itself and somebody who has the whole document open are
+writing the same text, and each sees the other's caret where that text is. If
+somebody edits an `\include` line that your joined view shows as the chapter it
+names, the view is put together again with your caret where it was.
+
+The file list shows a dot in each person's colour on the file they are in, and
+a click on somebody's picture in the title bar takes you to their caret. When
+somebody compiles, everybody else is told and shown the new PDF; the folder is
+one, so the PDF is too. A tab that holds typing the server has not yet received
+asks before it is closed.
 
 Another program may write into the folder meanwhile. A file it changes while
 nobody is typing in it appears in every editor within a couple of seconds. If

@@ -14,22 +14,39 @@
  * - **Session to local**, per event: one CodeMirror transaction, marked as
  *   from the session, as remote, and kept out of the undo history, so that
  *   undo stays CodeMirror's and undoes one's own typing.
- * - **Drift is fail-closed.** After each application the buffer's length must
- *   equal the shared text's. If it does not, the binding lets go and says so,
- *   and nothing further is written from a buffer that no longer matches.
+ * - **Several files in one buffer** (ADR-0020) are the same thing with more
+ *   segments. Somebody else's edit names its file, so it is placed by
+ *   {@link fileChangesToBuffer} and carries the map it leaves; one that touches
+ *   an `\include` command the buffer has expanded cannot be followed, and the
+ *   shell is asked to stitch the buffer again.
+ * - **Drift is fail-closed.** When a document is put in the buffer, every
+ *   stretch of it must be the shared text it claims to be; after each
+ *   application every file must still be as much longer than its stretches as
+ *   it was. If not, the binding lets go and says so, and nothing further is
+ *   written from a buffer that no longer matches.
  */
 import {
   Annotation,
   StateEffect,
   StateField,
   Transaction,
-  type ChangeSpec,
+  type EditorState,
   type Extension,
 } from "@codemirror/state";
 import { ViewPlugin, type EditorView, type ViewUpdate } from "@codemirror/view";
 import * as Y from "yjs";
-import { mapChanges, type Change, type Segment } from "../editor/stitch";
-import { changesOf, segments as segmentsField } from "../editor/stitched";
+import {
+  fileChangesToBuffer,
+  locate,
+  mapChanges,
+  type Change,
+  type Segment,
+} from "../editor/stitch";
+import {
+  changesOf,
+  segments as segmentsField,
+  setSegments,
+} from "../editor/stitched";
 import type { Session } from "./session";
 
 /** Marks a transaction that came from the session, so it is not sent back. */
@@ -55,6 +72,21 @@ export const boundFile = StateField.define<string | null>({
   },
 });
 
+/**
+ * Which shared file every offset of the buffer is.
+ *
+ * The stitched map when there is one. A single file is one segment that is the
+ * whole buffer; a buffer that is no shared file has none.
+ */
+export function mapOf(state: EditorState): readonly Segment[] {
+  const map = state.field(segmentsField, false) ?? [];
+  if (map.length > 0) return map;
+  const file = state.field(boundFile, false) ?? null;
+  return file === null
+    ? []
+    : [{ file, from: 0, to: state.doc.length, fileFrom: 0, depth: 0 }];
+}
+
 /** What the binding tells the shell. */
 export interface BindingEvents {
   /** The shared text changed in a way the buffer cannot follow: rebuild it. */
@@ -68,27 +100,31 @@ export interface BindingEvents {
 /** The origin of the binding's own Yjs transactions, which it does not hear. */
 const bindingOrigin = Symbol("yaz-collab-binding");
 
-/** The changes of a delta, as CodeMirror's specs in the old document's coordinates. */
-export function specsOfDelta(
+/** The changes of a delta to one file, in that file's coordinates before it. */
+export function changesOfDelta(
   delta: readonly {
     insert?: unknown;
     delete?: number | undefined;
     retain?: number | undefined;
   }[],
-): ChangeSpec[] {
-  const specs: ChangeSpec[] = [];
+): Change[] {
+  const changes: Change[] = [];
   let position = 0;
   for (const operation of delta) {
     if (typeof operation.retain === "number") {
       position += operation.retain;
     } else if (typeof operation.delete === "number") {
-      specs.push({ from: position, to: position + operation.delete });
+      changes.push({
+        from: position,
+        to: position + operation.delete,
+        insert: "",
+      });
       position += operation.delete;
     } else if (typeof operation.insert === "string") {
-      specs.push({ from: position, insert: operation.insert });
+      changes.push({ from: position, to: position, insert: operation.insert });
     }
   }
-  return specs;
+  return changes;
 }
 
 /**
@@ -116,34 +152,53 @@ export function caretOf(text: Y.Text, anchor: number, head: number) {
 }
 
 class Binding {
-  private bound: string | null = null;
-  private text: Y.Text | null = null;
   private detached = false;
+  /**
+   * Set from asking for the buffer to be built again until it has been: what
+   * the session says in between is already in the text the new buffer is
+   * built from, and the old map cannot place it.
+   */
+  private stale = false;
+  /**
+   * How much of each file the buffer does not show: the `\include` commands
+   * it replaced by the files they name. Nothing typed in the buffer and
+   * nothing the binding can follow changes it, which is what makes it the
+   * measure of drift.
+   */
+  private hidden = new Map<string, number>();
 
   constructor(
     private readonly view: EditorView,
     private readonly session: Session,
     private readonly on: BindingEvents,
   ) {
-    session.files.observe(this.onFiles);
-    this.attach(view.state.field(boundFile));
+    session.files.observeDeep(this.onSession);
+    this.rebase(view.state);
   }
 
   update(update: ViewUpdate): void {
     if (this.detached) return;
+    let sent = false;
     for (const transaction of update.transactions) {
-      const swapped = transaction.effects.some((effect) =>
-        effect.is(setBoundFile),
+      if (transaction.annotation(fromSession)) continue;
+      const swapped = transaction.effects.some(
+        (effect) => effect.is(setBoundFile) || effect.is(setSegments),
       );
       if (swapped) {
-        // The document was replaced by the bound file's text; none of it is
-        // an edit.
-        this.attach(transaction.state.field(boundFile));
+        // The document or its map was replaced by what the shell built from
+        // the shared texts; none of it is an edit.
+        this.rebase(transaction.state);
         continue;
       }
-      if (transaction.docChanged && !transaction.annotation(fromSession)) {
-        this.toSession(transaction, transaction.startState.field(boundFile));
+      if (transaction.docChanged) {
+        this.toSession(transaction);
+        sent = true;
       }
+    }
+    if (this.detached) return;
+    if (sent) this.check();
+    if (update.docChanged && update.state.field(segmentsField).length > 0) {
+      this.on.segments?.(update.state.field(segmentsField));
     }
     if (update.selectionSet || update.docChanged || update.focusChanged) {
       this.publishCaret();
@@ -151,65 +206,73 @@ class Binding {
   }
 
   destroy(): void {
-    this.session.files.unobserve(this.onFiles);
-    this.text?.unobserve(this.onText);
+    this.session.files.unobserveDeep(this.onSession);
     this.session.setCaret(null, null);
   }
 
   // --- local to session ------------------------------------------------------
 
-  private toSession(transaction: Transaction, file: string | null): void {
-    if (file === null) return;
-    const text = this.session.files.get(file);
-    if (!text) return this.drifted();
-
-    // Single file: one segment that is the whole buffer. A stitched buffer's
-    // own map is the same function's input.
-    const map = transaction.startState.field(segmentsField);
-    const known: readonly Segment[] =
-      map.length > 0
-        ? map
-        : [
-            {
-              file,
-              from: 0,
-              to: transaction.startState.doc.length,
-              fileFrom: 0,
-              depth: 0,
-            },
-          ];
-    const mapped = mapChanges(known, changesOf(transaction));
+  private toSession(transaction: Transaction): void {
+    const map = mapOf(transaction.startState);
+    // Typing into a buffer that is no shared text, or one that is being built
+    // again, has nowhere to go.
+    if (map.length === 0 || this.stale) return this.drifted();
+    const mapped = mapChanges(map, changesOf(transaction));
     if (!("byFile" in mapped)) return this.drifted();
+    for (const path of mapped.byFile.keys()) {
+      if (!this.session.files.has(path)) return this.drifted();
+    }
 
     this.session.doc.transact(() => {
       for (const [path, changes] of mapped.byFile) {
-        const target = this.session.files.get(path);
-        if (target) applyToText(target, changes);
+        applyToText(this.session.files.get(path)!, changes);
       }
     }, bindingOrigin);
-    this.check();
   }
 
   // --- session to local ------------------------------------------------------
 
-  private attach(file: string | null): void {
-    this.text?.unobserve(this.onText);
-    this.bound = file;
-    this.text = file === null ? null : (this.session.files.get(file) ?? null);
-    this.text?.observe(this.onText);
-    if (file !== null && this.text === null) this.drifted();
-    this.publishCaret();
-  }
-
-  private readonly onText = (
-    event: Y.YTextEvent,
+  private readonly onSession = (
+    events: Y.YEvent<Y.AbstractType<unknown>>[],
     transaction: Y.Transaction,
   ): void => {
-    if (transaction.origin === bindingOrigin || this.detached) return;
-    const changes = specsOfDelta(event.delta);
-    if (changes.length === 0) return;
+    if (transaction.origin === bindingOrigin || this.detached || this.stale) {
+      return;
+    }
+    const map = mapOf(this.view.state);
+    if (map.length === 0) return;
+    const shown = new Set(map.map((segment) => segment.file));
+
+    // An entry replaced or removed: the buffer holds text of a file that is
+    // no longer the one the session has under that name.
+    for (const event of events) {
+      if (event.target !== this.session.files) continue;
+      if (!(event instanceof Y.YMapEvent)) continue;
+      for (const key of event.keysChanged) {
+        if (shown.has(key)) return this.restitch();
+      }
+    }
+
+    const byFile = new Map<string, Change[]>();
+    for (const event of events) {
+      if (!(event instanceof Y.YTextEvent)) continue;
+      const file = event.path[0];
+      if (typeof file !== "string" || !shown.has(file)) continue;
+      const changes = changesOfDelta(event.delta);
+      if (changes.length > 0) byFile.set(file, changes);
+    }
+    if (byFile.size === 0) return;
+
+    const placed = fileChangesToBuffer(map, byFile);
+    // In a command the buffer replaced by the file it names.
+    if (!placed) return this.restitch();
+
+    const stitchedMap = this.view.state.field(segmentsField).length > 0;
     this.view.dispatch({
-      changes,
+      changes: placed.changes,
+      // With the map the change leaves: the file is known here, and the map
+      // moving itself would have to guess it at a seam.
+      effects: stitchedMap ? [setSegments.of(placed.segments)] : [],
       annotations: [
         fromSession.of(true),
         Transaction.remote.of(true),
@@ -219,38 +282,90 @@ class Binding {
     this.check();
   };
 
-  /** An entry for the bound file replaced or removed: the buffer is not its text. */
-  private readonly onFiles = (event: Y.YMapEvent<Y.Text>): void => {
-    if (this.bound === null || !event.keysChanged.has(this.bound)) return;
-    if (this.session.files.get(this.bound) === this.text) return;
+  private restitch(): void {
+    this.stale = true;
     this.on.restitch();
-  };
+  }
 
   // --- keeping honest --------------------------------------------------------
 
+  /** Take the buffer as it is now for the shared texts, after checking it is. */
+  private rebase(state: EditorState): void {
+    this.stale = false;
+    this.hidden = new Map();
+    const map = mapOf(state);
+    const texts = new Map<string, string>();
+    const shown = new Map<string, number>();
+    for (const segment of map) {
+      let text = texts.get(segment.file);
+      if (text === undefined) {
+        const shared = this.session.files.get(segment.file);
+        if (!shared) return this.drifted();
+        text = shared.toString();
+        texts.set(segment.file, text);
+      }
+      const length = segment.to - segment.from;
+      if (
+        text.slice(segment.fileFrom, segment.fileFrom + length) !==
+        state.sliceDoc(segment.from, segment.to)
+      ) {
+        return this.drifted();
+      }
+      shown.set(segment.file, (shown.get(segment.file) ?? 0) + length);
+    }
+    for (const [file, length] of shown) {
+      this.hidden.set(file, texts.get(file)!.length - length);
+    }
+    this.publishCaret();
+  }
+
   private check(): void {
-    if (this.text && this.view.state.doc.length !== this.text.length) {
-      this.drifted();
+    const state = this.view.state;
+    const map = mapOf(state);
+    const shown = new Map<string, number>();
+    let end = 0;
+    for (const segment of map) {
+      if (segment.from !== end) return this.drifted();
+      end = segment.to;
+      shown.set(
+        segment.file,
+        (shown.get(segment.file) ?? 0) + (segment.to - segment.from),
+      );
+    }
+    if (map.length > 0 && end !== state.doc.length) return this.drifted();
+    for (const [file, length] of shown) {
+      const text = this.session.files.get(file);
+      if (!text || text.length - length !== this.hidden.get(file)) {
+        return this.drifted();
+      }
     }
   }
 
   private drifted(): void {
     if (this.detached) return;
     this.detached = true;
-    this.text?.unobserve(this.onText);
     this.on.drift();
   }
 
   private publishCaret(): void {
-    if (this.detached || this.bound === null || !this.text) return;
-    const range = this.view.state.selection.main;
-    const length = this.text.length;
+    if (this.detached || this.stale) return;
+    const state = this.view.state;
+    const map = mapOf(state);
+    const range = state.selection.main;
+    const head = locate(map, range.head);
+    const text = head ? this.session.files.get(head.file) : undefined;
+    if (!head || !text) return;
+    // A caret is in one file. A selection that began in another is published
+    // as the caret alone.
+    const anchor = locate(map, range.anchor);
+    const from =
+      anchor && anchor.file === head.file ? anchor.offset : head.offset;
     this.session.setCaret(
-      this.bound,
+      head.file,
       caretOf(
-        this.text,
-        Math.min(range.anchor, length),
-        Math.min(range.head, length),
+        text,
+        Math.min(from, text.length),
+        Math.min(head.offset, text.length),
       ),
     );
   }
