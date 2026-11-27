@@ -131,6 +131,7 @@ editor-loading = Wird geöffnet…
 
 pdf-empty = Übersetzen Sie das Dokument, um es hier zu sehen.
 pdf-showing = { $file } wird angezeigt – nicht das übersetzte Dokument
+pdf-stale = Vor Ihren letzten Änderungen erstellt – übersetzen Sie neu, um es zu aktualisieren.
 
 ## Einstellungen
 

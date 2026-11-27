@@ -108,6 +108,7 @@
   import Picker from "./lib/Picker.svelte";
   import * as ipc from "./lib/ipc";
   import { describeError } from "./lib/errors";
+  import { ownBuild, synctexFor } from "./lib/build";
   import { rememberProject, rememberedProject } from "./lib/session";
   import { clearRequestedProject, requestedProject } from "@yaz-host/start";
   import {
@@ -301,6 +302,14 @@
    * author opened from the list: a reference, a figure, last month's version.
    */
   let pdfFile = $state<string | null>(null);
+  /**
+   * The build the project already had when it was opened, or that the author
+   * opened from the file list.
+   *
+   * Set when there has been no compile in this session to say where the PDF
+   * and its SyncTeX database are; a compile replaces it with its own answer.
+   */
+  let build = $state<ipc.ExistingBuild | null>(null);
   /** How many pages the compiled PDF has, for the status bar. */
   let pdfPages = $state<number | null>(null);
   let vimMode = $state(false);
@@ -862,9 +871,10 @@
    * more often than not it is a package, and knowing that is the answer.
    */
   async function jumpToSource(page: number, x: number, y: number) {
-    if (!project || !result?.synctexPath) return;
+    const synctex = synctexFor(result, build);
+    if (!project || !synctex) return;
     try {
-      const found = await ipc.locateInSource(project.root, result.synctexPath, page, x, y);
+      const found = await ipc.locateInSource(project.root, synctex, page, x, y);
       if (!found) return;
       if (!found.inProject) {
         showNotice(t("synctex-outside-project", { path: found.path }));
@@ -4335,6 +4345,7 @@ ${entryText}`,
     result = null;
     pdfData = null;
     pdfFile = null;
+    build = null;
     void ipc.pluginSetProject(null);
   }
 
@@ -4528,6 +4539,8 @@ ${entryText}`,
       await ipc.pluginSetProject(info.root);
       result = null;
       pdfData = null;
+      pdfFile = null;
+      build = null;
       // The stored choice only. Resolving "no choice" to the first *available*
       // engine would need the engine probe, and that is exactly what has been
       // moved off the startup path; the settings dialog resolves it when opened.
@@ -4536,6 +4549,7 @@ ${entryText}`,
       layout = layoutTree.deserialise(settings.workspace);
       void loadRecent();
       void refreshVcs();
+      void showExistingBuild(info.root);
       await openFile(info.entry);
 
       // A document that is several files opens as several files joined.
@@ -4749,13 +4763,44 @@ ${entryText}`,
     if (!project) return;
     failure = null;
     try {
-      pdfData = await ipc.readProjectBytes(project.root, relativePath);
-      pdfFile = relativePath;
+      const bytes = await ipc.readProjectBytes(project.root, relativePath);
+      // The project's own build is the compiled document, however it was
+      // reached: a click in it can be followed, and it is not "another file".
+      const own = ownBuild(await ipc.existingBuild(project.root), relativePath);
+      pdfData = bytes;
+      if (own) build = own;
+      pdfFile = own ? null : relativePath;
       pdfPages = null;
       updateLayout(layoutTree.focusTab(layout, "pdf"));
       showTab("pdf");
     } catch (error) {
       failure = describeError(error);
+    }
+  }
+
+  /**
+   * Show the build a previous session left in the project, if there is one.
+   *
+   * Opening a project does not compile it, and a PDF that is sitting in
+   * `build/` is what the author compiled last time; "compile to see your
+   * document" would be untrue. Whatever it finds is shown as the compiled
+   * output — which is what it is — and said to be old if a source has changed
+   * since. Failing to read it leaves the pane as it was: this is a convenience
+   * on top of opening, not part of it.
+   */
+  async function showExistingBuild(root: string) {
+    try {
+      const found = await ipc.existingBuild(root);
+      if (!found) return;
+      const bytes = await ipc.readArtefact(found.pdfPath);
+      // The author may have moved on, to another project or to a compile of
+      // their own, while this was being read.
+      if (project?.root !== root || result || pdfData) return;
+      pdfData = bytes;
+      pdfFile = null;
+      build = found;
+    } catch {
+      // Nothing to show is the state the project was already in.
     }
   }
 
@@ -4836,6 +4881,8 @@ ${entryText}`,
       await save();
       const outcome = await ipc.compile(project.root);
       result = outcome;
+      // The compile says where its output is; what was there before is gone.
+      build = null;
       // A PDF can exist even when the compile reported errors, so this is keyed
       // off the artefact rather than off `succeeded`.
       pdfData = outcome.pdfPath ? await ipc.readArtefact(outcome.pdfPath) : null;
@@ -4939,6 +4986,7 @@ ${entryText}`,
     <PdfView
       data={pdfData}
       name={pdfFile}
+      stale={pdfFile === null && build?.stale === true}
       onclickpoint={pdfFile === null ? jumpToSource : undefined}
       onpages={(n) => (pdfPages = n)}
     />

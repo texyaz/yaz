@@ -88,6 +88,23 @@ export function compile(root: string): Promise<CompileResult> {
   return invoke<CompileResult>("compile_project", { root });
 }
 
+/** What an earlier compile left in the project for its entry document. */
+export interface ExistingBuild {
+  /** Absolute path to the PDF, as a compile names it. */
+  pdfPath: string;
+  /** The same file as the file list names it. */
+  pdfRelativePath: string;
+  /** Absolute path to the SyncTeX database beside it, when there is one. */
+  synctexPath: string | null;
+  /** Whether a source file has changed since the PDF was written. */
+  stale: boolean;
+}
+
+/** The build output a previous compile left, without compiling. */
+export function existingBuild(root: string): Promise<ExistingBuild | null> {
+  return invoke<ExistingBuild | null>("existing_build", { root });
+}
+
 /** An engine the user could pick, and whether they actually can. */
 export interface EngineInfo {
   /** Stable identifier, e.g. `tectonic` or `system:xelatex`. */

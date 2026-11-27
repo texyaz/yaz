@@ -134,6 +134,7 @@ editor-loading = Opening…
 
 pdf-empty = Compile to see your document here.
 pdf-showing = Showing { $file } — not the compiled output
+pdf-stale = Built before your latest changes — compile to bring it up to date.
 
 ## Settings
 

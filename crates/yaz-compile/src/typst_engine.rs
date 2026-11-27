@@ -55,7 +55,7 @@ impl TypstEngine {
     /// An engine writing artefacts into `build/` inside the project.
     pub fn new() -> Self {
         Self {
-            build_dir: Utf8PathBuf::from("build"),
+            build_dir: Utf8PathBuf::from(crate::engine::BUILD_DIR),
         }
     }
 }

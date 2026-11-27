@@ -104,6 +104,7 @@ pub fn install<R: tauri::Runtime>(
             commands::read_file,
             commands::write_file,
             commands::compile_project,
+            commands::existing_build,
             commands::list_engines,
             commands::get_project_settings,
             commands::set_project_engine,

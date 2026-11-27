@@ -39,6 +39,11 @@
      */
     name?: string | null;
     /**
+     * The PDF is older than a source file: it was built before the last change
+     * to the document, so it may not show what is written now.
+     */
+    stale?: boolean;
+    /**
      * A page was clicked.
      *
      * `x` and `y` are PDF points from the top left of that page — the
@@ -50,7 +55,8 @@
     onpages?: ((pages: number) => void) | undefined;
   }
 
-  let { data, name = null, onclickpoint, onpages }: Props = $props();
+  let { data, name = null, stale = false, onclickpoint, onpages }: Props =
+    $props();
 
   let container: HTMLDivElement;
   let renderError = $state<string | null>(null);
@@ -155,6 +161,9 @@
   -->
   {#if name}
     <p class="opened">{t("pdf-showing", { file: name })}</p>
+  {/if}
+  {#if stale && !name}
+    <p class="opened">{t("pdf-stale")}</p>
   {/if}
   {#if renderError}
     <p class="notice error">{renderError}</p>
