@@ -63,6 +63,20 @@
   --yaz-editor-cursor: var(--yaz-accent);
   --yaz-editor-active-line: rgba(0, 0, 0, 0.03);
 
+  /* ---- Presence ---------------------------------------------------------
+   * Who else is in a shared session (ADR-0035). Eight colours, because every
+   * page gives each person the same one by a rule over their ids, and white
+   * text on each has to stay readable: it is the name on their caret.
+   */
+  --yaz-presence-1: #c0392b;
+  --yaz-presence-2: #1f6fb4;
+  --yaz-presence-3: #2e8b57;
+  --yaz-presence-4: #8e44ad;
+  --yaz-presence-5: #b25f0a;
+  --yaz-presence-6: #0e8585;
+  --yaz-presence-7: #c2185b;
+  --yaz-presence-8: #5d6d7e;
+
   --yaz-syntax-command: #8250df;
   --yaz-syntax-environment: #0550ae;
   --yaz-syntax-math: #0f7b6c;

@@ -20,7 +20,7 @@ group somebody else maintains.
 
 Two things constrain what can be done about it:
 
-- **The server is one user's process.** The open project and the plugin host
+- **The server is one user's process.** The plugin host and the preferences
   are process state, and its commands read and write files and run a TeX
   engine. Letting a person in is letting them act as the user the server runs
   as. No amount of signing in changes that.
@@ -48,8 +48,8 @@ serves only the people it was started for.**
 - The checks of ADR-0030 stay and run first: the `Host` must be one the server
   was started for, and an API request must carry the `x-yaz-web` header.
 - **Sign-in decides who reaches the server, not what they may do there.**
-  Everybody who is let in shares the one open project and has what amounts to
-  a shell as the server's user. A project some people must not see is served
+  Everybody who is let in has what amounts to a shell as the server's user,
+  can open any folder it can read, and shares its preferences and plugin host. A project some people must not see is served
   by **another server**, started as a user, or in a sandbox, that cannot read
   it.
 - **The page is told who is there, and no more than it shows.** `/auth/me` answers a request that carries a session with
@@ -114,7 +114,7 @@ serves only the people it was started for.**
   right to be safe is one that will sometimes be run without it. The option
   costs about three hundred lines and removes that program.
 - **Accounts and permissions per project inside one server.** This is what
-  "sign-in" suggests, and it would need the open project, the plugin host and
+  "sign-in" suggests, and it would need the plugin host, the preferences and
   every command's access to the file system to become per-session, in a
   process whose commands can run a TeX engine with shell escape. It is a
   different product; the honest version of it is one server per audience.

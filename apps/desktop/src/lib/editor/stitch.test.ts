@@ -15,6 +15,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   applyToFiles,
+  fileChangesToBuffer,
+  fileToBuffer,
   hasIncludes,
   filesIn,
   isWritable,
@@ -507,5 +509,125 @@ describe("hasIncludes", () => {
     // Which is how a chapter gets switched off, and switching one off does not
     // turn the document back into several.
     expect(hasIncludes("% \\include{sections/eins}")).toBe(false);
+  });
+});
+
+describe("an edit made to a file by somebody else", () => {
+  const files = {
+    "main.tex": "A\n\\include{one}\n\\include{two}\nZ\n",
+    "one.tex": "first\n",
+    "two.tex": "second\n",
+  };
+  const built = () => stitch("main.tex", project(files));
+
+  /** The buffer after changes, applied back to front. */
+  const apply = (text: string, changes: Change[]) =>
+    [...changes]
+      .reverse()
+      .reduce(
+        (out, change) =>
+          out.slice(0, change.from) + change.insert + out.slice(change.to),
+        text,
+      );
+
+  /** Each file's text, read back out of a buffer through its map. */
+  const shown = (text: string, map: Segment[]) => {
+    const out = new Map<string, string>();
+    for (const segment of map) {
+      out.set(
+        segment.file,
+        (out.get(segment.file) ?? "") + text.slice(segment.from, segment.to),
+      );
+    }
+    return out;
+  };
+
+  it("is placed where that file's text is, and the map follows", () => {
+    const { text, segments } = built();
+    const placed = fileChangesToBuffer(
+      segments,
+      new Map([
+        ["two.tex", [{ from: 0, to: 6, insert: "2nd" }]],
+        ["one.tex", [{ from: 5, to: 5, insert: "!" }]],
+      ]),
+    );
+    expect(placed).not.toBeNull();
+    const after = apply(text, placed!.changes);
+    expect(after).toBe("A\nfirst!\n\n2nd\n\nZ\n");
+    const parts = shown(after, placed!.segments);
+    expect(parts.get("one.tex")).toBe("first!\n");
+    expect(parts.get("two.tex")).toBe("2nd\n");
+    // Total, as every mapping needs it to be.
+    expect(placed!.segments.at(-1)!.to).toBe(after.length);
+    placed!.segments.reduce((end, segment) => {
+      expect(segment.from).toBe(end);
+      return segment.to;
+    }, 0);
+  });
+
+  it("stays in its file at a seam, where the buffer alone would give it to the chapter", () => {
+    const { text, segments } = built();
+    // Offset 2 of the root file: after "A\n", before the first command.
+    const placed = fileChangesToBuffer(
+      segments,
+      new Map([["main.tex", [{ from: 2, to: 2, insert: "B\n" }]]]),
+    )!;
+    const after = apply(text, placed.changes);
+    expect(after.startsWith("A\nB\nfirst\n")).toBe(true);
+    expect(placed.segments[0]).toMatchObject({ file: "main.tex", to: 4 });
+    expect(placed.segments[1]).toMatchObject({
+      file: "one.tex",
+      from: 4,
+      fileFrom: 0,
+    });
+    // What follows in the root file is further along in that file by as much.
+    const later = placed.segments.filter((s) => s.file === "main.tex")[1]!;
+    const before = segments.filter((s) => s.file === "main.tex")[1]!;
+    expect(later.fileFrom).toBe(before.fileFrom + 2);
+  });
+
+  it("puts two files' text at one offset in the order the buffer holds them", () => {
+    const { text, segments } = built();
+    const placed = fileChangesToBuffer(
+      segments,
+      new Map([
+        ["one.tex", [{ from: 0, to: 0, insert: "1" }]],
+        ["main.tex", [{ from: 2, to: 2, insert: "m" }]],
+      ]),
+    )!;
+    expect(placed.changes.map((change) => change.insert)).toEqual(["m", "1"]);
+    expect(placed.changes.every((change) => change.from === 2)).toBe(true);
+    void text;
+  });
+
+  it("is refused inside a command the buffer replaced, and across one", () => {
+    const { segments } = built();
+    const inside = new Map([["main.tex", [{ from: 5, to: 5, insert: "x" }]]]);
+    const across = new Map([["main.tex", [{ from: 0, to: 20, insert: "" }]]]);
+    const elsewhere = new Map([["no.tex", [{ from: 0, to: 0, insert: "x" }]]]);
+    expect(fileChangesToBuffer(segments, inside)).toBeNull();
+    expect(fileChangesToBuffer(segments, across)).toBeNull();
+    expect(fileChangesToBuffer(segments, elsewhere)).toBeNull();
+  });
+
+  it("has a place in the buffer for every offset the buffer shows, and none inside a command", () => {
+    const { text, segments } = built();
+    expect(fileToBuffer(segments, "one.tex", 0)).toBe(2);
+    expect(fileToBuffer(segments, "two.tex", 3)).toBe(
+      text.indexOf("second") + 3,
+    );
+    // Either side of the command is there; its inside is not.
+    expect(fileToBuffer(segments, "main.tex", 2)).toBe(2);
+    expect(fileToBuffer(segments, "main.tex", 5)).toBeNull();
+    expect(fileToBuffer(segments, "main.tex", 14)).toBeNull();
+    expect(fileToBuffer(segments, "main.tex", 15)).toBe(8);
+    expect(fileToBuffer(segments, "no.tex", 0)).toBeNull();
+    // And back: the two directions agree wherever both are defined.
+    for (const segment of segments) {
+      for (let at = segment.from; at <= segment.to; at += 1) {
+        const offset = at - segment.from + segment.fileFrom;
+        expect(fileToBuffer(segments, segment.file, offset)).toBe(at);
+      }
+    }
   });
 });

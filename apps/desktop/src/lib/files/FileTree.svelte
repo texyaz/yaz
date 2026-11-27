@@ -42,10 +42,44 @@
      * put the folder somewhere.
      */
     oncontext?: ((node: Node | null, x: number, y: number) => void) | undefined;
+    /**
+     * Who else is in which file, in a shared session (ADR-0035): by path, the
+     * colour slot and the name of each.
+     */
+    presence?: ReadonlyMap<string, readonly Present[]> | undefined;
   }
 
-  let { rows, open, current, dimBuild, ontoggle, onopen, oncontext }: Props =
-    $props();
+  /** Somebody else with their caret in a file. */
+  interface Present {
+    colour: number;
+    name: string;
+  }
+
+  let {
+    rows,
+    open,
+    current,
+    dimBuild,
+    ontoggle,
+    onopen,
+    oncontext,
+    presence,
+  }: Props = $props();
+
+  /**
+   * Who is in a row: in the file, or anywhere under a folder that is closed.
+   * An open folder shows them on its files, and saying it twice is noise.
+   */
+  function presentIn(node: Node): readonly Present[] {
+    if (!presence || presence.size === 0) return [];
+    if (node.type === "file") return presence.get(node.path) ?? [];
+    if (open.has(node.path)) return [];
+    const under: Present[] = [];
+    for (const [path, people] of presence) {
+      if (path.startsWith(`${node.path}/`)) under.push(...people);
+    }
+    return under;
+  }
 
   /**
    * One drawing per kind of file.
@@ -126,6 +160,21 @@
 
         <span class="name">{node.name}</span>
 
+        {#if presentIn(node).length > 0}
+          {@const people = presentIn(node)}
+          <span
+            class="present"
+            title={people.map((person) => person.name).join(", ")}
+          >
+            {#each people.slice(0, 3) as person, index (index)}
+              <span
+                class="dot"
+                style:background={`var(--yaz-presence-${person.colour})`}
+              ></span>
+            {/each}
+          </span>
+        {/if}
+
         {#if node.type === "file" && node.isEntry}
           <span class="badge">{t("workspace-entry")}</span>
         {/if}
@@ -172,6 +221,20 @@
 
   /* The document the compiler starts from, which is the one file in a project
      of forty that everything else hangs off. */
+  /* The others, as dots in their colours: who is where, without a legend. */
+  .present {
+    display: inline-flex;
+    flex: none;
+    gap: 2px;
+    margin-inline-start: auto;
+  }
+
+  .dot {
+    inline-size: 0.4375rem;
+    block-size: 0.4375rem;
+    border-radius: 50%;
+  }
+
   .row.entry .name {
     font-weight: 600;
   }

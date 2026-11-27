@@ -106,8 +106,18 @@ pub struct PluginHost {
     ///
     /// [ADR-0015]: https://github.com/GeneralPawz/yaz/blob/main/docs/adr/0015-performance-budgets.md
     zotero: RwLock<Option<Arc<Library>>>,
-    /// The open project root, which scopes [`Capability::FsProject`].
-    project_root: RwLock<Option<Utf8PathBuf>>,
+    /// The open project roots, which scope [`Capability::FsProject`].
+    ///
+    /// One on the desktop. A web server hosts one window per browser tab and
+    /// they share this host, so each tab's project has to be reachable at the
+    /// same time: a root that replaced the last would take the project away
+    /// from the person who still has it open.
+    ///
+    /// With how many windows have each open, so that two on the same project
+    /// do not lose it when one of them leaves. A window that goes away without
+    /// saying so (a closed tab) is never subtracted, and its project stays
+    /// reachable until the process ends.
+    project_roots: RwLock<Vec<(Utf8PathBuf, usize)>>,
     /// Tool names each plugin's manifest declares, by plugin id.
     ///
     /// Kept because a tool is checked against the manifest when it is
@@ -143,7 +153,7 @@ impl PluginHost {
         Self {
             brokers: RwLock::new(HashMap::new()),
             zotero: RwLock::new(None),
-            project_root: RwLock::new(None),
+            project_roots: RwLock::new(Vec::new()),
             zotero_data_dir: RwLock::new(None),
             zotero_remote: std::sync::OnceLock::new(),
             declared_tools: RwLock::new(HashMap::new()),
@@ -176,21 +186,44 @@ impl PluginHost {
 
     /// Grant a plugin its capabilities, replacing any previous grant.
     pub async fn load(&self, plugin_id: &str, granted: Vec<Capability>) {
-        let root = self.project_root.read().await.clone();
-        let broker = Broker::new(plugin_id, granted, root.as_deref());
+        let roots = self.project_roots.read().await.clone();
+        let roots: Vec<&Utf8Path> = roots.iter().map(|(root, _)| root.as_path()).collect();
+        let broker = Broker::for_projects(plugin_id, granted, &roots);
         self.brokers
             .write()
             .await
             .insert(plugin_id.to_owned(), Arc::new(broker));
     }
 
-    /// Point the filesystem capabilities at a new project root.
+    /// Move the filesystem capabilities from one project to another.
     ///
-    /// Brokers are rebuilt rather than mutated: the root is canonicalised at
-    /// construction, and a broker still scoped to the previous project would
-    /// authorise writes into a project the user has closed.
-    pub async fn set_project_root(&self, root: Option<&Utf8Path>) {
-        *self.project_root.write().await = root.map(Utf8Path::to_path_buf);
+    /// What a window does when it opens a project: `previous` is the one it had
+    /// open, if any, and `next` the one it has now, if any. Only `previous` is
+    /// given up — a project another window has open stays reachable for that
+    /// window — so closing a project is `switch_project(Some(root), None)`.
+    ///
+    /// Brokers are rebuilt rather than mutated: the roots are canonicalised at
+    /// construction, and a broker still scoped to a project that was closed
+    /// would authorise writes into it.
+    pub async fn switch_project(&self, previous: Option<&Utf8Path>, next: Option<&Utf8Path>) {
+        {
+            let mut roots = self.project_roots.write().await;
+            if let Some(previous) = previous {
+                if let Some(held) = roots.iter_mut().find(|(root, _)| root == previous) {
+                    held.1 -= 1;
+                }
+                roots.retain(|(_, windows)| *windows > 0);
+            }
+            if let Some(next) = next {
+                match roots.iter_mut().find(|(root, _)| root == next) {
+                    Some(held) => held.1 += 1,
+                    None => roots.push((next.to_path_buf(), 1)),
+                }
+            }
+        }
+
+        let roots = self.project_roots.read().await.clone();
+        let roots: Vec<&Utf8Path> = roots.iter().map(|(root, _)| root.as_path()).collect();
 
         let existing: Vec<(String, Vec<Capability>)> = self
             .brokers
@@ -202,7 +235,10 @@ impl PluginHost {
 
         let mut brokers = self.brokers.write().await;
         for (id, granted) in existing {
-            brokers.insert(id.clone(), Arc::new(Broker::new(id, granted, root)));
+            brokers.insert(
+                id.clone(),
+                Arc::new(Broker::for_projects(id, granted, &roots)),
+            );
         }
     }
 
@@ -1058,13 +1094,22 @@ pub async fn plugin_set_zotero_data_dir(
 }
 
 /// Rescope filesystem capabilities to the project the user just opened.
+///
+/// `previous` is the project this window had open, so that it is given up and
+/// nobody else's is: two browser tabs on one web server have different
+/// projects open in the one plugin host ([ADR-0030]).
+///
+/// [ADR-0030]: https://github.com/texyaz/yaz/blob/main/docs/adr/0030-a-web-server-hosts-the-same-commands.md
 #[tauri::command]
 pub async fn plugin_set_project(
     root: Option<String>,
+    previous: Option<String>,
     host: tauri::State<'_, PluginHost>,
 ) -> Result<()> {
     let root = root.map(Utf8PathBuf::from);
-    host.set_project_root(root.as_deref()).await;
+    let previous = previous.map(Utf8PathBuf::from);
+    host.switch_project(previous.as_deref(), root.as_deref())
+        .await;
     Ok(())
 }
 
@@ -1164,7 +1209,7 @@ mod tests {
     async fn citing_writes_a_usable_entry_into_the_project_bibliography() {
         let (_lib, _proj, library_dir, project_root) = library_and_project();
         let host = host_with_library(&library_dir).await;
-        host.set_project_root(Some(&project_root)).await;
+        host.switch_project(None, Some(&project_root)).await;
 
         let result = host
             .ensure_in_bibliography(
@@ -1200,7 +1245,7 @@ mod tests {
     async fn citing_the_same_source_twice_does_not_duplicate_the_entry() {
         let (_lib, _proj, library_dir, project_root) = library_and_project();
         let host = host_with_library(&library_dir).await;
-        host.set_project_root(Some(&project_root)).await;
+        host.switch_project(None, Some(&project_root)).await;
 
         let first = host
             .ensure_in_bibliography(
@@ -1240,7 +1285,7 @@ mod tests {
         // escapes it must be refused by the broker rather than written.
         let (_lib, _proj, library_dir, project_root) = library_and_project();
         let host = host_with_library(&library_dir).await;
-        host.set_project_root(Some(&project_root)).await;
+        host.switch_project(None, Some(&project_root)).await;
 
         let error = host
             .ensure_in_bibliography(
@@ -1260,7 +1305,7 @@ mod tests {
     async fn an_item_that_is_no_longer_in_the_library_is_reported() {
         let (_lib, _proj, library_dir, project_root) = library_and_project();
         let host = host_with_library(&library_dir).await;
-        host.set_project_root(Some(&project_root)).await;
+        host.switch_project(None, Some(&project_root)).await;
 
         let error = host
             .ensure_in_bibliography(
@@ -1360,7 +1405,7 @@ mod tests {
         let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
 
         let host = PluginHost::new();
-        host.set_project_root(Some(&root)).await;
+        host.switch_project(None, Some(&root)).await;
         host.load("com.yaz.zotero", vec![Capability::Zotero]).await;
 
         // An absolute path inside the open project, so the refusal is about the
@@ -1399,7 +1444,7 @@ mod tests {
         let second_root = Utf8PathBuf::from_path_buf(second.path().to_path_buf()).unwrap();
 
         let host = PluginHost::new();
-        host.set_project_root(Some(&first_root)).await;
+        host.switch_project(None, Some(&first_root)).await;
         host.load("p", vec![Capability::FsProject]).await;
 
         let target = first_root.join("a.bib");
@@ -1411,7 +1456,8 @@ mod tests {
 
         // Opening another project must revoke access to the previous one, or a
         // plugin keeps writing into a project the user has closed.
-        host.set_project_root(Some(&second_root)).await;
+        host.switch_project(Some(&first_root), Some(&second_root))
+            .await;
         let error = host
             .authorise("p", &Request::FsWrite(&target))
             .await
@@ -1422,6 +1468,72 @@ mod tests {
             host.authorise("p", &Request::FsWrite(&second_root.join("a.bib")))
                 .await
                 .is_ok()
+        );
+    }
+    #[tokio::test]
+    async fn two_windows_keep_their_own_project() {
+        // Two browser tabs on one web server share this host. The second
+        // opening a project must not take the first's away, and the first
+        // closing its project must not take the second's.
+        let first = tempfile::tempdir().unwrap();
+        let second = tempfile::tempdir().unwrap();
+        let first_root = Utf8PathBuf::from_path_buf(first.path().to_path_buf()).unwrap();
+        let second_root = Utf8PathBuf::from_path_buf(second.path().to_path_buf()).unwrap();
+
+        let host = PluginHost::new();
+        host.load("p", vec![Capability::FsProject]).await;
+        host.switch_project(None, Some(&first_root)).await;
+        host.switch_project(None, Some(&second_root)).await;
+
+        let in_first = first_root.join("a.bib");
+        let in_second = second_root.join("b.bib");
+        assert!(
+            host.authorise("p", &Request::FsWrite(&in_first))
+                .await
+                .is_ok()
+        );
+        assert!(
+            host.authorise("p", &Request::FsWrite(&in_second))
+                .await
+                .is_ok()
+        );
+
+        host.switch_project(Some(&first_root), None).await;
+        let error = host
+            .authorise("p", &Request::FsWrite(&in_first))
+            .await
+            .unwrap_err();
+        assert_eq!(error.message_key(), "capability-error-out-of-scope");
+        assert!(
+            host.authorise("p", &Request::FsWrite(&in_second))
+                .await
+                .is_ok()
+        );
+    }
+
+    #[tokio::test]
+    async fn a_project_open_in_two_windows_stays_until_both_are_done_with_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+
+        let host = PluginHost::new();
+        host.load("p", vec![Capability::FsProject]).await;
+        host.switch_project(None, Some(&root)).await;
+        host.switch_project(None, Some(&root)).await;
+
+        let target = root.join("a.bib");
+        host.switch_project(Some(&root), None).await;
+        assert!(
+            host.authorise("p", &Request::FsWrite(&target))
+                .await
+                .is_ok()
+        );
+
+        host.switch_project(Some(&root), None).await;
+        assert!(
+            host.authorise("p", &Request::FsWrite(&target))
+                .await
+                .is_err()
         );
     }
 }

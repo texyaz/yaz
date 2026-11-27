@@ -69,6 +69,12 @@ The load-bearing ones:
   shell as the server's user. Do not build per-user permissions on top of it;
   a project some people must not see gets its own server.
 
+- **0035** — Whoever owns a project's folder **hosts its collaboration
+  session**: a replica of the shared text, the only writer of it into the
+  folder, a relay for its own pages. A page never writes a shared file and
+  never holds a token. **An outside change to the folder wins**; the session's
+  competing text is kept beside it as a `.kept-` file, never dropped.
+
 - **0032** — The preview **reads the document's own definitions** from the
   buffer: a `\newcommand` is drawn as its text, an environment set apart under
   its name, a theorem headed with its number. **A reader, not an expander** —

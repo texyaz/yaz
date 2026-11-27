@@ -41,15 +41,17 @@ This is the web build only; the desktop build has no address to follow.
   type the path, not a way past a check. If the server ever limits which
   roots may be opened, the limit belongs in `open_project`, where the address
   and the picker are both covered.
-- **Following a link changes the server's open project.** The open project and
-  the plugin host are process state ([ADR-0033](0033-the-web-server-can-ask-who-is-there)),
-  so a signed-in person who follows a link switches it for everybody who
-  shares the server, exactly as choosing the folder themselves would. A page
-  on another site can send a person to such a link. It can name only a
-  folder the server can open and it reads nothing, but it can move the
-  shared project under the people working in it. Nothing here prevents that;
-  a server whose people must not be moved by a link is one whose project
-  should not be shared.
+- **Following a link changes the project of the tab that follows it, and of
+  no other.** Which project is open is the page's: every command takes the
+  root it works on, and the plugin host scopes a plugin's file access to each
+  tab's project at once. A person who follows a link switches their own tab,
+  exactly as choosing the folder themselves would, and a tab somebody else has
+  open is not moved. What several tabs do share is process state: the
+  preferences, the recently opened list (which the link adds the folder to),
+  and the agent endpoint of [ADR-0022](0022-mcp-and-tool-declaration), which
+  is one server and names the project of the tab that switched it on. A page
+  on another site can send a person to such a link. It can name only a folder
+  the server can open and it reads nothing.
 - Nothing tells the link's author whether the folder opened. A link that does
   not work shows the error to whoever followed it, on the project they had.
 - Without sign-in the same holds for anybody who can reach the port, who could
