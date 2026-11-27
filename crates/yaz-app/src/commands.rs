@@ -1642,10 +1642,12 @@ mod existing_build_tests {
         let found = existing_build(root.to_string()).unwrap().unwrap();
         let canonical = canonical_root(&root).unwrap();
         assert_eq!(found.pdf_relative_path, "build/main.pdf");
-        assert_eq!(found.pdf_path, canonical.join("build/main.pdf").to_string());
+        // Joined a part at a time: the separator is the platform's.
+        let build = canonical.join("build");
+        assert_eq!(found.pdf_path, build.join("main.pdf").to_string());
         assert_eq!(
             found.synctex_path,
-            Some(canonical.join("build/main.synctex.gz").to_string())
+            Some(build.join("main.synctex.gz").to_string())
         );
         assert!(!found.stale);
     }
