@@ -23,7 +23,13 @@
  * stitching is — it is checkable without a browser.
  */
 
-import { environments, headings, matchBrace, plainText } from "./structure";
+import {
+  environments,
+  headings,
+  matchBrace,
+  matchBracket,
+  plainText,
+} from "./structure";
 import { formatDate } from "./documentDate";
 import { sectionNumbers } from "./semantics";
 import { Kind, tokensIn } from "./tokens";
@@ -31,7 +37,13 @@ import { renderingOf } from "./vocabulary";
 
 /** Which generated list a command stands for. */
 export type ListingKind =
-  "contents" | "figures" | "tables" | "glossary" | "bibliography" | "index";
+  | "contents"
+  | "figures"
+  | "tables"
+  | "glossary"
+  | "bibliography"
+  | "index"
+  | "theorems";
 
 /** A command that stands in for a generated list. */
 export interface Listing {
@@ -123,6 +135,21 @@ function pastArguments(text: string, at: number, braces: number): number {
   return cursor;
 }
 
+/** Past a star and every `[...]` and `{...}` that follows it directly. */
+function pastGroups(text: string, at: number): number {
+  let cursor = text[at] === "*" ? at + 1 : at;
+  for (;;) {
+    const end =
+      text[cursor] === "{"
+        ? matchBrace(text, cursor)
+        : text[cursor] === "["
+          ? matchBracket(text, cursor)
+          : null;
+    if (end === null) return cursor;
+    cursor = end;
+  }
+}
+
 /** Everything in a document that rich text draws rather than shows. */
 export interface Generated {
   listings: Listing[];
@@ -198,6 +225,12 @@ export function generatedIn(text: string, language = "english"): Generated {
         break;
       case "silent":
         found.machinery.push({ from: at, to: after });
+        break;
+      case "theorem":
+        // `\newtheorem{name}[shared]{Title}[within]` and thmtools'
+        // `\declaretheorem[options]{name}`: a star, then groups of either
+        // bracket in whatever order that declaration writes them.
+        found.machinery.push({ from: at, to: pastGroups(text, after) });
         break;
       case "symbol":
         found.literals.push({ text: rendering.text, from: at, to: after });
@@ -498,6 +531,7 @@ export function entriesFor(kind: ListingKind, text: string): Entry[] {
     // Neither is in the buffer, so neither can be listed from it.
     case "bibliography":
     case "index":
+    case "theorems":
       return [];
   }
 }

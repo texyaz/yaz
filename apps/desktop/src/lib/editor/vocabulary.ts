@@ -41,8 +41,29 @@ export type Rendering =
    * only difference between the eight of them.
    */
   | { kind: "glossary"; plural?: boolean; capital?: boolean; long?: boolean }
-  /** Wrap the argument in the document language's quotation marks. */
-  | { kind: "quotation" }
+  /**
+   * Wrap the argument in the document language's quotation marks.
+   *
+   * `leading` is how many brace arguments come before the passage and are not
+   * part of it: `\foreignquote{english}{shall}` names a language first.
+   */
+  | { kind: "quotation"; leading?: number }
+  /**
+   * A number with its unit: `\qty{19}{\percent}`, `\qtyrange{37}{75}{\percent}`.
+   *
+   * `numbers` is how many brace arguments are figures, and `unit` whether one
+   * more follows that names what they are counted in. The unit's own commands
+   * are drawn as the `symbol` each is declared to be.
+   */
+  | { kind: "quantity"; numbers: number; unit: boolean }
+  /**
+   * Declares a numbered statement: `\newtheorem{lemma}{Lemma}`.
+   *
+   * Hidden like any setting. What makes it its own kind is that the document
+   * is then read for it ([`definitions.ts`](./definitions.ts)), and the
+   * environment it names is drawn with its title and its number.
+   */
+  | { kind: "theorem" }
   /** Space the letters out, by thousandths of an em: `\textls`. */
   | { kind: "tracking" }
   /** Style the argument and hide the markup: `\textbf`, `\emph`. */
@@ -80,7 +101,13 @@ export type Rendering =
 
 /** Which generated list a command stands for. */
 export type ListingKind =
-  "contents" | "figures" | "tables" | "glossary" | "bibliography" | "index";
+  | "contents"
+  | "figures"
+  | "tables"
+  | "glossary"
+  | "bibliography"
+  | "index"
+  | "theorems";
 
 /** How an environment is drawn. */
 export type EnvironmentRendering =
@@ -105,7 +132,14 @@ export type EnvironmentRendering =
    * `verbatim` a backslash is a backslash, and a preview that drew `	extbf`
    * as bold there would be showing something the compiler will not print.
    */
-  | { kind: "verbatim" };
+  | { kind: "verbatim" }
+  /**
+   * A picture the compiler draws from instructions: `tikzpicture`.
+   *
+   * Nothing in the buffer says what it will look like, so a card stands where
+   * it will be — the same answer a generated list gets (ADR-0025).
+   */
+  | { kind: "drawing" };
 
 /** One entry, and who provided it. */
 export interface Entry<T> {
@@ -263,7 +297,7 @@ const CORE_COMMANDS: Record<string, Rendering> = {
   providecommand: { kind: "setting", braces: 2 },
   newenvironment: { kind: "setting", braces: 3 },
   renewenvironment: { kind: "setting", braces: 3 },
-  newtheorem: { kind: "setting", braces: 2 },
+  newtheorem: { kind: "theorem" },
   newcounter: { kind: "setting", braces: 1 },
   stepcounter: { kind: "setting", braces: 1 },
   refstepcounter: { kind: "setting", braces: 1 },

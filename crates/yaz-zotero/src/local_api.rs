@@ -4,14 +4,22 @@
 //! is running. That gives a live view of the library without touching the
 //! database file, and without Better BibTeX being installed.
 //!
-//! # Loopback only, and that is a capability decision
+//! # Loopback unless the operator says otherwise
 //!
-//! Every request here goes to `127.0.0.1`. The plugin declares
-//! `net` for that host and nothing else, so a compromised or careless plugin
-//! cannot turn the Zotero bridge into a general-purpose HTTP client — see
-//! [ADR-0006]. The host is a constant in this module rather than a parameter for
-//! the same reason: a configurable Zotero host would be a configurable
-//! exfiltration target.
+//! By default every request here goes to `127.0.0.1`. No plugin can change
+//! that: a Zotero host a plugin could name would be a configurable
+//! exfiltration target, and would turn the bridge into a general-purpose HTTP
+//! client — see [ADR-0006].
+//!
+//! The one exception is an [`Endpoint`] given by whoever *starts* the program.
+//! A yaz served to a browser ([ADR-0030]) runs on a different machine from the
+//! writer's Zotero, so its operator may name where that Zotero is forwarded
+//! to. That is a start-up option and not a setting, so nothing that runs
+//! inside yaz can reach it.
+//!
+//! Zotero refuses any request whose `Host` is not loopback, to stop DNS
+//! rebinding. A forwarded Zotero is still the same Zotero, so every request
+//! names the loopback authority whatever address it is sent to.
 //!
 //! # Verification status
 //!
@@ -21,21 +29,83 @@
 //! instance, treat the sqlite source as the one with evidence behind it.
 //!
 //! [ADR-0006]: https://github.com/GeneralPawz/yaz/blob/main/docs/adr/0006-plugin-runtime-and-capabilities.md
+//! [ADR-0030]: https://github.com/GeneralPawz/yaz/blob/main/docs/adr/0030-a-web-server-hosts-the-same-commands.md
 
 use serde::Deserialize;
 
 use crate::error::{Error, Result};
 use crate::model::{Annotation, AnnotationKind, Item};
 
-/// The loopback address Zotero listens on. Not configurable, deliberately.
+/// The loopback address Zotero listens on.
 pub const ZOTERO_HOST: &str = "127.0.0.1";
 
 /// The port Zotero's connector and local API share.
 pub const ZOTERO_PORT: u16 = 23119;
 
-/// Root of the local API.
-fn api_root() -> String {
-    format!("http://{ZOTERO_HOST}:{ZOTERO_PORT}/api")
+/// The `Host` Zotero insists on, wherever the request is actually sent.
+const LOOPBACK_AUTHORITY: &str = "127.0.0.1:23119";
+
+/// Where a Zotero on another machine is forwarded to.
+///
+/// Only ever built from a start-up option of the program — see the module
+/// docs for why this must not become something a plugin or a setting can say.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Endpoint {
+    /// Host name or address, as given.
+    host: String,
+    /// The forwarded port.
+    port: u16,
+}
+
+impl Endpoint {
+    /// Parse `host`, `host:port` or `[v6]:port`; the port defaults to Zotero's.
+    ///
+    /// `None` for anything that is not a plain host and port, so a value
+    /// carrying a path, a scheme or credentials is refused rather than guessed
+    /// at.
+    pub fn parse(text: &str) -> Option<Self> {
+        let text = text.trim();
+        let (host, port) = match text.rsplit_once(':') {
+            // A bare IPv6 address has colons but no port.
+            Some((host, port)) if !host.contains(':') || host.ends_with(']') => {
+                (host, port.parse().ok()?)
+            }
+            Some(_) => return None,
+            None => (text, ZOTERO_PORT),
+        };
+        let bare = host
+            .strip_prefix('[')
+            .and_then(|rest| rest.strip_suffix(']'))
+            .unwrap_or(host);
+        let plain = !bare.is_empty()
+            && bare
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | ':'));
+        plain.then(|| Self {
+            host: host.to_owned(),
+            port,
+        })
+    }
+
+    /// Root of the local API at this endpoint.
+    fn api_root(&self) -> String {
+        format!("http://{}:{}/api", self.host, self.port)
+    }
+}
+
+impl Default for Endpoint {
+    fn default() -> Self {
+        Self {
+            host: ZOTERO_HOST.to_owned(),
+            port: ZOTERO_PORT,
+        }
+    }
+}
+
+impl std::fmt::Display for Endpoint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}", self.host, self.port)
+    }
 }
 
 /// One library the API can serve.
@@ -67,6 +137,8 @@ impl LibraryRef {
 #[derive(Debug, Clone)]
 pub struct LocalApi {
     http: reqwest::Client,
+    /// Where Zotero answers: loopback, unless the operator forwarded one.
+    endpoint: Endpoint,
     /// Every library to query. Always includes the personal one.
     libraries: Vec<LibraryRef>,
 }
@@ -205,10 +277,28 @@ impl LocalApi {
     /// The client comes from [`yaz_core::net::http_client`] so that the trust
     /// policy in ADR-0019 has exactly one implementation.
     pub fn new(http: reqwest::Client) -> Self {
+        Self::at(http, Endpoint::default())
+    }
+
+    /// A client for a Zotero forwarded from another machine.
+    pub fn at(http: reqwest::Client, endpoint: Endpoint) -> Self {
         Self {
             http,
+            endpoint,
             libraries: vec![LibraryRef::User],
         }
+    }
+
+    /// Root of the local API.
+    fn api_root(&self) -> String {
+        self.endpoint.api_root()
+    }
+
+    /// Start a request, named for loopback whatever address it goes to.
+    fn get(&self, url: &str) -> reqwest::RequestBuilder {
+        self.http
+            .get(url)
+            .header(reqwest::header::HOST, LOOPBACK_AUTHORITY)
     }
 
     /// The libraries this will query.
@@ -222,9 +312,8 @@ impl LocalApi {
     /// degradation anyone can see: the picker simply never offers half the
     /// sources, with no error and no explanation.
     pub async fn discover_libraries(&mut self) {
-        let url = format!("{}/users/0/groups", api_root());
+        let url = format!("{}/users/0/groups", self.api_root());
         let Ok(response) = self
-            .http
             .get(&url)
             .query(&[("format", "json")])
             .timeout(std::time::Duration::from_secs(5))
@@ -264,8 +353,7 @@ impl LocalApi {
     /// is actually going to use.
     pub async fn availability(&self) -> Availability {
         let response = self
-            .http
-            .get(format!("{}/users/0/items", api_root()))
+            .get(&format!("{}/users/0/items", self.api_root()))
             .query(&[("limit", "1"), ("format", "json")])
             .timeout(std::time::Duration::from_millis(1500))
             .send()
@@ -297,9 +385,8 @@ impl LocalApi {
     pub async fn search(&self, query: &str, limit: usize) -> Result<Vec<Item>> {
         let mut all = Vec::new();
         for library in &self.libraries {
-            let url = format!("{}/{}/items", api_root(), library.path());
+            let url = format!("{}/{}/items", self.api_root(), library.path());
             let response = self
-                .http
                 .get(&url)
                 .query(&[
                     ("q", query),
@@ -330,9 +417,8 @@ impl LocalApi {
     pub async fn find(&self, item_key: &str) -> Result<Option<Item>> {
         // A key does not say which library holds it, so this asks each.
         for library in &self.libraries {
-            let url = format!("{}/{}/items/{item_key}", api_root(), library.path());
+            let url = format!("{}/{}/items/{item_key}", self.api_root(), library.path());
             let response = self
-                .http
                 .get(&url)
                 .query(&[("format", "json")])
                 .send()
@@ -369,9 +455,12 @@ impl LocalApi {
 
     async fn children(&self, key: &str) -> Result<String> {
         for library in &self.libraries {
-            let url = format!("{}/{}/items/{key}/children", api_root(), library.path());
+            let url = format!(
+                "{}/{}/items/{key}/children",
+                self.api_root(),
+                library.path()
+            );
             let response = self
-                .http
                 .get(&url)
                 .query(&[("format", "json")])
                 .send()
@@ -681,10 +770,69 @@ mod tests {
     }
 
     #[test]
-    fn the_host_is_loopback_and_not_configurable() {
-        // A configurable Zotero host would be a configurable exfiltration
-        // target for anything holding the `net` capability.
+    fn the_host_is_loopback_unless_an_endpoint_is_given() {
+        // Nothing but a start-up option builds another endpoint: a Zotero host
+        // a plugin could name would be a configurable exfiltration target.
         assert_eq!(ZOTERO_HOST, "127.0.0.1");
-        assert!(api_root().starts_with("http://127.0.0.1:23119/"));
+        assert!(
+            Endpoint::default()
+                .api_root()
+                .starts_with("http://127.0.0.1:23119/")
+        );
+    }
+
+    #[test]
+    fn an_endpoint_is_a_plain_host_and_port() {
+        let named = Endpoint::parse("laptop.tailnet.ts.net:4000").unwrap();
+        assert_eq!(named.api_root(), "http://laptop.tailnet.ts.net:4000/api");
+        assert_eq!(
+            Endpoint::parse("100.64.0.7").unwrap().to_string(),
+            "100.64.0.7:23119"
+        );
+        assert_eq!(
+            Endpoint::parse("[fd7a::1]:23119").unwrap().api_root(),
+            "http://[fd7a::1]:23119/api"
+        );
+
+        for refused in [
+            "",
+            "http://laptop:23119",
+            "laptop:23119/api",
+            "user@laptop:23119",
+            "laptop:port",
+            "fd7a::1",
+        ] {
+            assert_eq!(Endpoint::parse(refused), None, "{refused}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_forwarded_request_still_names_loopback() {
+        // Zotero answers `400 Invalid Host header` to anything else, so a
+        // forwarded Zotero would look permanently broken.
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let seen = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut buffer = vec![0; 4096];
+            let read = socket.read(&mut buffer).await.unwrap();
+            socket
+                .write_all(b"HTTP/1.0 200 OK\r\nContent-Length: 2\r\n\r\n[]")
+                .await
+                .unwrap();
+            String::from_utf8_lossy(&buffer[..read]).to_lowercase()
+        });
+
+        // `localhost` rather than the address, so the default `Host` would
+        // differ from the one Zotero wants.
+        let endpoint = Endpoint::parse(&format!("localhost:{port}")).unwrap();
+        let api = LocalApi::at(reqwest::Client::new(), endpoint);
+        assert_eq!(api.availability().await, Availability::Available);
+
+        let request = seen.await.unwrap();
+        assert!(request.contains("host: 127.0.0.1:23119"), "{request}");
+        assert!(!request.contains("host: localhost"), "{request}");
     }
 }

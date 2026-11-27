@@ -67,6 +67,7 @@ struct Options {
     listen: SocketAddr,
     dist: PathBuf,
     hosts: Vec<String>,
+    zotero: Option<yaz_zotero::local_api::Endpoint>,
 }
 
 const USAGE: &str = "\
@@ -74,6 +75,7 @@ yaz-web — serve yaz to a browser
 
 USAGE:
     yaz-web --dist <DIR> [--listen <ADDR:PORT>] [--allow-host <NAME>]...
+            [--zotero <HOST[:PORT]>]
 
 OPTIONS:
     --dist <DIR>          The frontend built with `pnpm web:build:server`
@@ -82,6 +84,12 @@ OPTIONS:
     --allow-host <NAME>   A further name the server may be addressed by, such
                           as a VPN DNS name. The listen address and localhost
                           are always allowed. Repeatable.
+    --zotero <HOST[:PORT]>
+                          Read Zotero from another machine: the address its
+                          port 23119 is forwarded to, e.g. over a VPN with
+                          `tailscale serve --tcp 23119 tcp://127.0.0.1:23119`
+                          on the machine Zotero runs on. Without this, Zotero
+                          is looked for on the machine the server runs on.
 
 Reaching this port is equivalent to a shell as the user running it. There is
 no authentication: listen only where you alone can reach.";
@@ -91,6 +99,7 @@ impl Options {
         let mut listen: SocketAddr = ([127, 0, 0, 1], 4173).into();
         let mut dist = None;
         let mut hosts = Vec::new();
+        let mut zotero = None;
 
         while let Some(argument) = arguments.next() {
             let mut value = || {
@@ -106,6 +115,12 @@ impl Options {
                 }
                 "--dist" => dist = Some(PathBuf::from(value()?)),
                 "--allow-host" => hosts.push(value()?.to_ascii_lowercase()),
+                "--zotero" => {
+                    zotero = Some(
+                        yaz_zotero::local_api::Endpoint::parse(&value()?)
+                            .context("--zotero takes a host and a port, e.g. laptop:23119")?,
+                    );
+                }
                 "-h" | "--help" => {
                     println!("{USAGE}");
                     std::process::exit(0);
@@ -130,6 +145,7 @@ impl Options {
             listen,
             dist,
             hosts,
+            zotero,
         })
     }
 }
@@ -155,6 +171,10 @@ async fn main() -> anyhow::Result<()> {
     let app = yaz_app::install(tauri::test::mock_builder(), clock)
         .build(tauri::test::mock_context(tauri::test::noop_assets()))
         .context("could not build the command handler")?;
+    if let Some(endpoint) = options.zotero {
+        tracing::info!(%endpoint, "reading Zotero from another machine");
+        yaz_app::use_remote_zotero(&app, endpoint);
+    }
     let webview = tauri::WebviewWindowBuilder::new(&app, "main", tauri::WebviewUrl::default())
         .build()
         .context("could not create the handler's webview")?;
@@ -174,6 +194,7 @@ async fn main() -> anyhow::Result<()> {
     let router = Router::new()
         .nest("/api", api)
         .fallback_service(ServeDir::new(&options.dist).fallback(ServeFile::new(index)))
+        .layer(middleware::from_fn(revalidate_pages))
         .layer(CompressionLayer::new())
         .layer(middleware::from_fn_with_state(
             Arc::clone(&shared),
@@ -205,6 +226,28 @@ async fn main() -> anyhow::Result<()> {
     // were reading.
     drop(app);
     Ok(())
+}
+
+/// Make a browser ask again for the page, while keeping what the page loads.
+///
+/// The files a build produces carry a hash of their contents in their names,
+/// so they may be kept forever; the page that names them has the same name
+/// after every build. Sent without this, a browser guessed how long to keep it
+/// and went on showing the previous build after a new one was in place.
+async fn revalidate_pages(request: Request, next: Next) -> Response {
+    let mut response = next.run(request).await;
+    let is_page = response
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|kind| kind.starts_with("text/html"));
+    if is_page {
+        response.headers_mut().insert(
+            header::CACHE_CONTROL,
+            header::HeaderValue::from_static("no-cache"),
+        );
+    }
+    response
 }
 
 /// Refuse a request addressed to a name this server was not started for.

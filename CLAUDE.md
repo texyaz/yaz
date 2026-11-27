@@ -63,6 +63,13 @@ The load-bearing ones:
   about it is persisted**, and no component asks whether it is on a phone or on
   the web — it is a width. A command that opens a tab also calls `showTab`.
 
+- **0032** — The preview **reads the document's own definitions** from the
+  buffer: a `\newcommand` is drawn as its text, an environment set apart under
+  its name, a theorem headed with its number. **A reader, not an expander** —
+  anything it cannot read stays as source. Look inside a body or an argument
+  with `tokensOfFragment`, never `tokensIn`: that one remembers a single text,
+  and it must stay the document's.
+
 ## Environment (this machine)
 
 - Windows 11 on **Snapdragon X / ARM64**. Host triple `aarch64-pc-windows-msvc`.

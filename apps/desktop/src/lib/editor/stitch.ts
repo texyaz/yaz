@@ -165,10 +165,26 @@ export function stitch(root: string, read: ReadFile): Stitched {
     let cursor = 0;
 
     for (const include of includesIn(source)) {
-      const path = resolveInclude(include.argument, file);
-      const expandable =
-        depth < MAX_DEPTH && !open.has(path) && !expanded.has(path);
-      const content = expandable ? read(path) : null;
+      // From the main file's directory, which is where TeX looks: a chapter
+      // in `parts/` that writes `\input{generated/chart}` means the project's
+      // `generated/`, not one beside the chapter. Beside the chapter is tried
+      // second, because that is what `subfiles` and `import` make it mean.
+      let path = resolveInclude(include.argument, root);
+      let content: string | null = null;
+      let expandable = false;
+      for (const candidate of new Set([
+        path,
+        resolveInclude(include.argument, file),
+      ])) {
+        const possible =
+          depth < MAX_DEPTH && !open.has(candidate) && !expanded.has(candidate);
+        if (candidate === path) expandable = possible;
+        const found = possible ? read(candidate) : null;
+        if (found === null) continue;
+        path = candidate;
+        content = found;
+        break;
+      }
 
       if (content === null) {
         // Left in place, command and all. Also the cycle case: a file that
