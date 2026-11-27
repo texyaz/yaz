@@ -1008,3 +1008,49 @@ export function createProject(
 ): Promise<ProjectInfo> {
   return invoke<ProjectInfo>("create_project", { parent, name, kind });
 }
+
+/** Whether a project is shared as a session, and why not if it is not. */
+export interface CollabStatus {
+  shared: boolean;
+  /** The message key saying why not. */
+  reason: string | null;
+  /** The collaboration server link: `none` for a host that is the whole session. */
+  upstream: string;
+}
+
+export function collabStatus(root: string): Promise<CollabStatus> {
+  return invoke<CollabStatus>("collab_status", { root });
+}
+
+/** What a flush wrote, and what else happened to the folder. */
+export interface FlushReport {
+  written: string[];
+  folder: FolderReport;
+}
+
+/** What happened to the folder behind a session's back. */
+export interface FolderReport {
+  imported: string[];
+  kept: { path: string; copy: string }[];
+  removed: string[];
+  refused: string[];
+}
+
+/**
+ * Bring the folder up to date with everything this page has seen: the host
+ * waits until its replica holds the state vector, then writes the files.
+ */
+export function collabFlush(
+  root: string,
+  stateVector: Uint8Array,
+): Promise<FlushReport> {
+  return invoke<FlushReport>("collab_flush", {
+    root,
+    stateVector: Array.from(stateVector),
+  });
+}
+
+/** Look at the folder now, for files written by something other than yaz. */
+export function collabRescan(root: string): Promise<void> {
+  return invoke<void>("collab_rescan", { root });
+}
