@@ -136,11 +136,7 @@ impl FolderLocks {
     /// already do for the compile itself. The folder must exist: the key is
     /// its canonical path.
     pub fn lock(&self, root: &Utf8Path) -> crate::Result<FolderGuard> {
-        let key = canonical_root(root)?;
-        let held = {
-            let mut map = self.held.lock().unwrap_or_else(PoisonError::into_inner);
-            Arc::clone(map.entry(key).or_default())
-        };
+        let held = self.held_for(root)?;
         let mut taken = held.taken.lock().unwrap_or_else(PoisonError::into_inner);
         while *taken {
             taken = held
@@ -151,6 +147,27 @@ impl FolderLocks {
         *taken = true;
         drop(taken);
         Ok(FolderGuard { held })
+    }
+
+    /// Take the folder's lock if nobody holds it, without waiting.
+    ///
+    /// For a thread that has other work to do while a compile runs, such as
+    /// the session host, which must keep passing edits between pages.
+    pub fn try_lock(&self, root: &Utf8Path) -> crate::Result<Option<FolderGuard>> {
+        let held = self.held_for(root)?;
+        let mut taken = held.taken.lock().unwrap_or_else(PoisonError::into_inner);
+        if *taken {
+            return Ok(None);
+        }
+        *taken = true;
+        drop(taken);
+        Ok(Some(FolderGuard { held }))
+    }
+
+    fn held_for(&self, root: &Utf8Path) -> crate::Result<Arc<Held>> {
+        let key = canonical_root(root)?;
+        let mut map = self.held.lock().unwrap_or_else(PoisonError::into_inner);
+        Ok(Arc::clone(map.entry(key).or_default()))
     }
 }
 
@@ -544,6 +561,17 @@ mod tests {
         }
         assert_eq!(overlapped.load(Ordering::SeqCst), 0, "two held the folder");
         assert_eq!(entries.load(Ordering::SeqCst), 20);
+    }
+
+    #[test]
+    fn a_folder_that_is_taken_is_not_waited_for_by_try_lock() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let root = Utf8Path::from_path(dir.path()).expect("utf8 path");
+        let locks = FolderLocks::default();
+        let held = locks.lock(root).unwrap();
+        assert!(locks.try_lock(root).unwrap().is_none());
+        drop(held);
+        assert!(locks.try_lock(root).unwrap().is_some());
     }
 
     #[test]
