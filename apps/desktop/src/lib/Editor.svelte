@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from "svelte";
-  import { EditorState, Compartment } from "@codemirror/state";
+  import { Annotation, EditorState, Compartment } from "@codemirror/state";
   import {
     EditorView,
     keymap,
@@ -651,6 +651,20 @@
   let view: EditorView | undefined;
   let loadedDocId = "";
 
+  /**
+   * Marks the transaction that puts a different document in the buffer.
+   *
+   * It changes the text, so it looks like an edit, and it is not one: nobody
+   * typed it, and the application already holds exactly this text — it is
+   * where the text came from. Reported as an edit, a freshly opened file was
+   * "modified", and a freshly joined document was a whole-buffer replacement
+   * that maps to no single file, which is the definition of the map having
+   * drifted — so joining announced that edits were no longer being written.
+   * Whether that happened depended on whether the editor had finished loading
+   * before the files had been read, which over a network it always has.
+   */
+  const documentSwap = Annotation.define<boolean>();
+
   const vimCompartment = new Compartment();
   const numberCompartment = new Compartment();
   const keyCompartment = new Compartment();
@@ -693,9 +707,13 @@
         caretColor: "var(--yaz-editor-cursor)",
       },
       ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--yaz-editor-cursor)" },
-      "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": {
-        backgroundColor: "var(--yaz-bg-selection)",
-      },
+      // Spelled out as far as CodeMirror's own rule for a focused dark editor,
+      // which is more specific than a plain class and otherwise wins: the
+      // selection was then CodeMirror's dark slate whatever the theme said.
+      "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection":
+        {
+          backgroundColor: "var(--yaz-bg-selection)",
+        },
       ".cm-activeLine": { backgroundColor: "var(--yaz-editor-active-line)" },
       ".cm-gutters": {
         backgroundColor: "var(--yaz-editor-gutter-bg)",
@@ -843,7 +861,12 @@
         },
       }),
       EditorView.updateListener.of((update) => {
-        if (update.docChanged) {
+        if (
+          update.docChanged &&
+          !update.transactions.some((transaction) =>
+            transaction.annotation(documentSwap),
+          )
+        ) {
           onChange(update.state.doc.toString(), changesIn(update.changes));
         }
         // The outline highlights the section the caret is in, so it needs the
@@ -944,6 +967,7 @@
         ? {
             changes: { from: 0, to: view.state.doc.length, insert: doc },
             selection: { anchor: 0 },
+            annotations: documentSwap.of(true),
           }
         : {}),
       effects: setSegments.of(nextSegments ? [...nextSegments] : []),
@@ -1205,6 +1229,14 @@
     hyphens: auto;
   }
 
+  /* CodeMirror wraps with `break-spaces`, under which a space that does not
+     fit starts the next line — fine for code, and in set text a line that
+     begins with a gap and a justified line that juts past the margin.
+     `pre-wrap` lets that space hang off the end of the line. */
+  .editor.justified :global(.cm-content.cm-lineWrapping) {
+    white-space: pre-wrap;
+  }
+
   /* White paper under a dark interface.
 
      The tokens are overridden rather than the colours set directly, so
@@ -1222,9 +1254,34 @@
     --yaz-text-secondary: #3f3f46;
     --yaz-text-muted: #71717a;
     --yaz-border: #d4d4d8;
-    --yaz-editor-active-line: #f4f4f5;
+    /* A wash, not a solid: the selection is drawn underneath the lines, and a
+       solid active line covered the part of it on the caret's own line. */
+    --yaz-editor-active-line: rgba(0, 0, 0, 0.045);
+    /* The dark theme's selection is a dark wash, which over white paper hid
+       the very words that were selected. */
+    --yaz-bg-selection: rgba(47, 108, 226, 0.22);
     --yaz-editor-gutter-bg: #fafafa;
     --yaz-editor-gutter-text: #a1a1aa;
+    /* Said again, though the stylesheet already says a heading is the colour
+       of the text: a custom property that refers to another is worked out
+       where it is declared, on the root, and what is inherited from there is
+       the dark theme's near-white — on white paper. */
+    --yaz-heading-0: var(--yaz-text-primary);
+    --yaz-heading-1: var(--yaz-text-primary);
+    --yaz-heading-2: var(--yaz-text-primary);
+    --yaz-heading-3: var(--yaz-text-primary);
+    --yaz-heading-4: var(--yaz-text-primary);
+    --yaz-heading-5: var(--yaz-text-primary);
+    --yaz-heading-6: var(--yaz-text-primary);
+    /* Markup the caret has brought back, in the colours the light theme gives
+       it. The dark theme's are pale by design, which is what white is too. */
+    --yaz-accent: #2f6ce2;
+    --yaz-syntax-command: #8250df;
+    --yaz-syntax-environment: #0550ae;
+    --yaz-syntax-math: #0f7b6c;
+    --yaz-syntax-comment: #767d87;
+    --yaz-syntax-string: #b8770b;
+    --yaz-syntax-reference: #2f6ce2;
   }
 
   /* The continuous view: a column of a sensible measure, centred in the pane.

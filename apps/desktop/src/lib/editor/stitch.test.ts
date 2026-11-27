@@ -133,6 +133,34 @@ describe("stitch", () => {
     ]);
   });
 
+  it("looks from the main file's folder, as TeX does", () => {
+    // A chapter one folder down naming a file by its path from the project,
+    // which is how `\input` reads it: the working directory is the main
+    // file's, wherever the chapter itself is kept.
+    const nested = stitch(
+      "main.tex",
+      project({
+        "main.tex": "A\\input{parts/results}Z",
+        "parts/results.tex": "B\\input{generated/chart}Y",
+        "generated/chart.tex": "C",
+      }),
+    );
+    expect(nested.text).toBe("ABCYZ");
+    expect(nested.missing).toEqual([]);
+  });
+
+  it("falls back to the folder of the file that asked", () => {
+    const nested = stitch(
+      "main.tex",
+      project({
+        "main.tex": "A\\input{parts/results}Z",
+        "parts/results.tex": "B\\input{chart}Y",
+        "parts/chart.tex": "C",
+      }),
+    );
+    expect(nested.text).toBe("ABCYZ");
+  });
+
   it("leaves a file it cannot read as its own line", () => {
     // A document that silently loses a chapter because a path was wrong is
     // worse than one that shows a line the author can see is wrong.

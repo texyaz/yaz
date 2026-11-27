@@ -24,35 +24,37 @@ decision we later reversed is more valuable than a tidy directory.
 
 ## Index
 
-| #                                                    | Title                                                                 | Status   |
-| ---------------------------------------------------- | --------------------------------------------------------------------- | -------- |
-| [0001](0001-record-architecture-decisions.md)        | Record architecture decisions                                         | Accepted |
-| [0002](0002-application-shell-tauri.md)              | Application shell: Tauri v2 over Electron and pure-Rust GUI           | Accepted |
-| [0003](0003-frontend-framework-svelte.md)            | Frontend framework: Svelte 5 + TypeScript                             | Accepted |
-| [0004](0004-editor-core-codemirror-single-buffer.md) | Editor core: CodeMirror 6 with a single-buffer visual mode            | Accepted |
-| [0005](0005-extensibility-tiers.md)                  | Extensibility tiers: core, core plugins, community plugins            | Accepted |
-| [0006](0006-plugin-runtime-and-capabilities.md)      | Plugin runtime and capability-based security                          | Accepted |
-| [0007](0007-latex-compilation-engines.md)            | LaTeX compilation: Tectonic by default, system TeX as a peer          | Accepted |
-| [0008](0008-zotero-integration.md)                   | Zotero integration strategy                                           | Accepted |
-| [0009](0009-obsidian-integration.md)                 | Obsidian integration strategy                                         | Accepted |
-| [0010](0010-theming.md)                              | Theming via CSS custom properties and user theme files                | Accepted |
-| [0011](0011-localisation.md)                         | Localisation from the first commit                                    | Accepted |
-| [0012](0012-versioning-and-changelog.md)             | Semantic versioning and changelog automation                          | Accepted |
-| [0013](0013-update-distribution.md)                  | Update distribution for app and plugins, and dev-mode behaviour       | Accepted |
-| [0014](0014-target-platforms-and-arm64.md)           | Target platforms and the native ARM64 policy                          | Accepted |
-| [0015](0015-performance-budgets.md)                  | Performance budgets enforced in CI                                    | Accepted |
-| [0016](0016-documentation-strategy.md)               | Self-documenting project and the docs site                            | Accepted |
-| [0017](0017-repository-layout.md)                    | Repository layout and monorepo tooling                                | Accepted |
-| [0018](0018-licensing.md)                            | Licensing: AGPL-3.0 app, MIT plugin API                               | Accepted |
-| [0019](0019-tls-trust-store.md)                      | TLS trust: the OS store, bundled roots as fallback                    | Accepted |
-| [0020](0020-stitched-multi-file-editing.md)          | Edit a multi-file document as one, behind a mode                      | Accepted |
-| [0021](0021-plugin-distribution.md)                  | Plugins are their own repositories, released and updated on their own | Accepted |
-| [0022](0022-mcp-and-tool-declaration.md)             | MCP: calling out is a capability, exposing tools is a declaration     | Accepted |
-| [0023](0023-latex-vocabulary-boundary.md)            | The preview knows LaTeX; packages are plugins                         | Accepted |
-| [0024](0024-page-view-fixed-sheets.md)               | The page is a fixed box; content is pushed through it                 | Accepted |
-| [0025](0025-generated-lists-are-tabs.md)             | A generated list is a tab, not pages                                  | Accepted |
-| [0026](0026-task-providers-and-credentials.md)       | A task list is a core tab; a credential is a capability               | Accepted |
-| [0027](0027-completion-while-typing.md)              | Completion reads what yaz already holds, and never on a keystroke     | Accepted |
-| [0028](0028-the-file-list-edits-the-project.md)      | The file list is a tab, and can rename, delete and create             | Accepted |
-| [0029](0029-a-format-brings-its-own-preview.md)      | A format plugin may contribute a preview; yaz decides when it is on   | Accepted |
-| [0030](0030-a-web-server-hosts-the-same-commands.md) | A web server hosts the same commands the desktop does                 | Accepted |
+| #                                                               | Title                                                                 | Status   |
+| --------------------------------------------------------------- | --------------------------------------------------------------------- | -------- |
+| [0001](0001-record-architecture-decisions.md)                   | Record architecture decisions                                         | Accepted |
+| [0002](0002-application-shell-tauri.md)                         | Application shell: Tauri v2 over Electron and pure-Rust GUI           | Accepted |
+| [0003](0003-frontend-framework-svelte.md)                       | Frontend framework: Svelte 5 + TypeScript                             | Accepted |
+| [0004](0004-editor-core-codemirror-single-buffer.md)            | Editor core: CodeMirror 6 with a single-buffer visual mode            | Accepted |
+| [0005](0005-extensibility-tiers.md)                             | Extensibility tiers: core, core plugins, community plugins            | Accepted |
+| [0006](0006-plugin-runtime-and-capabilities.md)                 | Plugin runtime and capability-based security                          | Accepted |
+| [0007](0007-latex-compilation-engines.md)                       | LaTeX compilation: Tectonic by default, system TeX as a peer          | Accepted |
+| [0008](0008-zotero-integration.md)                              | Zotero integration strategy                                           | Accepted |
+| [0009](0009-obsidian-integration.md)                            | Obsidian integration strategy                                         | Accepted |
+| [0010](0010-theming.md)                                         | Theming via CSS custom properties and user theme files                | Accepted |
+| [0011](0011-localisation.md)                                    | Localisation from the first commit                                    | Accepted |
+| [0012](0012-versioning-and-changelog.md)                        | Semantic versioning and changelog automation                          | Accepted |
+| [0013](0013-update-distribution.md)                             | Update distribution for app and plugins, and dev-mode behaviour       | Accepted |
+| [0014](0014-target-platforms-and-arm64.md)                      | Target platforms and the native ARM64 policy                          | Accepted |
+| [0015](0015-performance-budgets.md)                             | Performance budgets enforced in CI                                    | Accepted |
+| [0016](0016-documentation-strategy.md)                          | Self-documenting project and the docs site                            | Accepted |
+| [0017](0017-repository-layout.md)                               | Repository layout and monorepo tooling                                | Accepted |
+| [0018](0018-licensing.md)                                       | Licensing: AGPL-3.0 app, MIT plugin API                               | Accepted |
+| [0019](0019-tls-trust-store.md)                                 | TLS trust: the OS store, bundled roots as fallback                    | Accepted |
+| [0020](0020-stitched-multi-file-editing.md)                     | Edit a multi-file document as one, behind a mode                      | Accepted |
+| [0021](0021-plugin-distribution.md)                             | Plugins are their own repositories, released and updated on their own | Accepted |
+| [0022](0022-mcp-and-tool-declaration.md)                        | MCP: calling out is a capability, exposing tools is a declaration     | Accepted |
+| [0023](0023-latex-vocabulary-boundary.md)                       | The preview knows LaTeX; packages are plugins                         | Accepted |
+| [0024](0024-page-view-fixed-sheets.md)                          | The page is a fixed box; content is pushed through it                 | Accepted |
+| [0025](0025-generated-lists-are-tabs.md)                        | A generated list is a tab, not pages                                  | Accepted |
+| [0026](0026-task-providers-and-credentials.md)                  | A task list is a core tab; a credential is a capability               | Accepted |
+| [0027](0027-completion-while-typing.md)                         | Completion reads what yaz already holds, and never on a keystroke     | Accepted |
+| [0028](0028-the-file-list-edits-the-project.md)                 | The file list is a tab, and can rename, delete and create             | Accepted |
+| [0029](0029-a-format-brings-its-own-preview.md)                 | A format plugin may contribute a preview; yaz decides when it is on   | Accepted |
+| [0030](0030-a-web-server-hosts-the-same-commands.md)            | A web server hosts the same commands the desktop does                 | Accepted |
+| [0031](0031-a-narrow-window-shows-one-pane.md)                  | A narrow window shows one pane at a time                              | Accepted |
+| [0032](0032-the-preview-reads-the-documents-own-definitions.md) | The preview reads the document's own definitions                      | Accepted |

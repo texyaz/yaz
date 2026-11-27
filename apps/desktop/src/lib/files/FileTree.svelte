@@ -228,4 +228,13 @@
     letter-spacing: 0.04em;
     color: var(--yaz-text-muted);
   }
+
+  /* A narrow window is a touch screen far more often than not, and a row two
+     pixels taller than its text is a row a fingertip opens the neighbour of. */
+  @media (max-width: 720px) {
+    .row {
+      padding-block: var(--yaz-space-2);
+      font-size: var(--yaz-font-size-base);
+    }
+  }
 </style>
