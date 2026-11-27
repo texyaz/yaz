@@ -457,6 +457,14 @@
     display: none;
   }
 
+  /* With them gone the account control is the last thing in the bar and sat
+     against the window's edge. It gets the inset the bar has on its other
+     side, at every width: this is more specific than the narrow rule below,
+     which keeps its smaller inset for the desktop. */
+  :global(:root[data-host="web"]) .bar {
+    padding-inline-end: var(--yaz-space-3);
+  }
+
   .bar {
     display: flex;
     align-items: center;
